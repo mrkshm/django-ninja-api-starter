@@ -1,0 +1,29 @@
+<rule>
+name: prohibit_drf_usage
+version: 1.0
+description: |
+  Prohibits the use of Django REST Framework (DRF) in this project. All API code must use Django Ninja and related packages only.
+filters:
+  - type: file_content
+    pattern: "rest_framework"
+  - type: file_content
+    pattern: "from rest_framework"
+  - type: file_content
+    pattern: "import rest_framework"
+actions:
+  - type: reject
+    message: |
+      DRF (Django REST Framework) is not allowed in this project. Use Django Ninja and its ecosystem for all API development.
+  - type: suggest
+    message: |
+      Please use Django Ninja for all API endpoints, serialization, and authentication. Refer to the project's API rules and documentation for guidance.
+examples:
+  - input: |
+      from rest_framework.views import APIView
+      import rest_framework.serializers
+    output: |
+      [REJECTED] DRF is not allowed. Use Django Ninja alternatives.
+metadata:
+  priority: high
+  tags: [django_ninja, no_drf, api]
+</rule>

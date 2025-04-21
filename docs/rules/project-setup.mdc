@@ -1,0 +1,134 @@
+## Project Setup
+'''
+# Core & Database
+Django
+django-ninja
+psycopg[binary]
+postgis
+
+# Authentication & Security
+django-allauth
+django-defender
+django-csp
+
+# Storage & Media
+django-storages
+Pillow
+django-imagekit
+
+# Utilities
+django-filter
+django-environ
+django-money
+django-health-check
+
+# Task Processing
+celery
+redis
+django-celery-beat
+
+# API & Performance
+django-ninja-extra
+django-ninja-jwt
+django-cors-headers
+orjson
+django-redis
+
+# Development
+django-debug-toolbar
+black
+isort
+flake8
+pre-commit
+
+# Testing
+pytest-django
+factory-boy
+model-bakery
+'''
+
+## Project Setup
+
+- Use Django Ninja and ninja-jwt for API and JWT authentication.
+- All API endpoints are versioned under `/api/v1/`.
+- Register NinjaJWTDefaultController with NinjaExtraAPI to expose `/token/pair`, `/token/refresh`, `/token/verify` endpoints.
+- Mount main API in `urls.py` with the versioned prefix.
+- Add `ninja_extra` to `INSTALLED_APPS` in `settings.py`.
+- For testing, always use `ninja.testing.TestClient(api)` and clear `NinjaAPI._registry` in test setup to avoid ConfigError.
+- For GET requests in Django Ninja TestClient, always include query parameters directly in the URL string (e.g., `/endpoint?param=value`). Do NOT use the `params=` argument for GET requests, as it will not be recognized and will result in 422 errors.
+- Use `json=` for POST requests to send JSON data.
+- See `.windsurf/rules/django-ninja-query-param-testing.mdc` for more details on query param testing best practices.
+- See tests/ for examples of JWT, registration, and username availability tests.
+
+## Database Setup
+All domain entities are accessed via slugs in URLs and API payloads (e.g., /org-slug/contacts/contact-slug or /user-slug/projects/project-slug). Numeric IDs are never exposed in the API.
+
+### Database Schema Notes
+- All major entities (users, organizations, contacts) have a unique, required `slug` field.
+- Foreign keys in the DB remain as integer PKs, but API input/output always uses slugs for references.
+
+#### Example Table: organizations
+CREATE TABLE organizations (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT,
+    slug TEXT UNIQUE NOT NULL,
+    type TEXT, -- e.g., 'personal', 'group'
+    creator_id BIGINT, -- tracks creator
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (creator_id) REFERENCES users(id)
+);
+
+#### Example Table: users
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    username TEXT UNIQUE,
+    slug TEXT UNIQUE NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    location VARCHAR(100),
+    avatar_path TEXT,
+    notification_preferences JSONB NOT NULL DEFAULT '{}',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_staff BOOLEAN NOT NULL DEFAULT FALSE,
+    is_superuser BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    last_login TIMESTAMPTZ
+    // any other fields Django or Ninja may need
+);
+
+#### Example Table: memberships
+CREATE TABLE memberships (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    organization_id BIGINT NOT NULL,
+    role VARCHAR(10) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id),
+    UNIQUE(user_id, organization_id)
+);
+
+-- Enum or check constraint for roles
+ALTER TABLE memberships 
+ADD CONSTRAINT valid_role 
+CHECK (role IN ('owner', 'admin', 'member'));
+
+-- All API references to organizations or users use their slug, not their integer ID.
+
+Each user has a personal organization, and can be a member of other organizations. Domain entities are related to organizations, not the user.
+
+On creation of a user, an organization for the user is created and a username is generated from the email: 
+1. Extract the part before @
+2. Example: jane.doe@gmail.com → jane.doe
+3. Check if it’s unique
+4. If yes, use it.
+5. If not, append a random alphanumeric character or number (e.g., jane.doe7, jane.doea, etc.) and check again, repeating as needed.
+6. Once we have a unique username, we also need a sluggified version
+7. Check slug is unique, if not, again append a random alphanumeric character until it is unique
+8. Store as both username and org name
+9. Create a membership for the user in the personal org with role 'owner'

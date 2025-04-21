@@ -1,0 +1,47 @@
+<rule>
+name: django_ninja_query_param_testing
+version: 1.0
+description: |
+  Ensure query parameters are passed as part of the URL string (not via params=) when using Django Ninja's TestClient for GET requests. This avoids 422 errors due to missing query fields, as Django Ninja TestClient does not handle the params= argument as expected.
+
+filters:
+  - type: file_extension
+    pattern: "\.py$"
+  - type: content
+    pattern: "client.get\([^,]+,\s*params="
+  - type: event
+    pattern: "file_create|file_edit"
+
+actions:
+  - type: reject
+    conditions:
+      - pattern: "client.get\([^,]+,\s*params="
+        message: |
+          When using Django Ninja's TestClient for GET requests, always include query parameters directly in the URL string (e.g., client.get('/endpoint?param=value')).
+          Do NOT use the params= argument, as it will not be recognized and will result in 422 errors for missing fields.
+
+  - type: suggest
+    message: |
+      For Django Ninja TestClient GET requests:
+      - Use: client.get('/endpoint?param=value')
+      - Do NOT use: client.get('/endpoint', params={...})
+      This ensures query parameters are correctly passed and avoids test failures.
+
+examples:
+  - input: |
+      # Bad: This will not pass query params
+      client.get('/users/check_username', params={'username': 'foo'})
+
+      # Good: This works
+      client.get('/users/check_username?username=foo')
+    output: "Correct Django Ninja TestClient usage for GET query params"
+
+metadata:
+  priority: high
+  tags:
+    - django_ninja
+    - testing
+    - query_params
+    - best_practices
+    - windsurf
+</rule>

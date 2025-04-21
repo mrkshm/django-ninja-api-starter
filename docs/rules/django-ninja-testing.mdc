@@ -1,0 +1,36 @@
+<rule>
+name: django_ninja_testing_best_practices
+version: 1.0
+priority: high
+
+# Django Ninja API Testing Best Practices
+
+## Summary
+- Ensure all test client requests use the correct path prefix as mounted in the main API (e.g., `/auth/`).
+- Always register routers and controllers on the main API instance, not just sub-routers.
+- Use TestClient(api) for all endpoint tests.
+- Clear NinjaAPI._registry before each test to avoid ConfigError.
+- Decorate all database-using tests with `@pytest.mark.django_db`.
+- Use `/token/pair` to obtain JWT tokens for authenticated requests.
+- Test endpoint paths as registered on the API, not as mounted in Django URLs.
+
+## Actions
+- If you see `Cannot resolve` errors in tests, check your test path and router mounting.
+- If you see `ConfigError` about duplicate API registration, add a fixture to clear NinjaAPI._registry before each test.
+- If you see database access errors, add `@pytest.mark.django_db` to your test functions.
+
+examples:
+  - input: |
+      client.get("/me") # Fails if router is mounted at /auth/
+    output: |
+      client.get("/auth/me") # Correct if router is mounted at /auth/
+  - input: |
+      @pytest.mark.django_db
+      def test_foo(): ...
+    output: |
+      # Correct: allows DB access in tests
+
+metadata:
+  tags: [django_ninja, testing, jwt, best_practices]
+  version: 1.0
+</rule>

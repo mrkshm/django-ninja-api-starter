@@ -1,0 +1,19 @@
+# Ignore Django project settings
+local_settings.py
+db.sqlite3
+.env
+_DS.Store
+
+# Ignore venv
+venv/
+
+# Ignore logs
+logs/
+
+# Ignore migrations
+migrations/
+
+# Ignore pycache
+__pycache__/
+
+.coverage

@@ -1,0 +1,37 @@
+<rule>
+name: ninja_jwt_best_practices
+version: 1.0
+priority: high
+
+description: |
+  Best practices for implementing and testing JWT authentication with Django Ninja and ninja-jwt.
+
+implementation:
+  - Register NinjaJWTDefaultController with NinjaExtraAPI to expose JWT endpoints (/token/pair, /token/refresh, /token/verify).
+  - Use API versioning in URL structure (e.g. /api/v1/).
+  - Mount API in urls.py with versioned prefix.
+  - JWT endpoint expects JSON body with `email` and `password` fields (if custom user model uses email as USERNAME_FIELD).
+  - Confirm expected schema in OpenAPI docs (/api/v1/docs).
+  - Add 'ninja_extra' to INSTALLED_APPS in settings.py.
+
+testing:
+  - Create a test user with correct fields (e.g. User.objects.create_user(email=..., password=...)).
+  - Use ninja.testing.TestClient(api) for fast API tests.
+  - To avoid ConfigError about duplicate API registration, clear NinjaAPI._registry in test setUp.
+  - Use json= for POST requests to send JSON data.
+  - 422 is returned for validation errors (missing/invalid fields). 200 is returned for successful authentication, with 'access' and 'refresh' tokens in response.
+
+debugging:
+  - 422: Check request body and fields.
+  - ConfigError: Clear NinjaAPI._registry in test setup.
+  - Missing endpoints: Check controller registration and URL config.
+
+examples:
+  - input: |
+      POST /api/v1/token/pair with {"email": "user@example.com", "password": "pass"}
+    output: |
+      200 OK, {"access": "...", "refresh": "..."}
+
+metadata:
+  tags: [django_ninja, jwt, testing, best_practices]
+</rule>

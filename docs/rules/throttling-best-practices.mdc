@@ -1,0 +1,38 @@
+<rule>
+name: ninja_throttling_best_practices
+version: 1.0
+priority: medium
+
+# Throttling Best Practices for Django Ninja APIs
+
+## Description
+This rule documents best practices for applying request throttling to Django Ninja API endpoints, especially for sensitive or potentially abuse-prone operations like email change requests.
+
+## Guidelines
+- Use Django Ninja's built-in throttling (e.g., UserRateThrottle, AuthRateThrottle, AnonRateThrottle) to limit the rate of requests for sensitive endpoints.
+- Apply throttling at the operation level for endpoints such as email change, password reset, or registration to prevent abuse and spam.
+- Example: To limit users to 3 email change requests per hour:
+  ```python
+  from ninja.throttling import UserRateThrottle
+  email_change_throttle = UserRateThrottle('3/h')
+  @router.patch("/email", auth=JWTAuth(), throttle=[email_change_throttle])
+  def request_email_change(...):
+      ...
+  ```
+- Adjust the rate string (e.g., '3/h', '10/d', '100/m') as appropriate for your use case.
+- Throttling is not a substitute for full security or anti-abuse measures, but is a useful first line of defense.
+- For public APIs or endpoints exposed to untrusted clients, always add some form of throttling.
+
+## Notes
+- Throttling in Django Ninja is based on Django's cache framework and is not atomic; some fuzziness may occur.
+- Built-in throttlers:
+  - `AnonRateThrottle`: Throttles by IP for unauthenticated users.
+  - `UserRateThrottle`: Throttles by user ID (or IP if unauthenticated).
+  - `AuthRateThrottle`: Throttles by authentication identity (uses `str(request.auth)`).
+- For custom throttling logic, subclass `BaseThrottle` and override `allow_request()`.
+
+## Examples
+- Good: Sensitive endpoints (email change, password reset) have a throttle set.
+- Bad: No throttling on endpoints that can trigger emails or sensitive actions.
+
+</rule>
