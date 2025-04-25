@@ -25,6 +25,7 @@ def serialize_contact(contact):
         "creator": contact.creator.slug if contact.creator else None,
         "created_at": contact.created_at.isoformat() if contact.created_at else None,
         "updated_at": contact.updated_at.isoformat() if contact.updated_at else None,
+        "tags": [ti.tag for ti in contact.tags.select_related("tag").all()]
     }
 
 class ContactUpdate(Schema):
@@ -62,7 +63,7 @@ def create_contact(request, data: ContactIn):
             display_name = None
     if not display_name:
         return 400, {"detail": "display_name or first/last name required"}
-    contact_data = data.dict()
+    contact_data = data.model_dump()
     contact_data["display_name"] = display_name
     org_slug = contact_data.pop("organization")
     organization = get_object_or_404(Organization, slug=org_slug)
@@ -75,7 +76,7 @@ def create_contact(request, data: ContactIn):
 @contacts_router.put("/{slug}/", response=ContactOut, auth=JWTAuth())
 def update_contact(request, slug: str, data: ContactIn):
     contact = get_object_or_404(Contact, slug=slug)
-    for field, value in data.dict(exclude_unset=True).items():
+    for field, value in data.model_dump(exclude_unset=True).items():
         if field == "organization":
             org = get_object_or_404(Organization, slug=value)
             setattr(contact, "organization", org)

@@ -66,7 +66,8 @@ INSTALLED_APPS = [
     "accounts",
     "organizations.apps.OrganizationsConfig",
     "core",
-    "contacts"
+    "contacts",
+    "tags"
 ]
 
 MIDDLEWARE = [

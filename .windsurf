@@ -1,0 +1,5 @@
+dont fix symptoms, try to fix the root cause.
+
+'''orm_mode = True''' is deprecated, use '''from_attributes = True''' instead.
+
+check documents in /docs/rules for additional rules

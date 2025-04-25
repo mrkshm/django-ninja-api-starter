@@ -1,6 +1,8 @@
 from typing import Optional
 from pydantic import BaseModel, model_validator
 
+from tags.schemas import TagOut
+
 class ContactIn(BaseModel):
     display_name: Optional[str] = None
     first_name: Optional[str] = None
@@ -30,11 +32,12 @@ class ContactOut(BaseModel):
     avatar_path: Optional[str] = None
     organization: str
     creator: Optional[str] = None  # User slug
+    tags: list[TagOut]
     created_at: str
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ContactAvatarResponse(BaseModel):
     avatar_path: Optional[str] = None

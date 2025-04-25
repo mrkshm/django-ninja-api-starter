@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
-
+from django.contrib.contenttypes.fields import GenericRelation
+from tags.models import TaggedItem
 
 class Contact(models.Model):
     display_name = models.CharField(max_length=255)
@@ -25,6 +26,7 @@ class Contact(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tags = GenericRelation(TaggedItem, related_query_name="contacts")
 
     def __str__(self):
         return self.display_name

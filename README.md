@@ -48,11 +48,59 @@ Example use cases:
 - [x] File upload to Cloudflare R2 (or other S3-compatible storage)
 - [x] Contacts model
 - [x] Avatar for Users and Contacts
-- [ ] Polymorphic tags
+- [x] Polymorphic tags
 - [ ] Celery for background tasks
 - [ ] Docker setup
 - [ ] Easy deployment with Kamal
 - [ ] Postman collection for API testing
+
+## Polymorphic Tagging (Organization-Scoped)
+
+You can assign tags to any model using the ContentTypes framework. Tags are scoped to the user's current organization and are unique within each organization. All tag API endpoints require the organization slug in the URL, and users may only access tags for organizations they are currently active in.
+
+### Tag Endpoints
+
+- **Assign tags to an object**
+  - `POST /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/`
+  - Example: `/api/v1/orgs/acme-inc/tags/contacts/contact/42/` with body `["vip", "newsletter"]`
+- **Remove a tag from an object**
+  - `DELETE /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/`
+  - Example: `/api/v1/orgs/acme-inc/tags/contacts/contact/42/vip/`
+- **List all tags for an organization**
+  - `GET /api/v1/orgs/{org_slug}/tags/`
+- **Edit a tag's name**
+  - `PATCH /api/v1/orgs/{org_slug}/tags/{tag_id}/` (body: `{ "name": "newname" }`)
+- **Delete a tag**
+  - `DELETE /api/v1/orgs/{org_slug}/tags/{tag_id}/`
+
+### How it works
+
+- Tags are stored in the `tags` app using the `Tag` and `TaggedItem` models.
+- Tag assignment is polymorphic: any model can be tagged by specifying its `app_label`, `model` name, and object ID.
+- The system uses Django's ContentTypes to link tags to arbitrary models.
+- All tag actions are restricted to the user's current organization (enforced via org slug in the URL and membership checks).
+
+### Example: Tagging a Contact
+
+To assign tags to a contact with ID 42 in organization `acme-inc`:
+
+```http
+POST /api/v1/orgs/acme-inc/tags/contacts/contact/42/
+Body: ["vip", "newsletter"]
+```
+
+To remove the tag `vip` from the same contact:
+
+```http
+DELETE /api/v1/orgs/acme-inc/tags/contacts/contact/42/vip/
+```
+
+### Notes
+
+- Tags are unique **per organization**. The same tag name or slug can exist in different organizations.
+- Tags are always associated with an organization (ForeignKey).
+- All tag endpoints require authentication and org membership.
+- Only the user's current org is accessible in the API.
 
 ## Quick Start
 

@@ -6,6 +6,7 @@ from ninja_jwt.controller import NinjaJWTDefaultController
 from accounts.api import auth_router
 from accounts.users_api import users_router
 from contacts.api import contacts_router
+from tags.api import router as tags_router
 
 # Custom ORJSON Renderer
 class ORJSONRenderer(BaseRenderer):
@@ -34,3 +35,4 @@ def health_check(request):
 api.add_router("/auth/", auth_router, tags=["auth"])
 api.add_router("/users/", users_router, tags=["users"])
 api.add_router("/contacts/", contacts_router, tags=["contacts"])
+api.add_router("/",   tags_router, tags=["tags"])
