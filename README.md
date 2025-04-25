@@ -49,6 +49,7 @@ Example use cases:
 - [x] Contacts model
 - [x] Avatar for Users and Contacts
 - [x] Polymorphic tags
+- [x] Polymorphic images
 - [ ] Celery for background tasks
 - [ ] Docker setup
 - [ ] Easy deployment with Kamal
@@ -102,6 +103,43 @@ DELETE /api/v1/orgs/acme-inc/tags/contacts/contact/42/vip/
 - All tag endpoints require authentication and org membership.
 - Only the user's current org is accessible in the API.
 
+## Polymorphic Images (Organization-Scoped)
+
+You can upload images and attach them to any model (contacts, organizations, etc.) using Django's ContentTypes framework. Images are always scoped to the user's current organization. All image API endpoints require the organization slug in the URL, and users may only access images for organizations they are currently active in.
+
+### Image Features
+
+- Upload single or multiple images (bulk upload)
+- Automatic generation of multiple .webp versions (thumb, small, medium, large)
+- Attach/detach images to any model (polymorphic relation)
+- Set cover images, custom alt text, title, and description per relation
+- List images for an organization or for a specific object
+- Update image metadata (title, description, alt text)
+- All endpoints require JWT authentication and enforce org membership
+
+### Image Endpoints
+
+- **Upload image**
+  - `POST /api/v1/images/orgs/{org_slug}/images/` (multipart/form-data, field: `file`)
+- **Bulk upload images**
+  - `POST /api/v1/images/orgs/{org_slug}/bulk-upload/` (multipart/form-data, field: `files`)
+- **Bulk delete images**
+  - `POST /api/v1/images/orgs/{org_slug}/bulk-delete/` with body `{ "ids": [1,2,3] }`
+- **Attach image to any object**
+  - `POST /api/v1/images/orgs/{org_slug}/attach/` with body `{ "image_id": 1, "app_label": "contacts", "model": "contact", "object_id": 42 }`
+- **Detach image from any object**
+  - `POST /api/v1/images/orgs/{org_slug}/detach/` (same payload as attach)
+- **Bulk attach/detach to a specific object**
+  - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/` with body `{ "image_ids": [1,2,3] }`
+  - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/` with body `{ "image_ids": [1,2,3] }`
+- **List images for org or object**
+  - `GET /api/v1/images/orgs/{org_slug}/images/`
+  - `GET /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/`
+- **Update image metadata**
+  - `PATCH /api/v1/images/orgs/{org_slug}/images/{image_id}/`
+
+**All API details and schemas are fully documented in the OpenAPI (Swagger) docs.**
+
 ## Quick Start
 
 ```bash
@@ -130,12 +168,13 @@ Visit [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) for
 ```
 DjangoApiStarter/
 ├── accounts/           # User management & auth
-├── contacts/           # Contact management
-├── core/               # Core utilities
 ├── organizations/      # Organization management
+├── contacts/           # Contact management
+├── tags/               # Tag management
+├── core/               # Core utilities
+├── images/             # Image management
 ├── api/                # API routers & schemas
 ├── DjangoApiStarter/   # Project settings
-├── tests/              # Pytest-based tests
 ├── manage.py
 └── requirements.txt
 ```

@@ -12,7 +12,7 @@ class TestJWT(TestCase):
         response = self.client.get("/token/pair")
         self.assertEqual(response.status_code, 405)
         response = self.client.post("/token/pair", data={})
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 400)
 
     def test_token_pair_success(self):
         from accounts.models import User

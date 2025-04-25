@@ -123,7 +123,7 @@ def test_missing_name():
     headers = {"Authorization": f"Bearer {access}"}
     payload = {"organization": org.slug}
     resp = client.post("/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 422
+    assert resp.status_code == 400
 
 @pytest.mark.django_db
 def test_get_nonexistent_contact():

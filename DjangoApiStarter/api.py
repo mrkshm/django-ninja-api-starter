@@ -7,6 +7,8 @@ from accounts.api import auth_router
 from accounts.users_api import users_router
 from contacts.api import contacts_router
 from tags.api import router as tags_router
+from images.api import router as images_router, custom_validation_error
+from ninja.errors import ValidationError as NinjaValidationError
 
 # Custom ORJSON Renderer
 class ORJSONRenderer(BaseRenderer):
@@ -36,3 +38,9 @@ api.add_router("/auth/", auth_router, tags=["auth"])
 api.add_router("/users/", users_router, tags=["users"])
 api.add_router("/contacts/", contacts_router, tags=["contacts"])
 api.add_router("/",   tags_router, tags=["tags"])
+api.add_router("/images/", images_router)
+# Register error handlers (especially for validation errors)
+api.add_exception_handler(NinjaValidationError, custom_validation_error)
+# Register fallback path for NinjaAPI for bulk endpoints
+from django.urls import path, include
+from django.conf.urls import handler404, handler500
