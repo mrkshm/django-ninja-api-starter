@@ -6,7 +6,67 @@ Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow, ImageKit... al
 
 ## Getting Started
 
-This is still a work in progress. But if you want to poke around, go ahead.
+This project uses Docker for development and production. Follow these steps to get started:
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/mrkshm/django-ninja-api-starter.git
+cd django-ninja-api-starter
+```
+
+2. Create a `.env` file with your configuration:
+
+```bash
+# Database
+POSTGRES_DB=django_db
+POSTGRES_USER=django_user
+POSTGRES_PASSWORD=django_pass
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+
+# Redis
+REDIS_URL=redis://redis:6379/1
+
+# Django
+DJANGO_SETTINGS_MODULE=DjangoApiStarter.settings
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+FRONTEND_URL=http://localhost:3000
+
+# Server Configuration
+DJANGO_ENV=development  # Set to 'production' to use Gunicorn
+```
+
+3. Start the services:
+
+```bash
+# Development mode (default)
+docker-compose up --build
+
+# Production mode with Gunicorn
+DJANGO_ENV=production docker-compose up --build
+```
+
+This will:
+
+- Start PostgreSQL with PostGIS
+- Start Redis
+- Run database migrations
+- Start the Django server (development or production mode)
+- Start Celery worker and beat services
+
+4. Create a superuser (optional):
+
+```bash
+docker-compose exec web python manage.py createsuperuser
+```
+
+Visit [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) for interactive API documentation.
+
+For more detailed Docker setup information, see [docs/docker-setup.md](docs/docker-setup.md).
+For Gunicorn production setup, see [docs/gunicorn-setup.md](docs/gunicorn-setup.md).
 
 ## Features
 
@@ -16,6 +76,9 @@ This is still a work in progress. But if you want to poke around, go ahead.
 - Ready-to-use user model, polymorphic tags and authentication
 - Interactive API documentation
 - Pytest and built-in API tests
+- Docker setup with PostgreSQL, Redis, and Celery
+- PostGIS support for geographic data
+- Production-ready Gunicorn configuration
 
 ## Details
 
@@ -50,8 +113,9 @@ Example use cases:
 - [x] Avatar for Users and Contacts
 - [x] Polymorphic tags
 - [x] Polymorphic images
+- [x] Docker setup with Redis
 - [ ] Celery for background tasks
-- [ ] Docker setup
+- [x] Gunicorn production setup
 - [ ] Easy deployment with Kamal
 - [ ] Postman collection for API testing
 
@@ -140,28 +204,43 @@ You can upload images and attach them to any model (contacts, organizations, etc
 
 **All API details and schemas are fully documented in the OpenAPI (Swagger) docs.**
 
-## Quick Start
+## Redis Caching for Organization Permissions
 
-```bash
-# Clone the repo
-$ git clone https://github.com/mrkshm/django-ninja-api-starter.git
-$ cd django-ninja-api-starter
+This project implements Redis caching for organization membership and permission checks:
 
-# Create a virtual environment and activate it
-$ python3 -m venv venv
-$ source venv/bin/activate
+- **Cached permission checks:** Functions like `is_member`, `is_admin`, and `is_owner` use Redis to cache results for 1 hour, reducing database load and speeding up API responses.
+- **Automatic cache invalidation:** When a user's organization membership changes (added or removed), Django signals clear the relevant cache keys so permission checks always reflect the latest state.
 
-# Install dependencies
-$ pip install -r requirements.txt
+**Example:**
 
-# Apply migrations
-$ python manage.py migrate
-
-# Run the development server
-$ python manage.py runserver
+```python
+# organizations/permissions.py
+cache_key = f'is_member_{user.id}_{org.id}'
+result = cache.get(cache_key)
+if result is None:
+    result = Membership.objects.filter(user=user, organization=org).exists()
+    cache.set(cache_key, result, timeout=3600)
+return result
 ```
 
-Visit [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) for interactive API documentation.
+See [docs/celery-and-redis.md](docs/celery-and-redis.md) for a detailed breakdown and code/test examples.
+
+## Organization Permissions: "Loose by Default"
+
+By default, this API uses a **loose org permission model**:
+
+- **All members of an organization can perform all actions** (create, update, delete, view) on all resources in that organization.
+- No distinction is made between admin, owner, or member for access control—membership is sufficient.
+- This makes onboarding and development simple and fast for new projects and teams.
+
+### How to Tighten Permissions
+
+- To restrict an action to admins/owners, simply swap the `is_member` check for `is_admin` or `is_owner` in the relevant endpoint.
+- You can add more granular permission logic as needed, leveraging the existing helpers.
+
+---
+
+For more details, see `organizations/permissions.py` and the usage in API modules like `contacts/api.py`.
 
 ## Project Structure
 

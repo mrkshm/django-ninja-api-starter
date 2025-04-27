@@ -1,0 +1,117 @@
+services:
+  db:
+    image: postgis/postgis:15-3.3-alpine
+    environment:
+      POSTGRES_DB: django_db
+      POSTGRES_USER: django_user
+      POSTGRES_PASSWORD: django_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U django_user -d django_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py wait_for_db &&
+             python manage.py migrate django_celery_beat &&
+             python manage.py migrate &&
+             if [ \"$DJANGO_ENV\" = \"production\" ]; then 
+               python manage.py collectstatic --noinput &&
+               gunicorn DjangoApiStarter.wsgi:application -c gunicorn.conf.py; 
+             else 
+               python manage.py runserver 0.0.0.0:8000; 
+             fi"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+      SECRET_KEY: ${SECRET_KEY:-keySoS3cr3tOMGomgnoCaps}
+      DEBUG: ${DEBUG:-True}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      POSTGRES_DB: django_db
+      POSTGRES_USER: django_user
+      POSTGRES_PASSWORD: django_pass
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/1
+      DJANGO_ENV: ${DJANGO_ENV:-development}
+
+  celery_worker:
+    build: .
+    command: >
+      sh -c "python manage.py wait_for_db &&
+             celery -A DjangoApiStarter worker -l INFO"
+    volumes:
+      - .:/app
+    depends_on:
+      web:
+        condition: service_started
+      redis:
+        condition: service_started
+    environment:
+      DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+      SECRET_KEY: ${SECRET_KEY:-keySoS3cr3tOMGomgnoCaps}
+      DEBUG: ${DEBUG:-True}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      POSTGRES_DB: django_db
+      POSTGRES_USER: django_user
+      POSTGRES_PASSWORD: django_pass
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/1
+    user: django
+
+  celery_beat:
+    build: .
+    command: >
+      sh -c "python manage.py wait_for_db &&
+             python manage.py wait_for_migrations &&
+             celery -A DjangoApiStarter beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+    volumes:
+      - .:/app
+    depends_on:
+      web:
+        condition: service_started
+      redis:
+        condition: service_started
+    environment:
+      DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+      SECRET_KEY: ${SECRET_KEY:-keySoS3cr3tOMGomgnoCaps}
+      DEBUG: ${DEBUG:-True}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      POSTGRES_DB: django_db
+      POSTGRES_USER: django_user
+      POSTGRES_PASSWORD: django_pass
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/1
+    user: django
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:

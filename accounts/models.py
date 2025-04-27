@@ -5,6 +5,7 @@ from django.utils import timezone
 import secrets
 from core.utils import make_it_unique
 import string
+from django.core.cache import cache
 
 class UserManager(BaseUserManager):
     def _clean_username(self, username):
@@ -74,6 +75,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+    def get_user_permissions(self):
+        cache_key = f'user_permissions_{self.id}'
+        permissions = cache.get(cache_key)
+        if permissions is None:
+            permissions = super().get_user_permissions()
+            cache.set(cache_key, permissions, timeout=3600)  # 1 hour
+        return permissions
 
     def __str__(self):
         return self.email

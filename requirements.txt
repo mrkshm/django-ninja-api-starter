@@ -1,6 +1,7 @@
+# Django
 Django
 django-ninja
-psycopg[binary]
+psycopg2-binary
 postgis
 
 django-allauth
@@ -27,6 +28,7 @@ orjson
 django-redis
 
 django-debug-toolbar
+django-extensions
 black
 isort
 flake8
@@ -35,3 +37,22 @@ pre-commit
 pytest-django
 factory-boy
 model-bakery
+
+flower
+
+pydantic
+pydantic-settings
+python-multipart
+httpx
+
+boto3
+
+pytest
+pytest-asyncio
+pytest-cov
+
+mypy
+django-stubs
+
+gunicorn
+whitenoise

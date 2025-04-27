@@ -5,7 +5,8 @@ from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
-from organizations.models import Organization, Membership
+from organizations.models import Organization
+from organizations.permissions import is_member
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, PolymorphicImageRelationOut
 from ninja.pagination import LimitOffsetPagination, paginate
@@ -35,14 +36,14 @@ class BulkImageIdsIn(Schema):
 
 router = Router(tags=["images"])
 
-# Helper function to check org membership (copied from tags/api.py)
+# Helper function to check org membership using the new permission helper
 def get_org_for_request(request, org_slug):
-    user = request.auth
+    user = request.user
     try:
         org = Organization.objects.get(slug=org_slug)
     except Organization.DoesNotExist:
         raise HttpError(404, "Organization not found")
-    if not Membership.objects.filter(user=user, organization=org).exists():
+    if not is_member(user, org):
         raise HttpError(403, "You do not have access to this organization")
     return org
 
@@ -120,7 +121,7 @@ def edit_image_metadata(request, org_slug: str, image_id: int, data: dict):
 @router.post("/orgs/{org_slug}/images/", response={200: ImageOut, 400: dict}, auth=JWTAuth())
 def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
     org = get_org_for_request(request, org_slug)
-    user = request.auth
+    user = request.user
     # File validation: max size 10MB
     MAX_SIZE = 10 * 1024 * 1024
     if file.size > MAX_SIZE:
@@ -157,7 +158,7 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
 @router.post("/orgs/{org_slug}/bulk-upload/", response=List[BulkUploadResponse], auth=JWTAuth())
 def bulk_upload_images(request, org_slug: str):
     org = get_org_for_request(request, org_slug)
-    user = request.auth
+    user = request.user
     responses = []
     
     # Ensure 'files' is in the request
@@ -206,7 +207,7 @@ def delete_image(request, org_slug: str, image_id: int):
 @router.post("/orgs/{org_slug}/bulk-delete/", response={204: None, 400: dict}, auth=JWTAuth())
 def bulk_delete_images(request, org_slug: str):
     org = get_org_for_request(request, org_slug)
-    user = request.auth
+    user = request.user
     
     # Parse JSON data from request body
     try:
@@ -328,7 +329,7 @@ def bulk_attach_images(
     data: BulkImageIdsIn,
 ):
     org = get_org_for_request(request, org_slug)
-    user = request.auth
+    user = request.user
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
     # Ensure object belongs to org if relevant
@@ -357,7 +358,7 @@ def bulk_detach_images(
     data: BulkImageIdsIn,
 ):
     org = get_org_for_request(request, org_slug)
-    user = request.auth
+    user = request.user
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
     # Ensure object belongs to org if relevant

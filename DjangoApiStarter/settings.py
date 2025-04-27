@@ -27,13 +27,44 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-$f!wt8&+fhwp0q8(j=z_nd3wz39lg)lka9!_yv$fxdujkubtzk"
+SECRET_KEY = env('SECRET_KEY', default='keySoS3cr3tOMGomgnoCaps')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
+# Security Settings
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS = [
+    FRONTEND_URL,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CORS_ALLOW_CREDENTIALS = True
+
+# CSP Settings
+CONTENT_SECURITY_POLICY = {
+    'DIRECTIVES': {
+        'default-src': ("'self'",),
+        'script-src': ("'self'", "'unsafe-inline'", "'unsafe-eval'"),
+        'style-src': ("'self'", "'unsafe-inline'"),
+        'img-src': ("'self'", "data:", "blob:"),
+        'font-src': ("'self'",),
+        'connect-src': ("'self'",),
+    }
+}
 
 # Application definition
 
@@ -73,6 +104,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -80,6 +113,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "csp.middleware.CSPMiddleware",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -110,22 +144,43 @@ WSGI_APPLICATION = "DjangoApiStarter.wsgi.application"
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': env('POSTGRES_DB', default='your_db_name'),
-        'USER': env('POSTGRES_USER', default='your_db_user'),
-        'PASSWORD': env('POSTGRES_PASSWORD', default='your_db_password'),
-        'HOST': env('POSTGRES_HOST', default='localhost'),
+        'NAME': env('POSTGRES_DB', default='django_db'),
+        'USER': env('POSTGRES_USER', default='django_user'),
+        'PASSWORD': env('POSTGRES_PASSWORD', default='django_pass'),
+        'HOST': env('POSTGRES_HOST', default='db'),
         'PORT': env('POSTGRES_PORT', default='5432'),
     }
 }
 
+# Redis Cache Configuration
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env('REDIS_URL', default='redis://redis:6379/1'),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = env('REDIS_URL', default='redis://redis:6379/1')
+CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://redis:6379/1')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Storage Configuration
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
-            "access_key": os.getenv("R2_ACCESS_KEY_ID"),
-            "secret_key": os.getenv("R2_SECRET_ACCESS_KEY"),
-            "bucket_name": os.getenv("R2_BUCKET_NAME"),
-            "endpoint_url": os.getenv("R2_ENDPOINT_URL"),
+            "access_key": env('R2_ACCESS_KEY_ID'),
+            "secret_key": env('R2_SECRET_ACCESS_KEY'),
+            "bucket_name": env('R2_BUCKET_NAME'),
+            "endpoint_url": env('R2_ENDPOINT_URL'),
             "region_name": "auto",
             "addressing_style": "virtual",
             "signature_version": "s3v4",
@@ -171,6 +226,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

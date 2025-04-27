@@ -10,6 +10,7 @@ from core.utils.avatar import delete_existing_avatar
 from .models import Contact
 from .schemas import ContactIn, ContactOut, ContactAvatarResponse, DetailResponse
 from organizations.models import Organization
+from organizations.permissions import is_member
 from ninja.pagination import paginate, LimitOffsetPagination
 from ninja import File, UploadedFile
 from django.core.files.storage import default_storage
@@ -37,19 +38,34 @@ class ContactUpdate(Schema):
     phone: str | None = None
     address: str | None = None
 
+# Helper to check org membership for a contact
+def check_contact_member(request, contact):
+    user = request.user
+    if not is_member(user, contact.organization):
+        raise HttpError(403, "You do not have access to this organization.")
+
 @contacts_router.get("/", response=list[ContactOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
 def list_contacts(request):
-    qs = Contact.objects.select_related("organization", "creator").all()
+    user = request.user
+    # Only show contacts for orgs the user is a member of
+    org_slugs = [m.organization.slug for m in user.memberships.select_related("organization").all()]
+    qs = Contact.objects.select_related("organization", "creator").filter(organization__slug__in=org_slugs)
     return [serialize_contact(c) for c in qs]
 
 @contacts_router.get("/{slug}/", response=ContactOut, auth=JWTAuth())
 def get_contact(request, slug: str):
     contact = get_object_or_404(Contact.objects.select_related("organization", "creator"), slug=slug)
+    check_contact_member(request, contact)
     return ContactOut.model_validate(serialize_contact(contact))
 
 @contacts_router.post("/", response=ContactOut, auth=JWTAuth())
 def create_contact(request, data: ContactIn):
+    org_slug = data.organization
+    organization = get_object_or_404(Organization, slug=org_slug)
+    user = request.user
+    if not is_member(user, organization):
+        raise HttpError(403, "You do not have access to this organization.")
     # Compute display_name per rule
     display_name = data.display_name
     if not display_name:
@@ -65,17 +81,16 @@ def create_contact(request, data: ContactIn):
         return 400, {"detail": "display_name or first/last name required"}
     contact_data = data.model_dump()
     contact_data["display_name"] = display_name
-    org_slug = contact_data.pop("organization")
-    organization = get_object_or_404(Organization, slug=org_slug)
-    user = request.user
+    contact_data["organization"] = organization
     contact = Contact.objects.create(
-        **contact_data, organization=organization, creator=user
+        **contact_data, creator=user
     )
     return ContactOut.model_validate(serialize_contact(contact))
 
 @contacts_router.put("/{slug}/", response=ContactOut, auth=JWTAuth())
 def update_contact(request, slug: str, data: ContactIn):
     contact = get_object_or_404(Contact, slug=slug)
+    check_contact_member(request, contact)
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "organization":
             org = get_object_or_404(Organization, slug=value)
@@ -88,13 +103,13 @@ def update_contact(request, slug: str, data: ContactIn):
 @contacts_router.patch("/{slug}/", response=ContactOut, auth=JWTAuth())
 def partial_update_contact(request, slug: str, data: ContactUpdate):
     contact = get_object_or_404(Contact, slug=slug)
+    check_contact_member(request, contact)
     update_fields = data.model_dump(exclude_unset=True)
     if "organization" in update_fields:
         org = get_object_or_404(Organization, slug=update_fields.pop("organization"))
         contact.organization = org
     for field, value in update_fields.items():
         setattr(contact, field, value)
-    # If display_name is updated, update slug accordingly
     if "display_name" in update_fields and update_fields["display_name"]:
         base_slug = slugify(update_fields["display_name"])
         contact.slug = make_it_unique(base_slug, Contact, "slug", exclude_pk=contact.pk)
@@ -110,6 +125,7 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
     print('DATA:', request.POST)
     print('FILE ARG:', file)
     contact = get_object_or_404(Contact, slug=slug)
+    check_contact_member(request, contact)
     # File validation: max size 10MB
     MAX_SIZE = 10 * 1024 * 1024
     if file.size > MAX_SIZE:
@@ -146,6 +162,7 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
 @contacts_router.delete("/{slug}/avatar/", auth=JWTAuth(), response={200: DetailResponse, 404: DetailResponse})
 def delete_contact_avatar(request, slug: str):
     contact = get_object_or_404(Contact, slug=slug)
+    check_contact_member(request, contact)
     if not contact.avatar_path:
         return 404, DetailResponse(detail="No avatar to delete.")
     delete_existing_avatar(contact)
@@ -156,5 +173,6 @@ def delete_contact_avatar(request, slug: str):
 @contacts_router.delete("/{slug}/", auth=JWTAuth())
 def delete_contact(request, slug: str):
     contact = get_object_or_404(Contact, slug=slug)
+    check_contact_member(request, contact)
     contact.delete()
     return {"detail": "Contact deleted."}
