@@ -8,8 +8,9 @@ from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from core.email_utils import send_email
+from core.tasks import send_email_task
 import secrets
-from accounts.models import PendingEmailChange
+from accounts.models import PendingEmailChange, PendingPasswordReset
 from django.conf import settings
 import os
 from ninja.throttling import UserRateThrottle
@@ -20,6 +21,7 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
+PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 2
 
 auth_router = Router()
 User = get_user_model()
@@ -39,7 +41,15 @@ class ChangePasswordSchema(Schema):
 class EmailUpdateSchema(Schema):
     email: str
 
+class PasswordResetRequestSchema(Schema):
+    email: str
+
+class PasswordResetSchema(Schema):
+    token: str
+    new_password: str
+
 email_change_throttle = UserRateThrottle('3/h')
+password_reset_throttle = UserRateThrottle('3/h')
 
 @auth_router.post("/register/", response=TokenPairSchema)
 def register(request, data: RegisterSchema):
@@ -112,7 +122,7 @@ def request_email_change(request, data: EmailUpdateSchema):
     subject, body_text = body.split("\n", 1)
     subject = subject.replace("Subject: ", "").strip()
     try:
-        send_email(subject, new_email, body_text.strip())
+        send_email_task.delay(subject, body_text.strip(), [new_email])
     except Exception as e:
         raise HttpError(500, f"Failed to send verification email: {str(e)}")
     return {"detail": "Verification email sent. Please check your new address."}
@@ -137,3 +147,57 @@ def verify_email_change(request, token: str):
     pending.user.save()
     pending.delete()
     return {"detail": "Email address updated successfully."}
+
+@auth_router.post("/password-reset/request", throttle=[password_reset_throttle])
+def request_password_reset(request, data: PasswordResetRequestSchema):
+    """
+    Initiate password reset: send reset email if user exists (always return generic response).
+    """
+    email = data.email.strip().lower()
+    try:
+        validate_email(email)
+    except ValidationError:
+        # Always return generic response
+        return {"detail": "If the email exists, a password reset link has been sent."}
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        return {"detail": "If the email exists, a password reset link has been sent."}
+    # Remove any previous pending resets for this user
+    PendingPasswordReset.objects.filter(user=user).delete()
+    token = secrets.token_urlsafe(32)
+    expires_at = timezone.now() + timezone.timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS)
+    PendingPasswordReset.objects.create(user=user, token=token, expires_at=expires_at)
+    display_name = f"{user.first_name} {user.last_name}".strip() or user.email
+    with open(os.path.join(settings.BASE_DIR, "core/email_templates/password_reset.txt")) as f:
+        template = f.read()
+    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+    body = template.replace("{{ project_name }}", settings.PROJECT_NAME)
+    body = body.replace("{{ user_display_name }}", display_name)
+    body = body.replace("{{ reset_link }}", reset_link)
+    subject, body_text = body.split("\n", 1)
+    subject = subject.replace("Subject: ", "").strip()
+    try:
+        send_email_task.delay(subject, body_text.strip(), [user.email])
+    except Exception:
+        pass  # Don't leak info
+    return {"detail": "If the email exists, a password reset link has been sent."}
+
+@auth_router.post("/password-reset/confirm")
+def confirm_password_reset(request, data: PasswordResetSchema):
+    """
+    Reset password using token.
+    """
+    token = data.token
+    new_password = data.new_password
+    try:
+        pending = PendingPasswordReset.objects.get(token=token)
+    except PendingPasswordReset.DoesNotExist:
+        raise HttpError(400, "Invalid or expired token.")
+    if pending.is_expired():
+        pending.delete()
+        raise HttpError(400, "Token has expired.")
+    user = pending.user
+    user.set_password(new_password)
+    user.save()
+    pending.delete()
+    return {"detail": "Password has been reset successfully."}

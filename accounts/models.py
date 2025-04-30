@@ -52,6 +52,18 @@ class PendingEmailChange(models.Model):
     def __str__(self):
         return f"PendingEmailChange(user={self.user_id}, new_email={self.new_email})"
 
+class PendingPasswordReset(models.Model):
+    user = models.ForeignKey('User', on_delete=models.CASCADE)
+    token = models.CharField(max_length=64, unique=True, default=secrets.token_urlsafe)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def __str__(self):
+        return f"PendingPasswordReset(user={self.user_id})"
+
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=50, unique=True, blank=True)

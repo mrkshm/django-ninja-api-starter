@@ -1,0 +1,48 @@
+# kamal.yml — Single-Server Baseline for Django Ninja Starter
+# See docs/deployment.md for scaling to multi-server
+
+service: django-api-starter
+image: yourdockerhubuser/django-api-starter:latest
+servers:
+  web:
+    hosts:
+      - 203.0.113.123 # replace with your server IP
+    roles:
+      - web
+      - worker
+      - db
+      - redis
+    env:
+      DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+      DJANGO_SECRET_KEY: changeme
+      DJANGO_ALLOWED_HOSTS: yourdomain.com,203.0.113.123
+      DATABASE_URL: postgres://django_user:django_pass@localhost:5432/django_db
+      REDIS_URL: redis://localhost:6379/1
+      AWS_STORAGE_BUCKET_NAME: your-bucket
+      # ...add any other secrets or env vars here...
+    # Uncomment to mount persistent storage for db/redis if needed
+    # volumes:
+    #   - ./data/postgres:/var/lib/postgresql/data
+    #   - ./data/redis:/data
+
+roles:
+  web:
+    cmd: gunicorn DjangoApiStarter.asgi:application -b 0.0.0.0:8000 -w 4 -k uvicorn.workers.UvicornWorker
+    ports:
+      - 80:8000
+  worker:
+    cmd: celery -A DjangoApiStarter worker -l info
+  db:
+    image: postgres:15
+    env:
+      POSTGRES_DB: django_db
+      POSTGRES_USER: django_user
+      POSTGRES_PASSWORD: django_pass
+    ports:
+      - 5432:5432
+  redis:
+    image: redis:7
+    ports:
+      - 6379:6379
+
+# For more options, see https://kamal-deploy.com/docs/configuration.html

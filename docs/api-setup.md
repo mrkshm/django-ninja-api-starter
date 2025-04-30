@@ -104,6 +104,46 @@ def test_throttling_behavior(monkeypatch):
 
 ---
 
+## Password Reset API Endpoints
+
+The API provides endpoints for requesting a password reset and confirming the reset using a secure token. This flow is stateful and uses Celery for background email delivery.
+
+## Request Password Reset
+
+- **Endpoint:** `POST /api/v1/auth/password-reset/request`
+- **Body:** `{ "email": "user@example.com" }`
+- **Response:** Always returns a generic success message (even if email does not exist)
+- **Behavior:**
+  - Generates a secure, time-limited token if the user exists
+  - Sends a password reset email asynchronously via Celery
+  - No information is leaked about account existence
+
+## Confirm Password Reset
+
+- **Endpoint:** `POST /api/v1/auth/password-reset/confirm`
+- **Body:** `{ "token": "...", "new_password": "..." }`
+- **Response:** `{ "detail": "Password has been reset successfully." }` on success, or a generic error if the token is invalid or expired
+
+**Security:**
+- Tokens are single-use and expire after a short period (default: 2 hours)
+- No information is leaked about whether an email exists in the system
+- All email sending is handled asynchronously via Celery
+
+**See also:** [core/email_templates/password_reset.txt](../core/email_templates/password_reset.txt)
+
+---
+
+## Organization Data Export (GDPR-Compliant)
+
+Admins can export all organization data (users, contacts, tags, images, etc.) in a single ZIP archive for compliance or backup. The export is performed asynchronously via Celery, includes all images, and is delivered as a signed S3 download link via email.
+
+- **Trigger export:** `POST /api/v1/orgs/{org_slug}/export/` (admin only)
+- **Includes:** All org users, contacts (with tags), tags, and images (as files in a subfolder)
+- **Delivery:** Download link sent by email, valid for 7 days
+- **Security:** Only org admins can trigger and access exports
+
+---
+
 ## Why is this best practice?
 
 - **Avoids router re-use errors:** Each API instance gets its own router, preventing Django Ninja's attachment errors.

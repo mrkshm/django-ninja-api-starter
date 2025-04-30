@@ -58,9 +58,9 @@ CORS_ALLOW_CREDENTIALS = True
 CONTENT_SECURITY_POLICY = {
     'DIRECTIVES': {
         'default-src': ("'self'",),
-        'script-src': ("'self'", "'unsafe-inline'", "'unsafe-eval'"),
-        'style-src': ("'self'", "'unsafe-inline'"),
-        'img-src': ("'self'", "data:", "blob:"),
+        'script-src': ("'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://cdn.jsdelivr.net'),
+        'style-src': ("'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'),
+        'img-src': ("'self'", "data:", "blob:", 'https://django-ninja.dev'),
         'font-src': ("'self'",),
         'connect-src': ("'self'",),
     }
@@ -172,6 +172,24 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+# Celery Beat Scheduled Tasks
+CELERY_BEAT_SCHEDULE = {
+    "cleanup_expired_tokens": {
+        "task": "accounts.tasks.cleanup_expired_tokens",
+        "schedule": 86400,  # every 24 hours
+    },
+    # Orphaned tag cleanup (weekly)
+    "cleanup_orphaned_tags": {
+        "task": "tags.tasks.cleanup_orphaned_tags_task",
+        "schedule": 7 * 24 * 60 * 60,  # every 7 days
+    },
+    # Orphaned image cleanup (weekly)
+    "cleanup_orphaned_images": {
+        "task": "images.tasks.cleanup_orphaned_images_task",
+        "schedule": 7 * 24 * 60 * 60,  # every 7 days
+    },
+}
+
 # Storage Configuration
 STORAGES = {
     "default": {
@@ -190,6 +208,16 @@ STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+
+# Email Configuration
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'smtp.example.com'
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
+# EMAIL_HOST_USER = 'your-email@example.com'
+# EMAIL_HOST_PASSWORD = 'your-email-password'
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

@@ -1,8 +1,23 @@
 # django-ninja-api-starter
 
-A starter template for building fast, secure REST APIs with [Django Ninja](https://django-ninja.dev) and Django.
+A starter template for building REST APIs with [Django Ninja](https://django-ninja.dev) and Django.
 
 Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow, ImageKit... all that good stuff.
+
+## Features
+
+- Django! Ninja! The deadly duo you don't mess with.
+- JWT authentication (with Ninja Extra)
+- Ready-to-use user model and authentication
+- Organization-based access control
+- Polymorphic tags and images
+- File upload to S3-compatible storage
+- GDPR-compliant data export
+- Interactive API documentation
+- Pytest and built-in API tests
+- Docker setup with PostgreSQL, Redis, and Celery
+- PostGIS support
+- Gunicorn configuration
 
 ## Getting Started
 
@@ -68,18 +83,6 @@ Visit [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) for
 For more detailed Docker setup information, see [docs/docker-setup.md](docs/docker-setup.md).
 For Gunicorn production setup, see [docs/gunicorn-setup.md](docs/gunicorn-setup.md).
 
-## Features
-
-- Django Ninja for high-performance API development
-- JWT authentication (with Ninja Extra)
-- Modular app structure
-- Ready-to-use user model, polymorphic tags and authentication
-- Interactive API documentation
-- Pytest and built-in API tests
-- Docker setup with PostgreSQL, Redis, and Celery
-- PostGIS support for geographic data
-- Production-ready Gunicorn configuration
-
 ## Details
 
 ### Auth Setup using User / Organization pattern
@@ -114,10 +117,32 @@ Example use cases:
 - [x] Polymorphic tags
 - [x] Polymorphic images
 - [x] Docker setup with Redis
-- [ ] Celery for background tasks
+- [x] Celery for background tasks
 - [x] Gunicorn production setup
+- [x] GDPR-compliant data export
 - [ ] Easy deployment with Kamal
+- [ ] Get testing percentage to a reasonable number
+- [ ] Better docs
 - [ ] Postman collection for API testing
+
+## Running Tests
+
+To ensure tests always use local file storage (never S3 or remote), tests override the storage backend in the test code itself using the `settings` fixture:
+
+```python
+settings.STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+```
+
+This guarantees all file operations use the local filesystem during tests.
+
+For more details, see [`docs/testing.md`](docs/testing.md).
 
 ## Polymorphic Tagging (Organization-Scoped)
 
@@ -203,6 +228,37 @@ You can upload images and attach them to any model (contacts, organizations, etc
   - `PATCH /api/v1/images/orgs/{org_slug}/images/{image_id}/`
 
 **All API details and schemas are fully documented in the OpenAPI (Swagger) docs.**
+
+## Organization Data Export (GDPR-Compliant)
+
+Admins can export all organization data (users, contacts, tags, images, etc.) in a single ZIP archive for compliance or backup. The export is performed asynchronously via Celery, includes all images, and is delivered as a signed S3 download link via email.
+
+- **Trigger export:** `POST /api/v1/orgs/{org_slug}/export/` (admin only)
+- **Includes:** All org users, contacts (with tags), tags, and images (as files in a subfolder)
+- **Delivery:** Download link sent by email, valid for 7 days
+- **Security:** Only org admins can trigger and access exports
+
+## Password Reset (Stateful, Celery-powered)
+
+The API supports secure, stateful password resets with asynchronous email delivery via Celery.
+
+- **Request password reset:**
+  - `POST /api/v1/auth/password-reset/request`
+  - Body: `{ "email": "user@example.com" }`
+  - Always returns a generic success message (no info leak)
+  - If the user exists, a time-limited reset token is generated and emailed
+- **Confirm password reset:**
+  - `POST /api/v1/auth/password-reset/confirm`
+  - Body: `{ "token": "...", "new_password": "..." }`
+  - Resets the password if the token is valid and not expired
+
+**Security:**
+
+- Tokens are single-use and expire after a short period (default: 2 hours)
+- No information is leaked about whether an email exists
+- All email delivery is handled asynchronously by Celery
+
+See [docs/api-setup.md](docs/api-setup.md#password-reset-api-endpoints) for details.
 
 ## Redis Caching for Organization Permissions
 

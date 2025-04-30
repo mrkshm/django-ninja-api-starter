@@ -67,15 +67,14 @@ def test_patch_me_unauthenticated():
 
 @pytest.mark.django_db
 def test_email_change_delivery_failure(monkeypatch, settings):
-    # Simulate email backend failure by monkeypatching send_email
-    from accounts import api as accounts_api
+    from core import tasks as core_tasks
     user = User.objects.create_user(email="failmail@example.com", password="pw")
     response = client.post("/token/pair", json={"email": "failmail@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
-    def fail_send_email(*args, **kwargs):
+    def fail_send_email_task(*args, **kwargs):
         raise Exception("Simulated email failure")
-    monkeypatch.setattr(accounts_api, "send_email", fail_send_email)
+    monkeypatch.setattr(core_tasks.send_email_task, "delay", fail_send_email_task)
     response = client.patch("/auth/email", json={"email": "failmail2@example.com"}, headers=headers)
     assert response.status_code == 500 or response.status_code == 400
     assert "fail" in response.json()["detail"].lower() or "error" in response.json()["detail"].lower() or "exception" in response.json()["detail"].lower()

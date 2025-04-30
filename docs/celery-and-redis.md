@@ -20,6 +20,7 @@ This guide covers how to set up background tasks in your Django Ninja API using 
    - Health checks implemented
 
 3. **Basic Infrastructure**
+
    - Docker setup complete
    - Development and production modes configured
    - Services properly linked and dependent
@@ -40,6 +41,11 @@ This guide covers how to set up background tasks in your Django Ninja API using 
    - Cache invalidation is handled via Django signals, ensuring up-to-date permission checks.
    - Thoroughly tested with Pytest for both caching and invalidation.
 
+6. **Scheduled Cleanups**
+   - Orphaned image cleanup: Implemented a Celery task and scheduled it via Celery Beat to run weekly.
+   - Orphaned tag cleanup: Implemented a Celery task and scheduled it via Celery Beat to run weekly.
+   - All cleanup tasks are robust, safe, and run automatically.
+
 ## Next Steps
 
 ### 1. Implement a Celery Background Task
@@ -47,20 +53,54 @@ This guide covers how to set up background tasks in your Django Ninja API using 
 Now that authentication and membership caching is complete, the next step is to leverage Celery for background tasks. Recommended use cases:
 
 - **Asynchronous Email Sending**
+
   - Offload password reset, account confirmation, and notification emails
   - Handle retries and error cases
 
 - **GDPR-Compliant User Data Export**
+
   - Implement background task for user data export
   - Handle large datasets efficiently
 
-- **Scheduled Cleanups**
-  - Remove orphaned images
-  - Clean up unused tags
+- **Implementing a Data Export Function (High-Level Plan)**
+
+  1. **Define Export Requirements**
+
+  - What data should be exported (e.g., users, organizations, tags, images)?
+  - In what format (CSV, JSON, Excel, ZIP, etc.)?
+  - Who can trigger exports (admins, users, API, etc.)?
+  - Where should the exported file go (local file, S3, email, download link, etc.)?
+
+  2. **Create the Export Function**
+
+  - Write a function to gather the required data, serialize it, and save it to a file.
+
+  3. **Wrap the Export in a Celery Task**
+
+  - Move the export logic into a Celery `@shared_task` so it runs in the background.
+
+  4. **Trigger the Export**
+
+  - Provide a trigger mechanism (admin action, API endpoint, or management command).
+
+  5. **Notify User or Make Export Available**
+
+  - Notify user when the export is complete (email, in-app, or download link).
+  - Store the export file in a discoverable location (e.g., FileField or S3 URL).
+
+  6. **(Optional) Schedule Regular Exports**
+
+  - Use Celery Beat to schedule exports (nightly, weekly, etc.) if needed.
+
+  7. **Testing**
+
+  - Write tests for export logic, Celery task execution, and permissions.
 
 ---
 
-Let us know if you need code samples or step-by-step commands for the next Celery task!
+Let the team know your preferred export format and trigger, and the export function can be scaffolded quickly!
+
+---
 
 ## Implementation Details
 
@@ -160,6 +200,7 @@ def test_is_member_cache_invalidation():
 ```
 
 ### Why This Matters
+
 - **Performance:** Most permission checks are now instant after the first DB hit.
 - **Correctness:** Cache is always up-to-date with membership changes.
 - **Scalability:** Ready for high-traffic APIs with many permission checks per request.
@@ -215,6 +256,26 @@ For more details, see `organizations/permissions.py`, `organizations/signals.py`
    - Add a health check endpoint for Celery.
    - Consider using `django-celery-beat` for scheduled tasks.
    - Document how to run Django, Celery workers, and optionally Celery beat in production.
+
+---
+
+## Data Export Function Requirements (as discussed)
+
+- **Scope:** Organization-scoped export. An org admin (or user with permission) can export all data belonging to their organization.
+- **Included Data:**
+  - All users/members of the organization (with email, name, role, language, etc.)
+  - All organization domain entities (contacts, images, tags, etc.)
+  - Creator/owner fields for each entity
+  - All relevant audit fields (timestamps, etc.)
+- **Format:** JSON (for structured data), zipped for compression. If needed, multiple files (e.g., data.json, images/) can be included in the zip.
+- **Delivery:**
+  - Export file is uploaded to S3 (or the configured storage backend)
+  - User receives a signed download link (valid for a limited time)
+  - No email attachments (to avoid size limits)
+- **Trigger:** Export is requested by an org admin (via UI or API). Only users with appropriate org permissions can trigger the export.
+- **Notification:** User is notified (email or in-app) when the export is ready, with the download link.
+- **Retention:** Export files are retained for 7 days after creation, then automatically deleted. For S3 storage, this is enforced using an S3 bucket lifecycle policy.
+- **Security:** Only authorized users can access the export. Signed URLs expire after a set period.
 
 ---
 

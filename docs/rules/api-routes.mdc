@@ -76,6 +76,11 @@
 
 ---
 
+### Organization Data Export
+- POST   /api/v1/orgs/{org_slug}/export/                  # Export all org data (admin only, async, GDPR-compliant)
+
+---
+
 # Notes
 - All custom endpoints are under /api/v1/auth/ for authentication/user actions.
 - JWT endpoints are provided by ninja-jwt and mounted at /api/v1/token/.
