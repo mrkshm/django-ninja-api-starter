@@ -14,6 +14,7 @@ Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow, ImageKit... al
 - File upload to S3-compatible storage
 - GDPR-compliant data export
 - Interactive API documentation
+- Admin interface
 - Pytest and built-in API tests
 - Docker setup with PostgreSQL, Redis, and Celery
 - PostGIS support
@@ -120,6 +121,7 @@ Example use cases:
 - [x] Celery for background tasks
 - [x] Gunicorn production setup
 - [x] GDPR-compliant data export
+- [x] Admin UI
 - [ ] Easy deployment with Kamal
 - [ ] Get testing percentage to a reasonable number
 - [ ] Better docs
