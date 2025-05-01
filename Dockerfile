@@ -47,6 +47,9 @@ COPY . .
 # Set permissions
 RUN chown -R django:django /app
 
+# Ensure staticfiles directory exists and is owned by django user
+RUN mkdir -p /app/staticfiles && chown -R django:django /app/staticfiles
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -60,4 +63,4 @@ EXPOSE 8000
 USER django
 
 # Command to run the application
-CMD ["sh", "-c", "if [ \"$DJANGO_ENV\" = \"production\" ]; then gunicorn DjangoApiStarter.wsgi:application -c gunicorn.conf.py; else python manage.py runserver 0.0.0.0:8000; fi"]
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && if [ \"$DJANGO_ENV\" = \"production\" ]; then gunicorn DjangoApiStarter.wsgi:application -c gunicorn.conf.py; else python manage.py runserver 0.0.0.0:8000; fi"]

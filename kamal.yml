@@ -2,47 +2,82 @@
 # See docs/deployment.md for scaling to multi-server
 
 service: django-api-starter
-image: yourdockerhubuser/django-api-starter:latest
+image: mrkshm/django-api-starter
+registry:
+  server: ghcr.io
+  username: mrkshm
+  password:
+    - GITHUB_PAT
+
 servers:
   web:
     hosts:
-      - 203.0.113.123 # replace with your server IP
+      - 65.21.6.154
     roles:
       - web
       - worker
+      - beat
       - db
       - redis
     env:
       DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
-      DJANGO_SECRET_KEY: changeme
-      DJANGO_ALLOWED_HOSTS: yourdomain.com,203.0.113.123
-      DATABASE_URL: postgres://django_user:django_pass@localhost:5432/django_db
+      SECRET_KEY: <%= ENV['SECRET_KEY'] %> # Use environment variable for security
+      DEBUG: 'False'
+      DJANGO_ENV: production
+      DJANGO_ALLOWED_HOSTS: "65.21.6.154,<%= ENV['ALLOWED_HOSTS'] %>" # Server IP and any additional hosts
+      FRONTEND_URL: <%= ENV['FRONTEND_URL'] %> # Your frontend URL
+      POSTGRES_DB: django_db
+      POSTGRES_USER: django_user
+      POSTGRES_PASSWORD: <%= ENV['DB_PASSWORD'] %> # Use environment variable for security
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
       REDIS_URL: redis://localhost:6379/1
-      AWS_STORAGE_BUCKET_NAME: your-bucket
-      # ...add any other secrets or env vars here...
-    # Uncomment to mount persistent storage for db/redis if needed
-    # volumes:
-    #   - ./data/postgres:/var/lib/postgresql/data
-    #   - ./data/redis:/data
+    # Uncomment and adjust for persistent storage
+    volumes:
+      - /var/data/postgres:/var/lib/postgresql/data
+      - /var/data/redis:/data
+      - /var/data/static:/app/staticfiles
 
 roles:
   web:
-    cmd: gunicorn DjangoApiStarter.asgi:application -b 0.0.0.0:8000 -w 4 -k uvicorn.workers.UvicornWorker
+    cmd: gunicorn DjangoApiStarter.wsgi:application -c gunicorn.conf.py
     ports:
       - 80:8000
   worker:
-    cmd: celery -A DjangoApiStarter worker -l info
+    cmd: celery -A DjangoApiStarter worker -l INFO
+  beat:
+    cmd: celery -A DjangoApiStarter beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.3-alpine
     env:
       POSTGRES_DB: django_db
       POSTGRES_USER: django_user
-      POSTGRES_PASSWORD: django_pass
+      POSTGRES_PASSWORD: <%= ENV['DB_PASSWORD'] %> # Use environment variable for security
     ports:
       - 5432:5432
+    volumes:
+      - /var/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U django_user -d django_db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
   redis:
-    image: redis:7
+    image: redis:7-alpine
     ports:
       - 6379:6379
+    volumes:
+      - /var/data/redis:/data
 
+# Deployment hooks to run migrations and collect static files
+hooks:
+  after_build:
+    - command: echo "Build completed"
+  before_deploy:
+    - command: echo "Starting deployment"
+  after_deploy:
+    - command: kamal exec --reuse web python manage.py wait_for_db
+    - command: kamal exec --reuse web python manage.py migrate django_celery_beat
+    - command: kamal exec --reuse web python manage.py migrate
+    - command: kamal exec --reuse web python manage.py collectstatic --noinput
 # For more options, see https://kamal-deploy.com/docs/configuration.html

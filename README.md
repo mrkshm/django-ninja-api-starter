@@ -122,7 +122,7 @@ Example use cases:
 - [x] Gunicorn production setup
 - [x] GDPR-compliant data export
 - [x] Admin UI
-- [ ] Easy deployment with Kamal
+- [x] Easy deployment with Kamal
 - [ ] Get testing percentage to a reasonable number
 - [ ] Better docs
 - [ ] Postman collection for API testing
@@ -300,6 +300,12 @@ By default, this API uses a **loose org permission model**:
 
 For more details, see `organizations/permissions.py` and the usage in API modules like `contacts/api.py`.
 
+## Deployment
+
+Deployment is pre-configured for [Kamal](https://kamal-deploy.com/). To use Kamal for deployment, you must have Ruby installed on your system and Kamal installed as a Ruby gem. See the [Kamal installation guide](https://kamal-deploy.com/docs/installation/) for details.
+
+All deployment configuration is in `config/deploy.yml` and secrets are managed in `.kamal/secrets`. For more information, see the [deployment documentation](docs/deployment.md).
+
 ## Project Structure
 
 ```
@@ -310,11 +316,29 @@ DjangoApiStarter/
 ├── tags/               # Tag management
 ├── core/               # Core utilities
 ├── images/             # Image management
-├── api/                # API routers & schemas
 ├── DjangoApiStarter/   # Project settings
 ├── manage.py
 └── requirements.txt
 ```
+
+## Renaming the Project
+
+To use this starter with your own project name:
+
+1. **Choose your new project name** (e.g., `myproject`).
+2. **Search and replace** all instances of the old name (such as `DjangoApiStarter`, `django-api-starter`, or `django_ninja_api_starter`) with your new name, matching the style (PascalCase, kebab-case, snake_case) as appropriate.
+   - Use your IDE's "Find and Replace in Project" feature, or run from the command line:
+     ```sh
+     # Replace DjangoApiStarter with MyProject everywhere (case-sensitive)
+     find . -type f -exec sed -i '' 's/DjangoApiStarter/MyProject/g' {} +
+     # Replace django-api-starter with myproject everywhere
+     find . -type f -exec sed -i '' 's/django-api-starter/myproject/g' {} +
+     ```
+3. **Rename the main project directory** (`DjangoApiStarter/`) to your new name.
+4. **Update references** in files like `manage.py`, `wsgi.py`, `asgi.py`, Dockerfiles, and `config/deploy.yml` if needed.
+5. **Check imports and settings** for any remaining references to the old name.
+
+This will fully personalize the project with your chosen name.
 
 ## Contributing
 

@@ -1,81 +1,54 @@
 # Deployment with Kamal
 
-This project is ready for deployments using [Kamal](https://kamal-deploy.com/).
+This project uses [Kamal](https://kamal-deploy.com/) for deployment.
 
-## Single-Server (Default)
+## Prerequisites
 
-The default `kamal.yml` deploys everything (web, Celery worker, Postgres, Redis) to a single server. This is ideal for:
+- Ruby must be installed on your system.
+- Kamal must be installed. See the [Kamal installation guide](https://kamal-deploy.com/docs/installation/) for instructions.
+- If you don't want to install Ruby, other good options for deployment are [Dokku](https://dokku.com/) and [Dokploy](https://dokploy.com/).
 
-- MVPs, prototypes, and small production apps
-- Fast, simple setup
-- Low cost (can run on a single VPS)
+## Single-Server Deployment
 
-**How to use:**
+The default `config/deploy.yml` deploys the web server, Celery worker, Postgres, and Redis to a single server.
 
-1. Edit `kamal.yml` and set your server IP, Docker image, and secrets.
-2. Run `kamal deploy` to build and launch the stack.
+## How to Deploy
 
-## Scaling Up: Multi-Server Example
+1. Edit `config/deploy.yml`:
 
-When you need more robustness or performance, you can split your services:
+   - Set your server IP, Docker image, and update the `clear:` section with your environment values or keep the examples.
+   - Non-sensitive config is set directly under `clear:`.
+   - Secrets are listed under `secret:` and must be set in `.kamal/secrets`.
 
-```yaml
-# kamal.multi-server.example.yml
-service: django-api-starter
-image: yourdockerhubuser/django-api-starter:latest
-servers:
-  web:
-    hosts:
-      - 203.0.113.100 # app server 1
-      - 203.0.113.101 # app server 2
-    roles:
-      - web
-      - worker
-    env: { ... }
-  db:
-    hosts:
-      - 203.0.113.200 # db/redis server
-    roles:
-      - db
-      - redis
-    env: { ... }
-roles:
-  web:
-    cmd: gunicorn DjangoApiStarter.asgi:application -b 0.0.0.0:8000 -w 4 -k uvicorn.workers.UvicornWorker
-    ports:
-      - 80:8000
-  worker:
-    cmd: celery -A DjangoApiStarter worker -l info
-  db:
-    image: postgres:15
-    ports:
-      - 5432:5432
-  redis:
-    image: redis:7
-    ports:
-      - 6379:6379
-```
+2. Edit `.kamal/secrets`:
 
-**Tips:**
+   - Add values for each secret variable listed in the `secret:` section of your `deploy.yml`.
+   - Example:
+     ```env
+     SECRET_KEY=your-production-secret-key
+     POSTGRES_PASSWORD=your-db-password
+     R2_ACCESS_KEY_ID=your-access-key
+     R2_SECRET_ACCESS_KEY=your-secret-access-key
+     EMAIL_HOST_PASSWORD=your-email-password
+     ```
+   - Do not commit real secrets to version control.
 
-- Keep DB and Redis on a private server not exposed to the public internet.
-- Use firewall rules to restrict access.
-- For high availability, use a managed Postgres/Redis service or add replication.
-- You can add a staging app server by copying the web/worker config and using different env vars.
+3. Deploy:
+   - Run:
+     ```sh
+     kamal deploy
+     ```
 
-## Secrets & Environment Variables
+## Environment Variable Management
 
-- Store secrets in Kamal’s encrypted secrets store or as environment variables.
-- Never commit secrets to version control.
+- All required environment variables are defined in `config/deploy.yml`.
+- Non-sensitive variables are set in `clear:`. Edit these as needed.
+- Sensitive variables are referenced in `secret:` and set in `.kamal/secrets`.
 
-## Backups
+## Notes
 
-- Set up regular Postgres dumps and sync to S3 or another backup location.
-
-## Monitoring
-
-- Monitor CPU, RAM, and disk usage.
-- Upgrade your server or scale horizontally as needed.
+- For more information or multi-server setups, see the [Kamal documentation](https://kamal-deploy.com/).
+- [Dokku](https://dokku.com/) and [Dokploy](https://dokploy.com/) are also good alternatives for deploying Django projects.
 
 ## References
 

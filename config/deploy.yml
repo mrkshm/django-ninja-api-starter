@@ -1,0 +1,147 @@
+# Name of your application. Used to uniquely configure containers.
+service: django-api-starter
+
+# Name of the container image.
+image: ghcr.io/your-github-container-name/django-api-starter
+
+readiness_delay: 20
+
+proxy:
+  app_port: 8000
+  healthcheck:
+    path: /kamal/up/
+    interval: 2
+    timeout: 2
+
+# Deploy to these servers.
+servers:
+  web:
+    hosts:
+      - xxxx.your.server.ip
+    cmd: gunicorn DjangoApiStarter.wsgi:application -c gunicorn.conf.py
+    env:
+      clear:
+        DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+        DEBUG: 'False'
+        DJANGO_ENV: production
+        DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1'
+        POSTGRES_DB: 'django_db'
+        POSTGRES_USER: 'django_user'
+        POSTGRES_HOST: 'localhost'
+        POSTGRES_PORT: '5432'
+        REDIS_URL: 'redis://localhost:6379/1'
+        R2_BUCKET_NAME: 'my-bucket'
+        R2_ENDPOINT_URL: 'https://my-r2-endpoint.example.com'
+        EMAIL_HOST: 'smtp.example.com'
+        EMAIL_PORT: '587'
+        EMAIL_HOST_USER: 'user@example.com'
+        EMAIL_USE_TLS: 'True'
+        EMAIL_USE_SSL: 'False'
+        DEFAULT_FROM_EMAIL: 'noreply@example.com'
+        AWS_SES_REGION_NAME: 'us-east-1'
+        AWS_SES_REGION_ENDPOINT: 'email-smtp.us-east-1.amazonaws.com'
+      secret:
+        - SECRET_KEY
+        - R2_ACCESS_KEY_ID
+        - R2_SECRET_ACCESS_KEY
+        - EMAIL_HOST_PASSWORD
+  worker:
+    hosts:
+      - xxxx.your.server.ip
+    cmd: celery -A DjangoApiStarter worker -l INFO
+    env:
+      clear:
+        DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+        DEBUG: 'False'
+        DJANGO_ENV: production
+        DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1'
+        POSTGRES_DB: 'django_db'
+        POSTGRES_USER: 'django_user'
+        POSTGRES_HOST: 'localhost'
+        POSTGRES_PORT: '5432'
+        REDIS_URL: 'redis://localhost:6379/1'
+        R2_BUCKET_NAME: 'my-bucket'
+        R2_ENDPOINT_URL: 'https://my-r2-endpoint.example.com'
+        EMAIL_HOST: 'smtp.example.com'
+        EMAIL_PORT: '587'
+        EMAIL_HOST_USER: 'user@example.com'
+        EMAIL_USE_TLS: 'True'
+        EMAIL_USE_SSL: 'False'
+        DEFAULT_FROM_EMAIL: 'noreply@example.com'
+        AWS_SES_REGION_NAME: 'us-east-1'
+        AWS_SES_REGION_ENDPOINT: 'email-smtp.us-east-1.amazonaws.com'
+      secret:
+        - SECRET_KEY
+        - R2_ACCESS_KEY_ID
+        - R2_SECRET_ACCESS_KEY
+        - EMAIL_HOST_PASSWORD
+  beat:
+    hosts:
+      - xxxx.your.server.ip
+    cmd: celery -A DjangoApiStarter beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env:
+      clear:
+        DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
+        DEBUG: 'False'
+        DJANGO_ENV: production
+        DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1'
+        POSTGRES_DB: 'django_db'
+        POSTGRES_USER: 'django_user'
+        POSTGRES_HOST: 'localhost'
+        POSTGRES_PORT: '5432'
+        REDIS_URL: 'redis://localhost:6379/1'
+        R2_BUCKET_NAME: 'my-bucket'
+        R2_ENDPOINT_URL: 'https://my-r2-endpoint.example.com'
+        EMAIL_HOST: 'smtp.example.com'
+        EMAIL_PORT: '587'
+        EMAIL_HOST_USER: 'user@example.com'
+        EMAIL_USE_TLS: 'True'
+        EMAIL_USE_SSL: 'False'
+        DEFAULT_FROM_EMAIL: 'noreply@example.com'
+        AWS_SES_REGION_NAME: 'us-east-1'
+        AWS_SES_REGION_ENDPOINT: 'email-smtp.us-east-1.amazonaws.com'
+      secret:
+        - SECRET_KEY
+        - R2_ACCESS_KEY_ID
+        - R2_SECRET_ACCESS_KEY
+        - EMAIL_HOST_PASSWORD
+
+# If you want Kamal to manage db/redis, use accessories section. Otherwise, manage externally.
+# accessories:
+#   db:
+#     image: postgis/postgis:15-3.3-alpine
+#     env:
+#       POSTGRES_DB: django_db
+#       POSTGRES_USER: django_user
+#       POSTGRES_PASSWORD: <%= ENV['DB_PASSWORD'] %>
+#     ports:
+#       - 5432:5432
+#     volumes:
+#       - /var/data/postgres:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ['CMD-SHELL', 'pg_isready -U django_user -d django_db']
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+#   redis:
+#     image: redis:7-alpine
+#     ports:
+#       - 6379:6379
+#     volumes:
+#       - /var/data/redis:/data
+
+# Credentials for your image host.
+registry:
+  server: ghcr.io
+  username: mrkshm
+  password:
+    - GITHUB_PAT
+# Uncomment and configure proxy if needed
+# proxy:
+#   ssl: true
+#   host: 65.21.6.154
+
+# Add any additional Kamal config below as needed.
+
+builder:
+  arch: amd64
