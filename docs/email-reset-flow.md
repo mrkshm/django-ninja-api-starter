@@ -71,17 +71,5 @@ A secure, user-friendly process for handling email change requests, including:
 
 ---
 
-## Implementation Checklist
-
-- [ ] Endpoint to request email change
-- [ ] Token generation and confirmation link logic
-- [ ] Celery task to send confirmation email
-- [ ] Endpoint to confirm email change
-- [ ] Error handling and security checks
-- [ ] Tests for all flows and edge cases
-- [ ] Documentation and API examples
-
----
-
 **Note:**
 This flow uses a stateful (DB-backed) approach for maximum control, auditability, and security. If a stateless (token-based) flow is desired, see previous versions of this document for guidance.

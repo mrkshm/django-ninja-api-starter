@@ -47,7 +47,3 @@ assert response.status_code == 200
 
 - If you see errors like `Field required` or the file is missing in your endpoint, double-check that you are using `MultiValueDict` and the `FILES` parameter.
 - If you use Django's `Client` instead, authentication context may not be set correctly for Ninja endpoints.
-
----
-
-This pattern is based on community feedback and is known to work with Django Ninja as of 2025.

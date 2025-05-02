@@ -22,6 +22,23 @@ Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow, ImageKit... al
 - Kamal deployment
 - Test Coverage: 97%
 
+## Renaming the Project
+
+If you want to use this starter as the base for your own project, you should rename it before starting development:
+
+1. **Choose your new project name** (e.g., `myproject`).
+2. **Search and replace** all instances of the old name (such as `DjangoApiStarter`, `django-api-starter`, or `django_ninja_api_starter`) with your new name, matching the style (PascalCase, kebab-case, snake_case) as appropriate.
+   - Use your IDE's "Find and Replace in Project" feature, or run from the command line:
+     ```sh
+     # Replace DjangoApiStarter with MyProject everywhere (case-sensitive)
+     find . -type f -exec sed -i '' 's/DjangoApiStarter/MyProject/g' {} +
+     # Replace django-api-starter with myproject everywhere
+     find . -type f -exec sed -i '' 's/django-api-starter/myproject/g' {} +
+     ```
+3. **Rename the main project directory** (`DjangoApiStarter/`) to your new name.
+4. **Update references** in files like `manage.py`, `wsgi.py`, `asgi.py`, Dockerfiles, and `config/deploy.yml` if needed.
+5. **Check imports and settings** for any remaining references to the old name.
+
 ## Getting Started
 
 This project uses Docker for development and production. Follow these steps to get started:
@@ -56,35 +73,6 @@ FRONTEND_URL=http://localhost:3000
 # Server Configuration
 DJANGO_ENV=development  # Set to 'production' to use Gunicorn
 ```
-
-3. Start the services:
-
-```bash
-# Development mode (default)
-docker-compose up --build
-
-# Production mode with Gunicorn
-DJANGO_ENV=production docker-compose up --build
-```
-
-This will:
-
-- Start PostgreSQL with PostGIS
-- Start Redis
-- Run database migrations
-- Start the Django server (development or production mode)
-- Start Celery worker and beat services
-
-4. Create a superuser (optional):
-
-```bash
-docker-compose exec web python manage.py createsuperuser
-```
-
-Visit [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) for interactive API documentation.
-
-For more detailed Docker setup information, see [docs/docker-setup.md](docs/docker-setup.md).
-For Gunicorn production setup, see [docs/gunicorn-setup.md](docs/gunicorn-setup.md).
 
 ## Details
 
@@ -126,8 +114,7 @@ Example use cases:
 - [x] Admin UI
 - [x] Easy deployment with Kamal
 - [x] Get testing percentage to a reasonable number -> current coverage is 97%
-- [ ] Better docs
-- [ ] Postman collection for API testing
+- [x] Better docs
 
 ## Running Tests
 
@@ -322,25 +309,6 @@ DjangoApiStarter/
 ├── manage.py
 └── requirements.txt
 ```
-
-## Renaming the Project
-
-To use this starter with your own project name:
-
-1. **Choose your new project name** (e.g., `myproject`).
-2. **Search and replace** all instances of the old name (such as `DjangoApiStarter`, `django-api-starter`, or `django_ninja_api_starter`) with your new name, matching the style (PascalCase, kebab-case, snake_case) as appropriate.
-   - Use your IDE's "Find and Replace in Project" feature, or run from the command line:
-     ```sh
-     # Replace DjangoApiStarter with MyProject everywhere (case-sensitive)
-     find . -type f -exec sed -i '' 's/DjangoApiStarter/MyProject/g' {} +
-     # Replace django-api-starter with myproject everywhere
-     find . -type f -exec sed -i '' 's/django-api-starter/myproject/g' {} +
-     ```
-3. **Rename the main project directory** (`DjangoApiStarter/`) to your new name.
-4. **Update references** in files like `manage.py`, `wsgi.py`, `asgi.py`, Dockerfiles, and `config/deploy.yml` if needed.
-5. **Check imports and settings** for any remaining references to the old name.
-
-This will fully personalize the project with your chosen name.
 
 ## Contributing
 
