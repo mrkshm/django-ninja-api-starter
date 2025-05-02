@@ -10,18 +10,15 @@ from organizations.permissions import is_member
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth
 from ninja.pagination import LimitOffsetPagination, paginate
+from core.utils.auth_utils import check_object_belongs_to_org, get_org_or_404, check_contact_member
 
 def get_tags_router():
     router = Router(tags=["tags"])
 
     def get_org_for_request(request, org_slug):
         user = request.user
-        try:
-            org = Organization.objects.get(slug=org_slug)
-        except Organization.DoesNotExist:
-            raise HttpError(404, "Organization not found")
-        if not is_member(user, org):
-            raise HttpError(403, "You do not have access to this organization")
+        org = get_org_or_404(org_slug)
+        check_contact_member(user, org)
         return org
 
     @router.get("/orgs/{org_slug}/tags/", response=list[TagOut], auth=JWTAuth())
@@ -41,8 +38,7 @@ def get_tags_router():
         ct = get_object_or_404(ContentType, app_label=app_label, model=model)
         Model = apps.get_model(app_label, model)
         obj = get_object_or_404(Model, pk=obj_id)
-        if getattr(obj, "organization_id", None) != org.id:
-            raise HttpError(403, "Object does not belong to this organization")
+        check_object_belongs_to_org(obj, org)
         out = []
         for name in tags:
             tag, _ = Tag.objects.get_or_create(organization=org, name=name, defaults={"slug": slugify(name)})

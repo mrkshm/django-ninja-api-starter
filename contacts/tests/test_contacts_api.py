@@ -130,6 +130,10 @@ def test_missing_name():
     payload = {"organization": org.slug}
     resp = client.post("/contacts/", json=payload, headers=headers)
     assert resp.status_code == 400
+    errors = resp.json()
+    assert isinstance(errors, dict)
+    assert "detail" in errors
+    assert "at least one of display_name" in errors["detail"].lower()
 
 @pytest.mark.django_db
 def test_get_nonexistent_contact():
@@ -255,3 +259,120 @@ def test_upload_contact_avatar_too_large():
     )
     assert upload_resp.status_code == 400
     assert upload_resp.json()["detail"] == "File too large. Maximum allowed size is 10MB."
+
+@pytest.mark.django_db
+def test_create_contact_display_name_logic():
+    user = User.objects.create_user(email="logic@example.com", password="pw", username="logicuser", slug="logicuser")
+    org = Organization.objects.create(name="Logic Org", slug="logic-org", type="group", creator=user)
+    Membership.objects.create(user=user, organization=org, role="owner")
+    resp = client.post("/token/pair", json={"email": "logic@example.com", "password": "pw"})
+    access = resp.json()["access"]
+    headers = {"Authorization": f"Bearer {access}"}
+    # Case 1: Only first_name and last_name
+    payload = {"organization": org.slug, "first_name": "Jane", "last_name": "Doe"}
+    resp = client.post("/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Jane Doe"
+    # Case 2: Only first_name (unique)
+    payload = {"organization": org.slug, "first_name": "Solo2"}
+    resp = client.post("/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Solo2"
+    # Case 3: Only last_name (unique)
+    payload = {"organization": org.slug, "last_name": "Surname3"}
+    resp = client.post("/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Surname3"
+    # Case 4: No names at all
+    payload = {"organization": org.slug}
+    resp = client.post("/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 400
+    errors = resp.json()
+    assert isinstance(errors, dict)
+    assert "detail" in errors
+    assert "at least one of display_name" in errors["detail"].lower()
+
+@pytest.mark.django_db
+def test_update_contact_organization_and_fields():
+    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    org1 = Organization.objects.create(name="Org1", slug="org1", type="group", creator=user)
+    org2 = Organization.objects.create(name="Org2", slug="org2", type="group", creator=user)
+    Membership.objects.create(user=user, organization=org1, role="owner")
+    Membership.objects.create(user=user, organization=org2, role="owner")
+    contact = Contact.objects.create(display_name="Original Name", slug="original-name", organization=org1, creator=user, email="old@email.com", phone="12345")
+    resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
+    access = resp.json()["access"]
+    headers = {"Authorization": f"Bearer {access}"}
+    payload = {
+        "display_name": "New Name",
+        "organization": org2.slug,
+        "email": "new@email.com",
+        "phone": "67890"
+    }
+    resp = client.put(f"/contacts/{contact.slug}/", json=payload, headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["display_name"] == "New Name"
+    assert data["organization"] == org2.slug
+    assert data["email"] == "new@email.com"
+    assert data["phone"] == "67890"
+    # Confirm DB update
+    contact.refresh_from_db()
+    assert contact.display_name == "New Name"
+    assert contact.organization == org2
+    assert contact.email == "new@email.com"
+    assert contact.phone == "67890"
+    # Error case: invalid organization slug
+    payload["organization"] = "does-not-exist"
+    resp = client.put(f"/contacts/{contact.slug}/", json=payload, headers=headers)
+    assert resp.status_code == 404
+
+@pytest.mark.django_db
+def test_upload_contact_avatar_error(monkeypatch):
+    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    org = Organization.objects.create(name="Avatar Org", slug="avatar-org", type="group", creator=user)
+    Membership.objects.create(user=user, organization=org, role="owner")
+    contact = Contact.objects.create(display_name="AvatarFail", slug="avatarfail", organization=org, creator=user)
+    resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
+    access = resp.json()["access"]
+    headers = {"Authorization": f"Bearer {access}"}
+    # Monkeypatch resize_avatar_images to raise Exception
+    def fail_resize(*a, **kw):
+        raise Exception("resize failed")
+    monkeypatch.setattr("core.utils.image.resize_avatar_images", fail_resize)
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from django.utils.datastructures import MultiValueDict
+    uploaded = SimpleUploadedFile("fail.png", b"fake", content_type="image/png")
+    files = MultiValueDict({"file": [uploaded]})
+    resp = client.post(
+        f"/contacts/{contact.slug}/avatar/",
+        data={},
+        FILES=files,
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "failed to process avatar" in resp.json()["detail"].lower()
+
+@pytest.mark.django_db
+def test_partial_update_contact_organization():
+    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    org1 = Organization.objects.create(name="Org1Patch", slug="org1patch", type="group", creator=user)
+    org2 = Organization.objects.create(name="Org2Patch", slug="org2patch", type="group", creator=user)
+    Membership.objects.create(user=user, organization=org1, role="owner")
+    Membership.objects.create(user=user, organization=org2, role="owner")
+    contact = Contact.objects.create(display_name="Patch Name", slug="patch-name", organization=org1, creator=user)
+    resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
+    access = resp.json()["access"]
+    headers = {"Authorization": f"Bearer {access}"}
+    # Patch organization only
+    payload = {"organization": org2.slug}
+    resp = client.patch(f"/contacts/{contact.slug}/", json=payload, headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["organization"] == org2.slug
+    contact.refresh_from_db()
+    assert contact.organization == org2
+    # Error case: invalid organization slug
+    payload = {"organization": "does-not-exist"}
+    resp = client.patch(f"/contacts/{contact.slug}/", json=payload, headers=headers)
+    assert resp.status_code == 404

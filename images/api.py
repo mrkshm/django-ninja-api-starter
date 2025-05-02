@@ -6,7 +6,6 @@ from django.shortcuts import get_object_or_404
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from organizations.models import Organization
-from organizations.permissions import is_member
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, PolymorphicImageRelationOut
 from ninja.pagination import LimitOffsetPagination, paginate
@@ -19,6 +18,7 @@ from django.core.files.base import ContentFile
 import os
 from datetime import datetime
 from django.http import JsonResponse
+from core.utils.auth_utils import get_org_or_404, check_object_belongs_to_org, check_contact_member
 
 class BulkDeleteResponse(Schema):
     id: int = None
@@ -34,17 +34,16 @@ class BulkUploadResponse(Schema):
 class BulkImageIdsIn(Schema):
     image_ids: List[int]
 
+class ImageIdsIn(Schema):
+    image_ids: list[int]
+
 router = Router(tags=["images"])
 
 # Helper function to check org membership using the new permission helper
 def get_org_for_request(request, org_slug):
     user = request.user
-    try:
-        org = Organization.objects.get(slug=org_slug)
-    except Organization.DoesNotExist:
-        raise HttpError(404, "Organization not found")
-    if not is_member(user, org):
-        raise HttpError(403, "You do not have access to this organization")
+    org = get_org_or_404(org_slug)
+    check_contact_member(user, org)
     return org
 
 # List all images for an organization
@@ -70,26 +69,60 @@ def list_images_for_object(request, org_slug: str, app_label: str, model: str, o
     ct = get_object_or_404(ContentType, app_label=app_label, model=model)
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
-    if getattr(obj, "organization_id", None) != org.id:
-        raise HttpError(403, "Object does not belong to this organization")
-    return PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj_id).select_related("image")
+    check_object_belongs_to_org(obj, org)
+    relations = PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj_id).select_related("image")
+    result = []
+    for rel in relations:
+        result.append({
+            "id": rel.id,
+            "image": {
+                "id": rel.image.id,
+                "file": rel.image.file.url if rel.image.file else None,
+                "created_at": rel.image.created_at.isoformat() if rel.image.created_at else None,
+                "updated_at": rel.image.updated_at.isoformat() if rel.image.updated_at else None,
+                "title": rel.image.title,
+                "description": rel.image.description,
+                "alt_text": rel.image.alt_text,
+                "organization_id": rel.image.organization_id,
+                "creator": rel.image.creator_id,
+            },
+            "content_type": rel.content_type.model,
+            "object_id": rel.object_id,
+            "is_cover": getattr(rel, "is_cover", False),
+        })
+    return result
 
 # Attach images to an object
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", auth=JWTAuth())
-def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: int, image_ids: list[int]):
+def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ImageIdsIn):
     org = get_org_for_request(request, org_slug)
     ct = get_object_or_404(ContentType, app_label=app_label, model=model)
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
-    if getattr(obj, "organization_id", None) != org.id:
-        raise HttpError(403, "Object does not belong to this organization")
+    check_object_belongs_to_org(obj, org)
     out = []
-    for image_id in image_ids:
+    for image_id in data.image_ids:
         image = get_object_or_404(Image, id=image_id, organization=org)
         rel, _ = PolymorphicImageRelation.objects.get_or_create(
             image=image, content_type=ct, object_id=obj_id
         )
-        out.append(rel)
+        out.append({
+            "id": rel.id,
+            "image": {
+                "id": rel.image.id,
+                "file": rel.image.file.url if rel.image.file else None,
+                "created_at": rel.image.created_at.isoformat() if rel.image.created_at else None,
+                "updated_at": rel.image.updated_at.isoformat() if rel.image.updated_at else None,
+                "title": rel.image.title,
+                "description": rel.image.description,
+                "alt_text": rel.image.alt_text,
+                "organization_id": rel.image.organization_id,
+                "creator": rel.image.creator_id,
+            },
+            "content_type": rel.content_type.model,
+            "object_id": rel.object_id,
+            "is_cover": getattr(rel, "is_cover", False),
+        })
     return out
 
 # Remove an image from an object
@@ -99,8 +132,7 @@ def remove_image_from_object(request, org_slug: str, app_label: str, model: str,
     ct = get_object_or_404(ContentType, app_label=app_label, model=model)
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
-    if getattr(obj, "organization_id", None) != org.id:
-        raise HttpError(403, "Object does not belong to this organization")
+    check_object_belongs_to_org(obj, org)
     rel = get_object_or_404(PolymorphicImageRelation, image_id=image_id, content_type=ct, object_id=obj_id)
     rel.delete()
     return {"detail": "removed"}
@@ -257,8 +289,7 @@ def attach_image(request, org_slug: str):
         obj = get_object_or_404(Model, pk=data["object_id"])
         
         # Check organization ownership
-        if hasattr(obj, "organization") and obj.organization != org:
-            return 403, {"detail": "Object does not belong to this organization"}
+        check_object_belongs_to_org(obj, org)
         
         # Create relation
         rel, created = PolymorphicImageRelation.objects.get_or_create(
@@ -300,8 +331,7 @@ def detach_image(request, org_slug: str):
         obj = get_object_or_404(Model, pk=data["object_id"])
         
         # Check organization ownership
-        if hasattr(obj, "organization") and obj.organization != org:
-            return 403, {"detail": "Object does not belong to this organization"}
+        check_object_belongs_to_org(obj, org)
         
         deleted, _ = PolymorphicImageRelation.objects.filter(
             image=image, content_type=ct, object_id=data["object_id"]
@@ -332,9 +362,7 @@ def bulk_attach_images(
     user = request.user
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
-    # Ensure object belongs to org if relevant
-    if hasattr(obj, "organization") and obj.organization != org:
-        raise HttpError(403, "Object does not belong to this organization")
+    check_object_belongs_to_org(obj, org)
     images = Image.objects.filter(id__in=data.image_ids, organization=org)
     attached = []
     for image in images:
@@ -361,9 +389,7 @@ def bulk_detach_images(
     user = request.user
     Model = apps.get_model(app_label, model)
     obj = get_object_or_404(Model, pk=obj_id)
-    # Ensure object belongs to org if relevant
-    if hasattr(obj, "organization") and obj.organization != org:
-        raise HttpError(403, "Object does not belong to this organization")
+    check_object_belongs_to_org(obj, org)
     images = Image.objects.filter(id__in=data.image_ids, organization=org)
     detached = []
     for image in images:

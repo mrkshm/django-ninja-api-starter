@@ -1,9 +1,18 @@
+# NOTE: Auth utility tests have moved to core/tests/test_auth_utils.py for clarity and maintainability.
+# Please add new tests for core/utils/auth_utils.py there.
+
 import pytest
 from organizations.models import Organization
 from core.utils import make_it_unique, generate_upload_filename
 import re
 from datetime import datetime, timezone
+import pytest
+from ninja.errors import HttpError
+from core.utils.auth_utils import require_authenticated_user
 
+class DummyUser:
+    def __init__(self, is_authenticated):
+        self.is_authenticated = is_authenticated
 
 @pytest.mark.django_db
 def test_make_it_unique_returns_base_if_unique():
@@ -79,3 +88,74 @@ def test_generate_upload_filename_with_custom_extension():
     assert name.startswith('report-')
     # Should not contain original extension
     assert '.txt' not in name
+
+def test_require_authenticated_user_none():
+    with pytest.raises(HttpError) as exc:
+        require_authenticated_user(None)
+    assert exc.value.status_code == 401
+    assert "Authentication required" in str(exc.value)
+
+def test_require_authenticated_user_false():
+    user = DummyUser(is_authenticated=False)
+    with pytest.raises(HttpError) as exc:
+        require_authenticated_user(user)
+    assert exc.value.status_code == 401
+    assert "Authentication required" in str(exc.value)
+
+def test_require_authenticated_user_true():
+    user = DummyUser(is_authenticated=True)
+    # Should not raise
+    require_authenticated_user(user)
+
+@pytest.mark.django_db
+def test_check_contact_member_allows_member(monkeypatch):
+    user = object()
+    org = object()
+    monkeypatch.setattr("core.utils.auth_utils.is_member", lambda u, o: True)
+    from core.utils.auth_utils import check_contact_member
+    # Should not raise
+    check_contact_member(user, org)
+
+@pytest.mark.django_db
+def test_check_contact_member_denies_non_member(monkeypatch):
+    user = object()
+    org = object()
+    monkeypatch.setattr("core.utils.auth_utils.is_member", lambda u, o: False)
+    from core.utils.auth_utils import check_contact_member
+    import pytest
+    from ninja.errors import HttpError
+    with pytest.raises(HttpError) as exc:
+        check_contact_member(user, org)
+    assert exc.value.status_code == 403
+    assert "access" in str(exc.value).lower()
+
+import types
+import sys
+import builtins
+import types
+import types
+import pytest
+from django.conf import settings
+from django.core import mail
+from core.tasks import _send_email_task
+
+@pytest.mark.django_db
+def test_send_email_task_uses_default_from_email(settings, monkeypatch):
+    # Remove DEFAULT_FROM_EMAIL if present
+    if hasattr(settings, 'DEFAULT_FROM_EMAIL'):
+        del settings.DEFAULT_FROM_EMAIL
+    # Patch send_mail to capture arguments
+    called = {}
+    def fake_send_mail(subject, message, from_email, recipient_list, fail_silently, html_message=None):
+        called['from_email'] = from_email
+        return 1
+    monkeypatch.setattr("core.tasks.send_mail", fake_send_mail)
+    _send_email_task("Subj", "Body", ["to@example.com"])
+    assert called['from_email'] == 'webmaster@localhost'
+    # Now set DEFAULT_FROM_EMAIL and check
+    settings.DEFAULT_FROM_EMAIL = 'custom@example.com'
+    _send_email_task("Subj", "Body", ["to@example.com"])
+    assert called['from_email'] == 'custom@example.com'
+    # Explicit from_email overrides default
+    _send_email_task("Subj", "Body", ["to@example.com"], from_email="explicit@example.com")
+    assert called['from_email'] == 'explicit@example.com'

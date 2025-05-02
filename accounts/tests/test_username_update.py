@@ -53,3 +53,26 @@ def test_patch_username_taken():
     response = client.patch("/users/username", json={"username": "takenname"}, headers={"Authorization": f"Bearer {access}"})
     assert response.status_code == 400
     assert "Username already taken" in response.json()["detail"]
+
+@pytest.mark.django_db
+def test_patch_username_empty():
+    user = User.objects.create_user(email="me2@example.com", password="testpass", username="oldname2")
+    Organization.objects.filter(memberships__user=user, type="personal").delete()
+    org = Organization.objects.create(name="oldname2", slug="oldname2-empty", type="personal")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    response = client.post("/token/pair", json={"email": "me2@example.com", "password": "testpass"})
+    access = response.json()["access"]
+    response = client.patch("/users/username", json={"username": "   "}, headers={"Authorization": f"Bearer {access}"})
+    assert response.status_code == 400
+    assert "Username cannot be empty" in response.json()["detail"]
+
+@pytest.mark.django_db
+def test_patch_username_org_missing():
+    user = User.objects.create_user(email="me3@example.com", password="testpass", username="oldname3")
+    # Ensure no personal org exists for user
+    Organization.objects.filter(memberships__user=user, type="personal").delete()
+    response = client.post("/token/pair", json={"email": "me3@example.com", "password": "testpass"})
+    access = response.json()["access"]
+    response = client.patch("/users/username", json={"username": "newname3"}, headers={"Authorization": f"Bearer {access}"})
+    assert response.status_code == 500
+    assert "Personal organization not found for user" in response.json()["detail"]

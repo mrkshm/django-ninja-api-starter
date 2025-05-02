@@ -143,6 +143,25 @@ def test_reusing_token_after_success(settings):
     assert resp2.status_code == 400 or resp2.status_code == 404
     assert 'invalid' in resp2.json()['detail'].lower() or 'not found' in resp2.json()['detail'].lower()
 
+@pytest.mark.django_db
+def test_verify_email_change_email_taken():
+    from django.utils import timezone
+    from accounts.models import PendingEmailChange, User
+    # Create two users
+    user1 = User.objects.create_user(email='taken@example.com', password='pw')
+    user2 = User.objects.create_user(email='user2@example.com', password='pw')
+    # user2 requests to change email to taken@example.com
+    token = 'tokentaken123'
+    expires = timezone.now() + timezone.timedelta(hours=1)
+    PendingEmailChange.objects.create(user=user2, new_email='taken@example.com', token=token, expires_at=expires)
+    # Now verify (should fail, delete pending, and return error)
+    url = '/auth/email/verify?token=' + token
+    resp = client.get(url)
+    assert resp.status_code == 400
+    assert 'Email already taken' in resp.json()['detail']
+    # PendingEmailChange should be deleted
+    assert not PendingEmailChange.objects.filter(token=token).exists()
+
 def test_request_email_change_unauthenticated(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
     resp = client.patch('/auth/email', json={'email': 'unauth@example.com'})

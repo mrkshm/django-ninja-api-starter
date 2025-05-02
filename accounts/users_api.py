@@ -8,6 +8,7 @@ from core.utils import (
     delete_existing_avatar,
     upload_to_storage
 )
+from core.utils.auth_utils import require_authenticated_user
 from PIL import Image, UnidentifiedImageError
 from io import BytesIO
 import os
@@ -65,8 +66,7 @@ def upload_avatar(request, file: UploadedFile = File(...)):
 @users_router.delete("/avatar", auth=JWTAuth())
 def delete_avatar(request):
     user = request.auth
-    if user is None or not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     # Use helper to delete from storage
     delete_existing_avatar(user)
     # Remove avatar reference from profile
@@ -77,22 +77,20 @@ def delete_avatar(request):
 @users_router.get("/me", response=UserProfileOut, auth=JWTAuth())
 def get_me(request):
     user = request.auth
-    if user is None or not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     return user
 
 @users_router.patch("/me", response=UserProfileOut, auth=JWTAuth())
 def update_me(request, data: UserProfileUpdate):
     user = request.auth
-    if user is None or not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     for field, value in data.dict(exclude_unset=True).items():
         setattr(user, field, value)
     user.save()
     return user
 
 @users_router.get("/check_username", response=UsernameCheckResponse)
-def check_username(request, username: str):
+def check_username(request, username: str = ""):
     # Length check
     if not username or len(username) > 50:
         return UsernameCheckResponse(available=False, reason="Username must be 1-50 characters.")

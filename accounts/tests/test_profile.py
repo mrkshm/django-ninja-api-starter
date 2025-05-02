@@ -78,3 +78,39 @@ def test_email_change_delivery_failure(monkeypatch, settings):
     response = client.patch("/auth/email", json={"email": "failmail2@example.com"}, headers=headers)
     assert response.status_code == 500 or response.status_code == 400
     assert "fail" in response.json()["detail"].lower() or "error" in response.json()["detail"].lower() or "exception" in response.json()["detail"].lower()
+
+@pytest.mark.django_db
+def test_check_username_length_and_uniqueness():
+    # Missing username param
+    response = client.get("/users/check_username")
+    assert response.status_code == 200
+    data = response.json()
+    print("[TEST LOG] Missing username response:", response.status_code, data)
+    assert data["available"] is False
+    assert "1-50" in data["reason"]
+
+    # Too long
+    long_username = "x" * 51
+    response = client.get("/users/check_username", params={"username": long_username})
+    assert response.status_code == 200
+    data = response.json()
+    print("[TEST LOG] Too long username response:", response.status_code, data)
+    assert data["available"] is False
+    assert "1-50" in data["reason"]
+
+    # Uniqueness (case-insensitive)
+    User.objects.create_user(email="taken@example.com", username="TestUser", password="pw")
+    username = "testuser"
+    response = client.get(f"/users/check_username?username={username}")
+    print("[TEST LOG] Uniqueness response:", response.status_code, response.json())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["available"] is False
+    assert "taken" in data["reason"].lower()
+
+    # Available
+    username = "uniquename"
+    response = client.get(f"/users/check_username?username={username}")
+    print("[TEST LOG] Available username response:", response.status_code, response.json())
+    assert response.status_code == 200
+    assert response.json()["available"] is True

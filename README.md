@@ -19,6 +19,8 @@ Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow, ImageKit... al
 - Docker setup with PostgreSQL, Redis, and Celery
 - PostGIS support
 - Gunicorn configuration
+- Kamal deployment
+- Test Coverage: 97%
 
 ## Getting Started
 
@@ -123,7 +125,7 @@ Example use cases:
 - [x] GDPR-compliant data export
 - [x] Admin UI
 - [x] Easy deployment with Kamal
-- [ ] Get testing percentage to a reasonable number
+- [x] Get testing percentage to a reasonable number -> current coverage is 97%
 - [ ] Better docs
 - [ ] Postman collection for API testing
 

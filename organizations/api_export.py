@@ -9,6 +9,7 @@ from ninja.schema import Schema
 from django.shortcuts import get_object_or_404
 from ninja_extra import api_controller, route
 from ninja_jwt.authentication import JWTAuth
+from core.utils.auth_utils import require_authenticated_user
 
 class ExportRequestSchema(Schema):
     # Can be extended later
@@ -19,8 +20,7 @@ export_router = Router(tags=["organization", "export"])
 @export_router.post("/orgs/{org_slug}/export/")
 def trigger_export(request, org_slug: str):
     user = request.user
-    if not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     org = get_object_or_404(Organization, slug=org_slug)
     # Only allow admins/owners
     membership = Membership.objects.filter(user=user, organization=org).first()

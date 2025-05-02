@@ -5,6 +5,7 @@ from django.db import transaction
 from django.contrib.auth import get_user_model
 from organizations.models import Organization
 from core.utils import make_it_unique
+from core.utils.auth_utils import require_authenticated_user
 from django.utils.text import slugify
 
 class UsernameUpdateSchema(Schema):
@@ -23,8 +24,7 @@ User = get_user_model()
 @transaction.atomic
 def update_username(request, data: UsernameUpdateSchema):
     user = request.auth
-    if user is None or not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     new_username = data.username.strip()
     if not new_username:
         raise HttpError(400, "Username cannot be empty")

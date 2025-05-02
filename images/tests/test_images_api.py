@@ -7,6 +7,7 @@ from django.test import Client
 from django.core.files.uploadedfile import SimpleUploadedFile
 import io
 from PIL import Image as PilImage
+from django.contrib.contenttypes.models import ContentType
 
 User = get_user_model()
 
@@ -169,6 +170,40 @@ def test_attach_and_detach_image():
     assert response.status_code == 204, response.content
 
 @pytest.mark.django_db
+def test_list_images_for_object():
+    org = Organization.objects.create(name="ObjOrg", slug="objorg")
+    user = User.objects.create_user(email="objuser@example.com", password="pw")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    img = Image.objects.create(file=create_test_image_file(name="objimg.png"), organization=org, creator=user)
+    # Attach image to org as content object
+    app_label = "organizations"
+    model = "organization"
+    object_id = org.id
+    ct = ContentType.objects.get(app_label=app_label, model=model)
+    from images.models import PolymorphicImageRelation
+    PolymorphicImageRelation.objects.create(image=img, content_type=ct, object_id=object_id)
+
+    client = Client()
+    access = get_access_token("objuser@example.com", "pw")
+    url = f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/{object_id}/"
+    response = client.get(url, HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "items" in data
+    assert data["count"] == 1
+    assert data["items"][0]["image"]["id"] == img.id
+
+    # 403 if object belongs to another org
+    org2 = Organization.objects.create(name="OtherOrg", slug="otherorg")
+    object_id2 = org2.id
+    response = client.get(f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/{object_id2}/", HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code == 403
+
+    # 404 if object does not exist
+    response = client.get(f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/999999/", HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code == 404
+
+@pytest.mark.django_db
 def test_unauthorized_access():
     org = Organization.objects.create(name="NoAuthOrg", slug="noauthorg")
     user = User.objects.create_user(email="noauth@example.com", password="pw")
@@ -199,3 +234,51 @@ def test_upload_invalid_file():
         HTTP_AUTHORIZATION=f"Bearer {access}"
     )
     assert response.status_code == 400
+
+@pytest.mark.django_db
+def test_attach_images_to_object():
+    org = Organization.objects.create(name="AttachOrg", slug="attachorg")
+    user = User.objects.create_user(email="attach@example.com", password="pw")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    img = Image.objects.create(file=create_test_image_file(name="attachimg.png"), organization=org, creator=user)
+    app_label = "organizations"
+    model = "organization"
+    object_id = org.id
+    client = Client()
+    access = get_access_token("attach@example.com", "pw")
+    assert access, "Failed to get access token. Check credentials and token endpoint."
+    url = f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/{object_id}/"
+    response = client.post(url, data={"image_ids": [img.id]}, content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code == 200
+    data = response.json()
+    assert any(r["image"]["id"] == img.id for r in data) or any(r["image"] == img.id for r in data)
+
+    org2 = Organization.objects.create(name="OtherOrg", slug="otherorg")
+    img2 = Image.objects.create(file=create_test_image_file(name="failimg.png"), organization=org2, creator=user)
+    response = client.post(url, data={"image_ids": [img2.id]}, content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code in (403, 404)
+
+@pytest.mark.django_db
+def test_remove_image_from_object():
+    org = Organization.objects.create(name="RemoveOrg", slug="removeorg")
+    user = User.objects.create_user(email="remove@example.com", password="pw")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    img = Image.objects.create(file=create_test_image_file(name="removeimg.png"), organization=org, creator=user)
+    app_label = "organizations"
+    model = "organization"
+    object_id = org.id
+    # Attach image to org as content object
+    from images.models import PolymorphicImageRelation
+    ct = ContentType.objects.get(app_label=app_label, model=model)
+    PolymorphicImageRelation.objects.create(image=img, content_type=ct, object_id=object_id)
+    client = Client()
+    access = get_access_token("remove@example.com", "pw")
+    assert access, "Failed to get access token. Check credentials and token endpoint."
+    url = f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/{object_id}/{img.id}/"
+    response = client.delete(url, HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code == 200 or response.status_code == 204
+    # Relation should be gone
+    assert not PolymorphicImageRelation.objects.filter(image=img, content_type=ct, object_id=object_id).exists()
+    # Should 404 if relation does not exist
+    response = client.delete(url, HTTP_AUTHORIZATION=f"Bearer {access}")
+    assert response.status_code in (404, 400)

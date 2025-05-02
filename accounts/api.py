@@ -19,6 +19,7 @@ from django.db import transaction
 from PIL import UnidentifiedImageError
 from io import BytesIO
 from django.core.files.base import ContentFile
+from core.utils.auth_utils import require_authenticated_user
 
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 2
@@ -72,16 +73,14 @@ def logout(request):
 @auth_router.delete("/delete/", auth=JWTAuth())
 def delete_account(request):
     user = request.auth
-    if user is None or not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     user.delete()
     return {"detail": "Account deleted successfully."}
 
 @auth_router.post("/change-password/", auth=JWTAuth())
 def change_password(request, data: ChangePasswordSchema):
     user = request.auth
-    if user is None or not user.is_authenticated:
-        raise HttpError(401, "Authentication required")
+    require_authenticated_user(user)
     if not user.check_password(data.old_password):
         raise HttpError(400, "Old password is incorrect")
     user.set_password(data.new_password)
@@ -94,6 +93,7 @@ def request_email_change(request, data: EmailUpdateSchema):
     Initiate email change: send verification email to new address.
     """
     user = request.auth
+    require_authenticated_user(user)
     new_email = data.email.strip().lower()
     # Validate email format
     try:
