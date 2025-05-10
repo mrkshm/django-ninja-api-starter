@@ -27,8 +27,9 @@ api = NinjaExtraAPI(
     description="A modern Django API with JWT authentication"
 )
 
-# Register JWT default controller (provides /token/obtain/, /token/refresh/, /token/verify/)
-api.register_controllers(NinjaJWTDefaultController)
+# Register custom JWT controller with email verification check
+from accounts.api import CustomJWTController
+api.register_controllers(CustomJWTController)
 
 # Add health check to main API instance
 @api.get("/health/")

@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from DjangoApiStarter.api import api
 from ninja.main import NinjaAPI
@@ -14,7 +15,7 @@ def clear_ninjaapi_registry():
 @pytest.mark.django_db
 def test_get_me_success():
     # Create user
-    user = User.objects.create_user(email="me@example.com", password="testpass", first_name="Test", last_name="User")
+    user = create_test_user(email="me@example.com", password="testpass", first_name="Test", last_name="User")
     # Obtain JWT token (using login endpoint)
     response = client.post("/token/pair", json={"email": "me@example.com", "password": "testpass"})
     assert response.status_code == 200
@@ -35,7 +36,7 @@ def test_get_me_unauthenticated():
 
 @pytest.mark.django_db
 def test_patch_me_partial_update(settings):
-    user = User.objects.create_user(email="patchme@example.com", password="pw", first_name="Old", last_name="Name")
+    user = create_test_user(email="patchme@example.com", password="pw", first_name="Old", last_name="Name")
     response = client.post("/token/pair", json={"email": "patchme@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -48,7 +49,7 @@ def test_patch_me_partial_update(settings):
 
 @pytest.mark.django_db
 def test_patch_me_invalid_data(settings):
-    user = User.objects.create_user(email="invalidpatch@example.com", password="pw", first_name="Valid", last_name="User")
+    user = create_test_user(email="invalidpatch@example.com", password="pw", first_name="Valid", last_name="User")
     response = client.post("/token/pair", json={"email": "invalidpatch@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -68,7 +69,7 @@ def test_patch_me_unauthenticated():
 @pytest.mark.django_db
 def test_email_change_delivery_failure(monkeypatch, settings):
     from core import tasks as core_tasks
-    user = User.objects.create_user(email="failmail@example.com", password="pw")
+    user = create_test_user(email="failmail@example.com", password="pw")
     response = client.post("/token/pair", json={"email": "failmail@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -99,7 +100,7 @@ def test_check_username_length_and_uniqueness():
     assert "1-50" in data["reason"]
 
     # Uniqueness (case-insensitive)
-    User.objects.create_user(email="taken@example.com", username="TestUser", password="pw")
+    create_test_user(email="taken@example.com", username="TestUser", password="pw")
     username = "testuser"
     response = client.get(f"/users/check_username?username={username}")
     print("[TEST LOG] Uniqueness response:", response.status_code, response.json())

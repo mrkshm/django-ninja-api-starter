@@ -64,6 +64,18 @@ class PendingPasswordReset(models.Model):
     def __str__(self):
         return f"PendingPasswordReset(user={self.user_id})"
 
+class PendingRegistration(models.Model):
+    user = models.OneToOneField('User', on_delete=models.CASCADE)
+    token = models.CharField(max_length=100, unique=True, default=secrets.token_urlsafe)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+        
+    def __str__(self):
+        return f"PendingRegistration(user={self.user_id})"
+
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=50, unique=True, blank=True)
@@ -77,6 +89,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     preferred_theme = models.CharField(max_length=16, default="light")
     preferred_language = models.CharField(max_length=16, default="en")
     finished_onboarding = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

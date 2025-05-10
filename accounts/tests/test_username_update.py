@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from DjangoApiStarter.api import api
 from ninja.main import NinjaAPI
@@ -14,7 +15,7 @@ def clear_ninjaapi_registry():
 
 @pytest.mark.django_db
 def test_patch_username_success():
-    user = User.objects.create_user(email="me@example.com", password="testpass", username="oldname")
+    user = create_test_user(email="me@example.com", password="testpass", username="oldname")
     # Clean up any existing personal orgs for this user
     Organization.objects.filter(memberships__user=user, type="personal").delete()
     org = Organization.objects.create(name="oldname", slug="oldname-success", type="personal")
@@ -42,8 +43,8 @@ def test_patch_username_success():
 
 @pytest.mark.django_db
 def test_patch_username_taken():
-    user1 = User.objects.create_user(email="me@example.com", password="testpass", username="oldname")
-    user2 = User.objects.create_user(email="other@example.com", password="testpass", username="takenname")
+    user1 = create_test_user(email="me@example.com", password="testpass", username="oldname")
+    user2 = create_test_user(email="other@example.com", password="testpass", username="takenname")
     # Clean up any existing personal orgs for this user
     Organization.objects.filter(memberships__user=user1, type="personal").delete()
     org = Organization.objects.create(name="oldname", slug="oldname-taken", type="personal")
@@ -56,7 +57,7 @@ def test_patch_username_taken():
 
 @pytest.mark.django_db
 def test_patch_username_empty():
-    user = User.objects.create_user(email="me2@example.com", password="testpass", username="oldname2")
+    user = create_test_user(email="me2@example.com", password="testpass", username="oldname2")
     Organization.objects.filter(memberships__user=user, type="personal").delete()
     org = Organization.objects.create(name="oldname2", slug="oldname2-empty", type="personal")
     Membership.objects.create(user=user, organization=org, role="owner")
@@ -68,7 +69,7 @@ def test_patch_username_empty():
 
 @pytest.mark.django_db
 def test_patch_username_org_missing():
-    user = User.objects.create_user(email="me3@example.com", password="testpass", username="oldname3")
+    user = create_test_user(email="me3@example.com", password="testpass", username="oldname3")
     # Ensure no personal org exists for user
     Organization.objects.filter(memberships__user=user, type="personal").delete()
     response = client.post("/token/pair", json={"email": "me3@example.com", "password": "testpass"})

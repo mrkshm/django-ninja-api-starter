@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 import io
 from PIL import Image as PilImage
 from django.contrib.contenttypes.models import ContentType
+from accounts.tests.utils import create_test_user
 
 User = get_user_model()
 
@@ -37,7 +38,7 @@ def get_access_token(email, password):
 @pytest.mark.django_db
 def test_list_images_for_org():
     org = Organization.objects.create(name="TestOrg", slug="testorg")
-    user = User.objects.create_user(email="imgtest@example.com", password="pw")
+    user = User.objects.create_user(email="imgtest@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img1 = Image.objects.create(
         file=create_test_image_file(name="test1.png"), organization=org, creator=user, description="desc1", title="img1", alt_text="alt1"
@@ -60,7 +61,7 @@ def test_list_images_for_org():
 @pytest.mark.django_db
 def test_upload_image():
     org = Organization.objects.create(name="UploadOrg", slug="uploadorg")
-    user = User.objects.create_user(email="upload@example.com", password="pw")
+    user = User.objects.create_user(email="upload@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     client = Client()
     access = get_access_token("upload@example.com", "pw")
@@ -79,7 +80,7 @@ def test_upload_image():
 @pytest.mark.django_db
 def test_bulk_upload_images():
     org = Organization.objects.create(name="BulkOrg", slug="bulkorg")
-    user = User.objects.create_user(email="bulk@example.com", password="pw")
+    user = User.objects.create_user(email="bulk@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     client = Client()
     access = get_access_token("bulk@example.com", "pw")
@@ -102,13 +103,13 @@ def test_bulk_upload_images():
 @pytest.mark.django_db
 def test_delete_image():
     org = Organization.objects.create(name="DelOrg", slug="delorg")
-    user = User.objects.create_user(email="del@example.com", password="pw")
+    user = User.objects.create_user(email="delete@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(
         file=create_test_image_file(name="del.png"), organization=org, creator=user
     )
     client = Client()
-    access = get_access_token("del@example.com", "pw")
+    access = get_access_token("delete@example.com", "pw")
     assert access, "Failed to get access token. Check credentials and token endpoint."
     response = client.delete(f"/api/v1/images/orgs/{org.slug}/images/{img.id}/", HTTP_AUTHORIZATION=f"Bearer {access}")
     assert response.status_code == 204
@@ -117,7 +118,7 @@ def test_delete_image():
 @pytest.mark.django_db
 def test_bulk_delete_images():
     org = Organization.objects.create(name="BulkDelOrg", slug="bulkdelorg")
-    user = User.objects.create_user(email="bulkdel@example.com", password="pw")
+    user = User.objects.create_user(email="bulkdel@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     imgs = [Image.objects.create(file=create_test_image_file(name=f"bd{i}.png"), organization=org, creator=user) for i in range(2)]
     client = Client()
@@ -139,7 +140,7 @@ def test_attach_and_detach_image():
     from django.contrib.contenttypes.models import ContentType
     # Create org and user
     org = Organization.objects.create(name="AttachOrg", slug="attachorg")
-    user = User.objects.create_user(email="attach@example.com", password="pw")
+    user = User.objects.create_user(email="attach@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(file=create_test_image_file(name="att.png"), organization=org, creator=user)
     
@@ -172,7 +173,7 @@ def test_attach_and_detach_image():
 @pytest.mark.django_db
 def test_list_images_for_object():
     org = Organization.objects.create(name="ObjOrg", slug="objorg")
-    user = User.objects.create_user(email="objuser@example.com", password="pw")
+    user = User.objects.create_user(email="objuser@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(file=create_test_image_file(name="objimg.png"), organization=org, creator=user)
     # Attach image to org as content object
@@ -206,7 +207,7 @@ def test_list_images_for_object():
 @pytest.mark.django_db
 def test_unauthorized_access():
     org = Organization.objects.create(name="NoAuthOrg", slug="noauthorg")
-    user = User.objects.create_user(email="noauth@example.com", password="pw")
+    user = User.objects.create_user(email="noauth@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(file=create_test_image_file(name="noauth.png"), organization=org, creator=user)
     # No login_client here
@@ -222,7 +223,7 @@ def test_unauthorized_access():
 @pytest.mark.django_db
 def test_upload_invalid_file():
     org = Organization.objects.create(name="InvalidOrg", slug="invalidorg")
-    user = User.objects.create_user(email="invalid@example.com", password="pw")
+    user = User.objects.create_user(email="invalid@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     client = Client()
     access = get_access_token("invalid@example.com", "pw")
@@ -238,7 +239,7 @@ def test_upload_invalid_file():
 @pytest.mark.django_db
 def test_attach_images_to_object():
     org = Organization.objects.create(name="AttachOrg", slug="attachorg")
-    user = User.objects.create_user(email="attach@example.com", password="pw")
+    user = User.objects.create_user(email="attach@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(file=create_test_image_file(name="attachimg.png"), organization=org, creator=user)
     app_label = "organizations"
@@ -261,7 +262,7 @@ def test_attach_images_to_object():
 @pytest.mark.django_db
 def test_remove_image_from_object():
     org = Organization.objects.create(name="RemoveOrg", slug="removeorg")
-    user = User.objects.create_user(email="remove@example.com", password="pw")
+    user = User.objects.create_user(email="remove@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(file=create_test_image_file(name="removeimg.png"), organization=org, creator=user)
     app_label = "organizations"

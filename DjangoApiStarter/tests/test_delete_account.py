@@ -1,4 +1,5 @@
 from django.test import TestCase
+from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
@@ -17,7 +18,7 @@ class TestDeleteAccount(TestCase):
         # Register and login to get a token
         email = "deleteuser@example.com"
         password = "testpass123"
-        self.client.post("/auth/register/", json={"email": email, "password": password})
+        create_test_user(email=email, password=password)
         token_response = self.client.post("/token/pair", json={"email": email, "password": password})
         access_token = token_response.json()["access"]
         # Delete account with JWT

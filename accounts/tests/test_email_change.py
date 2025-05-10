@@ -1,6 +1,7 @@
 import pytest
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from DjangoApiStarter.api import api
 from ninja.main import NinjaAPI
@@ -16,7 +17,7 @@ def clear_ninjaapi_registry():
 @pytest.mark.django_db
 def test_request_email_change_success(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    user = User.objects.create_user(email='old@example.com', password='pw')
+    user = create_test_user(email='old@example.com', password='pw')
     resp = client.post('/token/pair', json={'email': 'old@example.com', 'password': 'pw'})
     access = resp.json()['access']
     headers = {'Authorization': f'Bearer {access}'}
@@ -29,7 +30,7 @@ def test_request_email_change_success(settings):
 
 @pytest.mark.django_db
 def test_verify_email_change_success(settings):
-    user = User.objects.create_user(email='old2@example.com', password='pw')
+    user = create_test_user(email='old2@example.com', password='pw')
     token = 'testtoken123'
     expires = timezone.now() + timezone.timedelta(hours=1)
     PendingEmailChange.objects.create(user=user, new_email='new2@example.com', token=token, expires_at=expires)
@@ -41,7 +42,7 @@ def test_verify_email_change_success(settings):
 
 @pytest.mark.django_db
 def test_verify_email_change_expired_token(settings):
-    user = User.objects.create_user(email='expired@example.com', password='pw')
+    user = create_test_user(email='expired@example.com', password='pw')
     token = 'expiredtoken123'
     # Set expires_at in the past
     expires = timezone.now() - timezone.timedelta(hours=1)
@@ -52,7 +53,7 @@ def test_verify_email_change_expired_token(settings):
 
 @pytest.mark.django_db
 def test_verify_email_change_invalid_token(settings):
-    user = User.objects.create_user(email='invalidtoken@example.com', password='pw')
+    user = create_test_user(email='invalidtoken@example.com', password='pw')
     # Do NOT create any PendingEmailChange with this token
     token = 'doesnotexisttoken'
     resp = client.get(f'/auth/email/verify?token={token}')
@@ -62,7 +63,7 @@ def test_verify_email_change_invalid_token(settings):
 @pytest.mark.django_db
 def test_request_email_change_invalid_format(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    user = User.objects.create_user(email='invalid1@example.com', password='pw')
+    user = create_test_user(email='invalid1@example.com', password='pw')
     resp = client.post('/token/pair', json={'email': 'invalid1@example.com', 'password': 'pw'})
     access = resp.json()['access']
     headers = {'Authorization': f'Bearer {access}'}
@@ -73,8 +74,8 @@ def test_request_email_change_invalid_format(settings):
 @pytest.mark.django_db
 def test_request_email_change_email_taken(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    user1 = User.objects.create_user(email='taken@example.com', password='pw')
-    user2 = User.objects.create_user(email='user2@example.com', password='pw')
+    user1 = create_test_user(email='taken@example.com', password='pw')
+    user2 = create_test_user(email='user2@example.com', password='pw')
     resp = client.post('/token/pair', json={'email': 'user2@example.com', 'password': 'pw'})
     access = resp.json()['access']
     headers = {'Authorization': f'Bearer {access}'}
@@ -85,7 +86,7 @@ def test_request_email_change_email_taken(settings):
 @pytest.mark.django_db
 def test_multiple_pending_changes(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    user = User.objects.create_user(email='multi@example.com', password='pw')
+    user = create_test_user(email='multi@example.com', password='pw')
     resp = client.post('/token/pair', json={'email': 'multi@example.com', 'password': 'pw'})
     access = resp.json()['access']
     headers = {'Authorization': f'Bearer {access}'}
@@ -103,7 +104,7 @@ def test_multiple_pending_changes(settings):
 @pytest.mark.django_db
 def test_email_change_after_verification(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    user = User.objects.create_user(email='afterverify@example.com', password='pw')
+    user = create_test_user(email='afterverify@example.com', password='pw')
     token = 'verifytoken123'
     expires = timezone.now() + timezone.timedelta(hours=1)
     PendingEmailChange.objects.create(user=user, new_email='afterverify2@example.com', token=token, expires_at=expires)
@@ -116,8 +117,8 @@ def test_email_change_after_verification(settings):
 @pytest.mark.django_db
 def test_case_insensitive_email_uniqueness(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    User.objects.create_user(email='caseuser@example.com', password='pw')
-    user2 = User.objects.create_user(email='other@example.com', password='pw')
+    create_test_user(email='caseuser@example.com', password='pw')
+    user2 = create_test_user(email='other@example.com', password='pw')
     resp = client.post('/token/pair', json={'email': 'other@example.com', 'password': 'pw'})
     access = resp.json()['access']
     headers = {'Authorization': f'Bearer {access}'}
@@ -129,7 +130,7 @@ def test_case_insensitive_email_uniqueness(settings):
 @pytest.mark.django_db
 def test_reusing_token_after_success(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    user = User.objects.create_user(email='reuse@example.com', password='pw')
+    user = create_test_user(email='reuse@example.com', password='pw')
     token = 'reusetoken123'
     expires = timezone.now() + timezone.timedelta(hours=1)
     PendingEmailChange.objects.create(user=user, new_email='reuse2@example.com', token=token, expires_at=expires)
@@ -146,10 +147,10 @@ def test_reusing_token_after_success(settings):
 @pytest.mark.django_db
 def test_verify_email_change_email_taken():
     from django.utils import timezone
-    from accounts.models import PendingEmailChange, User
+    from accounts.models import PendingEmailChange
     # Create two users
-    user1 = User.objects.create_user(email='taken@example.com', password='pw')
-    user2 = User.objects.create_user(email='user2@example.com', password='pw')
+    user1 = create_test_user(email='taken@example.com', password='pw')
+    user2 = create_test_user(email='user2@example.com', password='pw')
     # user2 requests to change email to taken@example.com
     token = 'tokentaken123'
     expires = timezone.now() + timezone.timedelta(hours=1)

@@ -78,9 +78,21 @@ DJANGO_ENV=development  # Set to 'production' to use Gunicorn
 
 ### Auth Setup using User / Organization pattern
 
+#### Email Verification Authentication
+
+This project implements a secure email verification system for user authentication:
+
+- New users must verify their email address before they can log in or access protected resources.
+- Verification emails are sent automatically during registration.
+- Verification tokens expire after 12 hours.
+- Users can request a new verification email if needed.
+- Login attempts for unverified accounts return a clear message prompting verification.
+
+#### Organization-based Access Control
+
 This project uses an organization-based access control pattern:
 
-- Every user is automatically assigned a personal organization when their account is created.
+- Every user is automatically assigned a personal organization when their account is created (after email verification).
 - Users can also belong to additional organizations (e.g., as an employee, collaborator, or member).
 - All domain entities (such as contacts, files, etc.) are associated with an organization.
 - Users can access data and perform actions within their organizations.

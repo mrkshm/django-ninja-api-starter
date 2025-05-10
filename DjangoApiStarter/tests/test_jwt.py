@@ -1,4 +1,5 @@
 from django.test import TestCase
+from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
@@ -18,7 +19,7 @@ class TestJWT(TestCase):
         from accounts.models import User
         email = "testuser@example.com"
         password = "testpass123"
-        User.objects.create_user(email=email, password=password)
+        create_test_user(email=email, password=password)
         response = self.client.post("/token/pair", json={"email": email, "password": password})
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -29,7 +30,7 @@ class TestJWT(TestCase):
         from accounts.models import User
         email = "testuser2@example.com"
         password = "testpass123"
-        User.objects.create_user(email=email, password=password)
+        create_test_user(email=email, password=password)
         response = self.client.post("/token/pair", json={"email": email, "password": "wrongpass"})
         self.assertEqual(response.status_code, 401)
         data = response.json()
@@ -53,7 +54,7 @@ class TestJWT(TestCase):
         from accounts.models import User
         email = "jwtstructure@example.com"
         password = "testpass123"
-        User.objects.create_user(email=email, password=password)
+        create_test_user(email=email, password=password)
         response = self.client.post("/token/pair", json={"email": email, "password": password})
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -66,7 +67,7 @@ class TestJWT(TestCase):
         from accounts.models import User
         email = "refreshuser@example.com"
         password = "testpass123"
-        User.objects.create_user(email=email, password=password)
+        create_test_user(email=email, password=password)
         response = self.client.post("/token/pair", json={"email": email, "password": password})
         self.assertEqual(response.status_code, 200)
         tokens = response.json()
@@ -93,7 +94,7 @@ class TestJWT(TestCase):
         from accounts.models import User
         email = "verifyuser@example.com"
         password = "testpass123"
-        User.objects.create_user(email=email, password=password)
+        create_test_user(email=email, password=password)
         response = self.client.post("/token/pair", json={"email": email, "password": password})
         self.assertEqual(response.status_code, 200)
         tokens = response.json()

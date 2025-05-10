@@ -1,6 +1,7 @@
 import io
 import pytest
 from django.contrib.auth import get_user_model
+from accounts.tests.utils import create_test_user
 from django.utils.datastructures import MultiValueDict
 from django.core.files.uploadedfile import SimpleUploadedFile
 from ninja.testing import TestClient
@@ -19,7 +20,7 @@ def create_test_image(format="PNG", size=(100, 100)):
 
 @pytest.mark.django_db
 def test_avatar_upload_too_large(monkeypatch):
-    user = User.objects.create_user(email="bigavatar@example.com", password="pw")
+    user = create_test_user(email="bigavatar@example.com", password="pw")
     response = client.post("/token/pair", json={"email": "bigavatar@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -33,7 +34,7 @@ def test_avatar_upload_too_large(monkeypatch):
 
 @pytest.mark.django_db
 def test_avatar_upload_invalid_content_type():
-    user = User.objects.create_user(email="badtype@example.com", password="pw")
+    user = create_test_user(email="badtype@example.com", password="pw")
     response = client.post("/token/pair", json={"email": "badtype@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -53,7 +54,7 @@ def test_avatar_upload_invalid_content_type():
 
 @pytest.mark.django_db
 def test_avatar_upload_corrupt_image():
-    user = User.objects.create_user(email="corruptimg@example.com", password="pw")
+    user = create_test_user(email="corruptimg@example.com", password="pw")
     response = client.post("/token/pair", json={"email": "corruptimg@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -80,7 +81,7 @@ def test_avatar_delete_unauthenticated():
 
 @pytest.mark.django_db
 def test_avatar_delete_authenticated(monkeypatch):
-    user = User.objects.create_user(email="delavatar@example.com", password="pw")
+    user = create_test_user(email="delavatar@example.com", password="pw")
     user.avatar_path = "avatars/delme.webp"
     user.save()
     response = client.post("/token/pair", json={"email": "delavatar@example.com", "password": "pw"})
@@ -100,7 +101,7 @@ def test_avatar_delete_authenticated(monkeypatch):
 
 @pytest.mark.django_db
 def test_avatar_delete_when_no_avatar(monkeypatch):
-    user = User.objects.create_user(email="noavatar@example.com", password="pw")
+    user = create_test_user(email="noavatar@example.com", password="pw")
     user.avatar_path = None
     user.save()
     response = client.post("/token/pair", json={"email": "noavatar@example.com", "password": "pw"})
@@ -120,7 +121,7 @@ def test_avatar_delete_when_no_avatar(monkeypatch):
 
 @pytest.mark.django_db
 def test_avatar_upload_valid(monkeypatch):
-    user = User.objects.create_user(email="validavatar@example.com", password="pw")
+    user = create_test_user(email="validavatar@example.com", password="pw")
     response = client.post("/token/pair", json={"email": "validavatar@example.com", "password": "pw"})
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}

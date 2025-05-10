@@ -1,4 +1,5 @@
 from django.test import TestCase
+from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
@@ -15,7 +16,7 @@ class TestChangePassword(TestCase):
     def test_change_password_wrong_old(self):
         email = "changepass@example.com"
         password = "oldpass123"
-        self.client.post("/auth/register/", json={"email": email, "password": password})
+        create_test_user(email=email, password=password)
         token_response = self.client.post("/token/pair", json={"email": email, "password": password})
         access_token = token_response.json()["access"]
         response = self.client.post(
@@ -30,7 +31,7 @@ class TestChangePassword(TestCase):
         email = "changepass2@example.com"
         old_password = "oldpass123"
         new_password = "newpass456"
-        self.client.post("/auth/register/", json={"email": email, "password": old_password})
+        create_test_user(email=email, password=old_password)
         token_response = self.client.post("/token/pair", json={"email": email, "password": old_password})
         access_token = token_response.json()["access"]
         response = self.client.post(

@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from accounts.tests.utils import create_test_user
 from organizations.models import Organization, Membership
 from contacts.models import Contact
 from DjangoApiStarter.api import api
@@ -22,7 +23,7 @@ def clear_ninjaapi_registry():
 
 @pytest.mark.django_db
 def test_create_contact():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
@@ -39,7 +40,7 @@ def test_create_contact():
 
 @pytest.mark.django_db
 def test_get_contact():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="Bob", slug="bob", organization=org, creator=user)
@@ -55,7 +56,7 @@ def test_get_contact():
 
 @pytest.mark.django_db
 def test_update_contact_display_name_and_slug():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="Charlie", slug="charlie", organization=org, creator=user)
@@ -71,7 +72,7 @@ def test_update_contact_display_name_and_slug():
 
 @pytest.mark.django_db
 def test_list_contacts():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     Contact.objects.create(display_name="X", slug="x", organization=org, creator=user)
@@ -91,7 +92,7 @@ def test_list_contacts():
 
 @pytest.mark.django_db
 def test_delete_contact():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="Z", slug="z", organization=org, creator=user)
@@ -104,7 +105,7 @@ def test_delete_contact():
 
 @pytest.mark.django_db
 def test_auth_required():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     payload = {"display_name": "NoAuth", "organization": org.slug}
     resp = client.post("/contacts/", json=payload)
@@ -112,7 +113,7 @@ def test_auth_required():
 
 @pytest.mark.django_db
 def test_invalid_org_slug():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
     access = resp.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -122,7 +123,7 @@ def test_invalid_org_slug():
 
 @pytest.mark.django_db
 def test_missing_name():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
     access = resp.json()["access"]
@@ -137,7 +138,7 @@ def test_missing_name():
 
 @pytest.mark.django_db
 def test_get_nonexistent_contact():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     resp = client.post("/token/pair", json={"email": "test@example.com", "password": "pw"})
     access = resp.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
@@ -146,7 +147,7 @@ def test_get_nonexistent_contact():
 
 @pytest.mark.django_db
 def test_upload_contact_avatar(tmp_path):
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="AvatarTest", slug="avatartest", organization=org, creator=user)
@@ -174,7 +175,7 @@ def test_upload_contact_avatar(tmp_path):
 
 @pytest.mark.django_db
 def test_upload_contact_avatar_invalid_type():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="AvatarTest2", slug="avatartest2", organization=org, creator=user)
@@ -195,7 +196,7 @@ def test_upload_contact_avatar_invalid_type():
 
 @pytest.mark.django_db
 def test_delete_contact_avatar():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="AvatarTestDel", slug="avatartestdel", organization=org, creator=user)
@@ -227,7 +228,7 @@ def test_delete_contact_avatar():
 
 @pytest.mark.django_db
 def test_delete_contact_avatar_no_avatar():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="NoAvatar", slug="noavatar", organization=org, creator=user)
@@ -240,7 +241,7 @@ def test_delete_contact_avatar_no_avatar():
 
 @pytest.mark.django_db
 def test_upload_contact_avatar_too_large():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="BigAvatar", slug="bigavatar", organization=org, creator=user)
@@ -262,7 +263,7 @@ def test_upload_contact_avatar_too_large():
 
 @pytest.mark.django_db
 def test_create_contact_display_name_logic():
-    user = User.objects.create_user(email="logic@example.com", password="pw", username="logicuser", slug="logicuser")
+    user = create_test_user(email="logic@example.com", password="pw", username="logicuser", slug="logicuser")
     org = Organization.objects.create(name="Logic Org", slug="logic-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     resp = client.post("/token/pair", json={"email": "logic@example.com", "password": "pw"})
@@ -294,7 +295,7 @@ def test_create_contact_display_name_logic():
 
 @pytest.mark.django_db
 def test_update_contact_organization_and_fields():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org1 = Organization.objects.create(name="Org1", slug="org1", type="group", creator=user)
     org2 = Organization.objects.create(name="Org2", slug="org2", type="group", creator=user)
     Membership.objects.create(user=user, organization=org1, role="owner")
@@ -329,7 +330,7 @@ def test_update_contact_organization_and_fields():
 
 @pytest.mark.django_db
 def test_upload_contact_avatar_error(monkeypatch):
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org = Organization.objects.create(name="Avatar Org", slug="avatar-org", type="group", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(display_name="AvatarFail", slug="avatarfail", organization=org, creator=user)
@@ -355,7 +356,7 @@ def test_upload_contact_avatar_error(monkeypatch):
 
 @pytest.mark.django_db
 def test_partial_update_contact_organization():
-    user = User.objects.create_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
     org1 = Organization.objects.create(name="Org1Patch", slug="org1patch", type="group", creator=user)
     org2 = Organization.objects.create(name="Org2Patch", slug="org2patch", type="group", creator=user)
     Membership.objects.create(user=user, organization=org1, role="owner")

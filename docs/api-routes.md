@@ -14,7 +14,9 @@ This document describes all REST API endpoints provided by this project. For ful
 
 ### Custom Auth Endpoints
 
-- POST /api/v1/auth/register # Register a new user (returns JWT tokens)
+- POST /api/v1/auth/register # Register a new user (sends verification email)
+- GET /api/v1/auth/verify-registration # Verify registration email and activate account (returns JWT tokens)
+- POST /api/v1/auth/resend-verification # Resend verification email for unverified accounts
 - POST /api/v1/auth/logout # Stateless logout (client deletes tokens)
 - DELETE /api/v1/auth/delete # Delete authenticated user's account
 - POST /api/v1/auth/change-password # Change password (requires old_password)
@@ -98,6 +100,13 @@ This document describes all REST API endpoints provided by this project. For ful
 ---
 
 ## Security & Behavior Notes
+
+### Email Verification Flow
+- New user registrations require email verification before login is allowed.
+- Verification tokens expire after 12 hours.
+- Verification emails are sent asynchronously via Celery.
+- Users can request a new verification email if the original expires.
+- Login attempts for unverified accounts return a clear message prompting verification.
 
 ### Password Reset Flow
 - Password reset endpoints always return a generic success message, regardless of whether the email exists, to prevent account enumeration.
