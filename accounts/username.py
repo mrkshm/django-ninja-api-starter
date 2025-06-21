@@ -7,20 +7,15 @@ from organizations.models import Organization
 from core.utils import make_it_unique
 from core.utils.auth_utils import require_authenticated_user
 from django.utils.text import slugify
+from .schemas import UserProfileOut
 
 class UsernameUpdateSchema(Schema):
     username: str
 
-class UsernameUpdateOut(Schema):
-    username: str
-    slug: str
-    org_name: str
-    org_slug: str
-
 router = Router()
 User = get_user_model()
 
-@router.patch("/username", response=UsernameUpdateOut, auth=JWTAuth())
+@router.patch("/username", response=UserProfileOut, auth=JWTAuth())
 @transaction.atomic
 def update_username(request, data: UsernameUpdateSchema):
     user = request.auth
@@ -54,4 +49,8 @@ def update_username(request, data: UsernameUpdateSchema):
     org.name = new_username
     org.slug = user.slug
     org.save()
-    return UsernameUpdateOut(username=user.username, slug=user.slug, org_name=org.name, org_slug=org.slug)
+    
+    # Add org info to user object for response
+    user.org_name = org.name
+    user.org_slug = org.slug
+    return user

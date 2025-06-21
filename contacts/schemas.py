@@ -12,7 +12,7 @@ class ContactIn(BaseModel):
     phone: Optional[str] = None
     notes: Optional[str] = None
     avatar_path: Optional[str] = None
-    organization: str  # Organization slug
+    organization: Optional[str] = None  # Optional organization slug
 
     @model_validator(mode="after")
     def at_least_one_name(self):

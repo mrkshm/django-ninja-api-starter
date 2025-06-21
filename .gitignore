@@ -3,7 +3,7 @@ local_settings.py
 db.sqlite3
 .env
 _DS.Store
-
+.DS_Store
 # Ignore venv
 venv/
 

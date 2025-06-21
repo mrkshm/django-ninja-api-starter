@@ -12,11 +12,42 @@ from .models import Contact
 from .schemas import ContactIn, ContactOut, ContactAvatarResponse, DetailResponse
 from organizations.models import Organization
 from organizations.permissions import is_member
-from ninja.pagination import paginate, LimitOffsetPagination
+from ninja.pagination import paginate, LimitOffsetPagination, PaginationBase
 from ninja import File, UploadedFile
 from django.core.files.storage import default_storage
+from django.db.models import Q, Case, When, Value, IntegerField
+from typing import Any, List, Optional, Dict
+from django.http import HttpRequest
 
 contacts_router = Router()
+
+# Custom pagination class with next/prev page info
+class EnhancedLimitOffsetPagination(LimitOffsetPagination):
+    def get_paginated_response(self, request: HttpRequest, data: List, count: int, limit: int, offset: int) -> Dict[str, Any]:
+        # Calculate next and previous offsets
+        next_offset = offset + limit if offset + limit < count else None
+        prev_offset = offset - limit if offset - limit >= 0 else None
+        
+        # Build the response with pagination info
+        response = {
+            "items": data,
+            "count": count,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "hasNext": next_offset is not None,
+                "hasPrevious": prev_offset is not None,
+            }
+        }
+        
+        # Add next and previous page URLs if they exist
+        if next_offset is not None:
+            response["pagination"]["next"] = f"?limit={limit}&offset={next_offset}"
+        
+        if prev_offset is not None:
+            response["pagination"]["previous"] = f"?limit={limit}&offset={prev_offset}"
+        
+        return response
 
 # Utility for consistent contact serialization
 def serialize_contact(contact):
@@ -39,13 +70,79 @@ class ContactUpdate(Schema):
     phone: str | None = None
     address: str | None = None
 
-@contacts_router.get("/", response=list[ContactOut], auth=JWTAuth())
+# Define allowed sort fields and their corresponding model fields
+ALLOWED_SORT_FIELDS = {
+    'display_name': 'display_name',
+    'first_name': 'first_name',
+    'last_name': 'last_name',
+    'email': 'email',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+@contacts_router.get("/", response=List[ContactOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
-def list_contacts(request):
+def list_contacts(
+    request,
+    search: str = None,
+    sort_by: str = 'display_name',
+    sort_order: str = 'asc'
+):
+    """
+    List contacts with optional search and sorting.
+    
+    Query Parameters:
+    - search: Optional search term to filter contacts
+    - sort_by: Field to sort by (display_name, first_name, last_name, email, created_at, updated_at)
+    - sort_order: Sort order (asc or desc)
+    """
     user = request.user
+    
     # Only show contacts for orgs the user is a member of
     org_slugs = [m.organization.slug for m in user.memberships.select_related("organization").all()]
     qs = Contact.objects.select_related("organization", "creator").filter(organization__slug__in=org_slugs)
+    
+    # Apply search if provided
+    if search:
+        search_terms = search.split()
+        search_query = Q()
+        
+        # Build a query that requires all terms to match (AND logic)
+        for term in search_terms:
+            term_query = (
+                Q(display_name__icontains=term) |  # Highest weight
+                Q(first_name__icontains=term) |    # High weight
+                Q(last_name__icontains=term) |     # Medium weight
+                Q(email__icontains=term) |         # Low weight
+                Q(notes__icontains=term)           # Lowest weight
+            )
+            search_query &= term_query  # All terms must match (AND logic)
+        
+        # Annotate with match scores
+        qs = qs.annotate(
+            match_score=Case(
+                When(display_name__icontains=search, then=Value(5)),
+                When(first_name__icontains=search, then=Value(4)),
+                When(last_name__icontains=search, then=Value(3)),
+                When(email__icontains=search, then=Value(2)),
+                When(notes__icontains=search, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        ).filter(search_query)
+        
+        # If searching, we'll sort by match score first, then by the requested field
+        sort_field = ALLOWED_SORT_FIELDS.get(sort_by, 'display_name')
+        sort_prefix = '' if sort_order.lower() == 'asc' else '-'
+        sort_field = f"{sort_prefix}{sort_field}"
+        qs = qs.order_by('-match_score', sort_field)
+    else:
+        # If not searching, just sort by the requested field
+        sort_field = ALLOWED_SORT_FIELDS.get(sort_by, 'display_name')
+        if sort_order.lower() == 'desc':
+            sort_field = f"-{sort_field}"
+        qs = qs.order_by(sort_field)
+    
     return [serialize_contact(c) for c in qs]
 
 @contacts_router.get("/{slug}/", response=ContactOut, auth=JWTAuth())
@@ -56,10 +153,20 @@ def get_contact(request, slug: str):
 
 @contacts_router.post("/", response=ContactOut, auth=JWTAuth())
 def create_contact(request, data: ContactIn):
-    org_slug = data.organization
-    organization = get_object_or_404(Organization, slug=org_slug)
     user = request.user
-    check_contact_member(user, organization)
+    
+    # Get the user's organization or use specified organization
+    if data.organization:
+        org_slug = data.organization
+        organization = get_object_or_404(Organization, slug=org_slug)
+        check_contact_member(user, organization)
+    else:
+        # Use the user's primary organization
+        user_orgs = user.memberships.select_related("organization").all()
+        if not user_orgs:
+            raise HttpError(400, "User has no organizations. Cannot create contact.")
+        organization = user_orgs[0].organization
+    
     # Compute display_name per rule
     display_name = data.display_name
     if not display_name:
@@ -71,12 +178,15 @@ def create_contact(request, data: ContactIn):
             display_name = data.last_name
         else:
             display_name = None
-    contact_data = data.model_dump()
+    
+    contact_data = data.model_dump(exclude={"organization"})
     contact_data["display_name"] = display_name
     contact_data["organization"] = organization
+    
     # Ensure slug is always generated and unique
     slug_candidate = slugify(display_name)
     contact_data["slug"] = make_it_unique(slug_candidate, Contact, "slug")
+    
     contact = Contact.objects.create(
         **contact_data, creator=user
     )
@@ -171,3 +281,57 @@ def delete_contact(request, slug: str):
     check_contact_member(request.user, contact.organization)
     contact.delete()
     return {"detail": "Contact deleted."}
+
+@contacts_router.get("/avatars/{path:path}", auth=JWTAuth())
+def get_contact_avatar_url(request, path: str):
+    """
+    Generate a presigned URL for a contact's avatar image.
+    For large version, append '_lg' before the file extension.
+    Example: /api/v1/contacts/avatars/avatar-user123-20240529.webp
+             /api/v1/contacts/avatars/avatar-user123-20240529_lg.webp
+    """
+    import os
+    from urllib.parse import urlparse
+    import boto3
+    from django.conf import settings
+    from ninja.errors import HttpError
+
+    # Validate path to prevent directory traversal
+    if '..' in path or path.startswith('/'):
+        raise HttpError(400, "Invalid path")
+    
+    # Get the base filename without extension
+    base, ext = os.path.splitext(path)
+    
+    # Check if requesting large version
+    is_large = base.endswith('_lg')
+    if is_large:
+        base = base[:-3]  # Remove _lg suffix
+    
+    # Validate filename format (example: avatar-{id}-{timestamp}-{random}.webp)
+    if not (base.startswith('ct_') and ext.lower() == '.webp'):
+        raise HttpError(400, "Invalid avatar filename format")
+    
+    # Construct the S3 key - use the path directly as it's already the full key
+    s3_key = path
+    
+    # Generate presigned URL
+    s3_client = boto3.client(
+        's3',
+        endpoint_url=settings.STORAGES['default']['OPTIONS']['endpoint_url'],
+        aws_access_key_id=settings.STORAGES['default']['OPTIONS']['access_key'],
+        aws_secret_access_key=settings.STORAGES['default']['OPTIONS']['secret_key'],
+        region_name=settings.STORAGES['default']['OPTIONS']['region_name'],
+        config=boto3.session.Config(signature_version='s3v4')
+    )
+    
+    try:
+        # Generate presigned URL for the object
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': settings.STORAGES['default']['OPTIONS']['bucket_name'], 'Key': s3_key},
+            ExpiresIn=3600  # URL expires in 1 hour
+        )
+        return {"url": url}
+    except Exception as e:
+        return HttpError(500, f"Failed to generate presigned URL: {str(e)}")

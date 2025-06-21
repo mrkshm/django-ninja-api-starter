@@ -15,6 +15,7 @@ import os
 from .schemas import UserProfileOut, UserProfileUpdate, UsernameCheckResponse
 from django.contrib.auth import get_user_model
 from .username import router as username_router
+from organizations.models import Organization
 
 User = get_user_model()
 
@@ -78,6 +79,20 @@ def delete_avatar(request):
 def get_me(request):
     user = request.auth
     require_authenticated_user(user)
+    # Get user's personal organization
+    org = (
+        Organization.objects
+        .filter(
+            memberships__user=user,
+            memberships__role="owner",
+            type="personal"
+        )
+        .order_by('id')
+        .first()
+    )
+    # Add org info to user object for response
+    user.org_name = org.name if org else ""
+    user.org_slug = org.slug if org else ""
     return user
 
 @users_router.patch("/me", response=UserProfileOut, auth=JWTAuth())
@@ -87,6 +102,20 @@ def update_me(request, data: UserProfileUpdate):
     for field, value in data.dict(exclude_unset=True).items():
         setattr(user, field, value)
     user.save()
+    # Get user's personal organization
+    org = (
+        Organization.objects
+        .filter(
+            memberships__user=user,
+            memberships__role="owner",
+            type="personal"
+        )
+        .order_by('id')
+        .first()
+    )
+    # Add org info to user object for response
+    user.org_name = org.name if org else ""
+    user.org_slug = org.slug if org else ""
     return user
 
 @users_router.get("/check_username", response=UsernameCheckResponse)
@@ -100,3 +129,72 @@ def check_username(request, username: str = ""):
     if User.objects.filter(username__iexact=username).exists():
         return UsernameCheckResponse(available=False, reason="Username already taken.")
     return UsernameCheckResponse(available=True)
+
+@users_router.get("/avatars/{path:path}", auth=JWTAuth())
+def get_avatar_url(request, path: str):
+    """
+    Generate a presigned URL for an avatar image.
+    For large version, append '_lg' before the file extension.
+    Example: /api/v1/avatars/avatar-user123-20240529.webp
+             /api/v1/avatars/avatar-user123-20240529_lg.webp
+    """
+    import os
+    from urllib.parse import urlparse
+    import boto3
+    from django.conf import settings
+    from ninja.errors import HttpError
+
+    # Validate path to prevent directory traversal
+    if '..' in path or path.startswith('/'):
+        raise HttpError(400, "Invalid path")
+    
+    # Get the base filename without extension
+    base, ext = os.path.splitext(path)
+    
+    # Check if requesting large version
+    is_large = base.endswith('_lg')
+    if is_large:
+        base = base[:-3]  # Remove _lg suffix
+    
+    # Validate filename format (example: avatar-{id}-{timestamp}-{random}.webp)
+    if not (base.startswith('avatar_') and ext.lower() == '.webp'):
+        raise HttpError(400, "Invalid avatar filename format")
+    
+    # Construct the S3 key - use the path directly as it's already the full key
+    s3_key = path
+    
+    # Generate presigned URL
+    s3_client = boto3.client(
+        's3',
+        endpoint_url=settings.STORAGES['default']['OPTIONS']['endpoint_url'],
+        aws_access_key_id=settings.STORAGES['default']['OPTIONS']['access_key'],
+        aws_secret_access_key=settings.STORAGES['default']['OPTIONS']['secret_key'],
+        region_name=settings.STORAGES['default']['OPTIONS']['region_name'],
+        config=boto3.session.Config(signature_version='s3v4')
+    )
+    
+    try:
+        # Generate presigned URL (expires in 1 hour)
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': settings.STORAGES['default']['OPTIONS']['bucket_name'],
+                'Key': s3_key,
+                'ResponseContentType': 'image/webp',
+                'ResponseCacheControl': 'public, max-age=3600'  # Cache for 1 hour
+            },
+            ExpiresIn=3600  # 1 hour
+        )
+        
+        return {"url": presigned_url}
+        
+    except s3_client.exceptions.NoSuchKey:
+        raise HttpError(404, "Avatar not found")
+    except s3_client.exceptions.ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code')
+        if error_code == 'NoSuchKey':
+            raise HttpError(404, "Avatar not found")
+        else:
+            raise HttpError(500, f"S3 error: {error_code} - {str(e)}")
+    except Exception as e:
+        raise HttpError(500, f"Error generating URL: {str(e)}")
