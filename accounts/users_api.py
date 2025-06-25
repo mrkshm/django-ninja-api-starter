@@ -157,7 +157,7 @@ def get_avatar_url(request, path: str):
         base = base[:-3]  # Remove _lg suffix
     
     # Validate filename format (example: avatar-{id}-{timestamp}-{random}.webp)
-    if not (base.startswith('avatar_') and ext.lower() == '.webp'):
+    if not (base.startswith('avatar-') and ext.lower() == '.webp'):
         raise HttpError(400, "Invalid avatar filename format")
     
     # Construct the S3 key - use the path directly as it's already the full key

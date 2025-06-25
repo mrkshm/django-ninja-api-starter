@@ -49,18 +49,6 @@ class EnhancedLimitOffsetPagination(LimitOffsetPagination):
         
         return response
 
-# Utility for consistent contact serialization
-def serialize_contact(contact):
-    # Convert datetimes to ISO strings for API output
-    return {
-        **contact.__dict__,
-        "organization": contact.organization.slug,
-        "creator": contact.creator.slug if contact.creator else None,
-        "created_at": contact.created_at.isoformat() if contact.created_at else None,
-        "updated_at": contact.updated_at.isoformat() if contact.updated_at else None,
-        "tags": [ti.tag for ti in contact.tags.select_related("tag").all()]
-    }
-
 class ContactUpdate(Schema):
     display_name: str | None = None
     first_name: str | None = None
@@ -96,11 +84,11 @@ def list_contacts(
     - sort_by: Field to sort by (display_name, first_name, last_name, email, created_at, updated_at)
     - sort_order: Sort order (asc or desc)
     """
-    user = request.user
+    user = getattr(request, "auth", request.user)
     
     # Only show contacts for orgs the user is a member of
     org_slugs = [m.organization.slug for m in user.memberships.select_related("organization").all()]
-    qs = Contact.objects.select_related("organization", "creator").filter(organization__slug__in=org_slugs)
+    qs = Contact.objects.select_related("organization", "creator").prefetch_related("tagged_items__tag").filter(organization__slug__in=org_slugs)
     
     # Apply search if provided
     if search:
@@ -143,13 +131,13 @@ def list_contacts(
             sort_field = f"-{sort_field}"
         qs = qs.order_by(sort_field)
     
-    return [serialize_contact(c) for c in qs]
+    return qs
 
 @contacts_router.get("/{slug}/", response=ContactOut, auth=JWTAuth())
 def get_contact(request, slug: str):
-    contact = get_object_or_404(Contact.objects.select_related("organization", "creator"), slug=slug)
-    check_contact_member(request.user, contact.organization)
-    return ContactOut.model_validate(serialize_contact(contact))
+    contact = get_object_or_404(Contact.objects.select_related("organization", "creator").prefetch_related("tagged_items__tag"), slug=slug)
+    check_contact_member(getattr(request, "auth", request.user), contact.organization)
+    return contact
 
 @contacts_router.post("/", response=ContactOut, auth=JWTAuth())
 def create_contact(request, data: ContactIn):
@@ -188,14 +176,14 @@ def create_contact(request, data: ContactIn):
     contact_data["slug"] = make_it_unique(slug_candidate, Contact, "slug")
     
     contact = Contact.objects.create(
-        **contact_data, creator=user
+        **contact_data, creator_id=getattr(user, "id", None)
     )
-    return ContactOut.model_validate(serialize_contact(contact))
+    return contact
 
 @contacts_router.put("/{slug}/", response=ContactOut, auth=JWTAuth())
 def update_contact(request, slug: str, data: ContactIn):
     contact = get_object_or_404(Contact, slug=slug)
-    check_contact_member(request.user, contact.organization)
+    check_contact_member(getattr(request, "auth", request.user), contact.organization)
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "organization":
             org = get_object_or_404(Organization, slug=value)
@@ -203,7 +191,7 @@ def update_contact(request, slug: str, data: ContactIn):
         else:
             setattr(contact, field, value)
     contact.save()
-    return ContactOut.model_validate(serialize_contact(contact))
+    return contact
 
 @contacts_router.patch("/{slug}/", response=ContactOut, auth=JWTAuth())
 def partial_update_contact(request, slug: str, data: ContactUpdate):
@@ -219,7 +207,7 @@ def partial_update_contact(request, slug: str, data: ContactUpdate):
         base_slug = slugify(update_fields["display_name"])
         contact.slug = make_it_unique(base_slug, Contact, "slug", exclude_pk=contact.pk)
     contact.save()
-    return ContactOut.model_validate(serialize_contact(contact))
+    return contact
 
 @contacts_router.post("/{slug}/avatar/", response={200: ContactAvatarResponse, 400: DetailResponse}, auth=JWTAuth())
 def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
@@ -251,6 +239,9 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
         avatar_path = filename
         print("avatar_path:", avatar_path, "length:", len(avatar_path))
         print("large_avatar_path:", large_filename, "length:", len(large_filename))
+        # Enforce single avatar: delete old after successful upload
+        if contact.avatar_path:
+            delete_existing_avatar(contact)
         contact.avatar_path = avatar_path
         contact.save(update_fields=["avatar_path"])
         # Generate URLs for API response

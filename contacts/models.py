@@ -26,7 +26,19 @@ class Contact(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    tags = GenericRelation(TaggedItem, related_query_name="contacts")
+    tagged_items = GenericRelation(TaggedItem, related_query_name="contacts")
+
+    @property
+    def tags(self):
+        return [item.tag for item in self.tagged_items.all()]
+
+    @property
+    def organization_slug(self):
+        return self.organization.slug
+
+    @property
+    def creator_slug(self):
+        return self.creator.slug if self.creator else None
 
     def __str__(self):
         return self.display_name

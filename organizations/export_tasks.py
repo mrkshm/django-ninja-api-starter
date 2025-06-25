@@ -56,7 +56,8 @@ def _serialize_org_data(org):
             "creator": c.creator_id,
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-            "tags": list(c.tags.values_list("tag__name", flat=True)),
+            # Contact.tags returns a Python list of Tag objects, not a queryset
+            "tags": [t.name for t in c.tags],
         }
         for c in contacts
     ]

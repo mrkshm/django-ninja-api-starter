@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, field_serializer
-from typing import Optional
+from pydantic import BaseModel, Field, field_serializer, ConfigDict
+from typing import Optional, List
 from datetime import datetime
 
 class ImageCreate(BaseModel):
@@ -7,18 +7,33 @@ class ImageCreate(BaseModel):
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+
+class ImagePatchIn(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    alt_text: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
 
 class ImageUpdate(BaseModel):
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
 
+class ImageVariants(BaseModel):
+    original: Optional[str] = None
+    thumb: Optional[str] = None
+    sm: Optional[str] = None
+    md: Optional[str] = None
+    lg: Optional[str] = None
+
+
 class ImageOut(BaseModel):
     id: int
     file: str
+    url: Optional[str] = None
+    variants: Optional[ImageVariants] = None
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
@@ -40,7 +55,7 @@ class ImageOut(BaseModel):
         return str(v) if v else None
 
     class Config:
-        from_attributes = True
+        model_config = ConfigDict(from_attributes=True)
 
 class PolymorphicImageRelationOut(BaseModel):
     id: int
@@ -52,6 +67,12 @@ class PolymorphicImageRelationOut(BaseModel):
     custom_title: Optional[str] = None
     object_id: int
     content_type: str  # e.g. "contacts.contact"
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+
+class BulkAttachOut(BaseModel):
+    attached: List[int]
+
+
+class BulkDetachOut(BaseModel):
+    detached: List[int]

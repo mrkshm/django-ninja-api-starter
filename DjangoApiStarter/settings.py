@@ -12,7 +12,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import warnings
 import environ
+from django.utils.deprecation import RemovedInDjango60Warning
 
 PROJECT_NAME = os.getenv("PROJECT_NAME", "DjangoApiStarter")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -22,6 +24,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
+# Silence deprecation warning from django-ninja re-registering 'uuid' converter (safe to ignore)
+warnings.filterwarnings(
+    "ignore",
+    category=RemovedInDjango60Warning,
+    message=r"Converter 'uuid' is already registered\.",
+)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -263,3 +272,68 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Logging configuration (structured JSON for audit logs)
+LOG_LEVEL = env("LOG_LEVEL", default="INFO")
+
+# Upload constraints
+# Max image size in bytes (default 10MB)
+UPLOAD_IMAGE_MAX_BYTES = env.int("UPLOAD_IMAGE_MAX_BYTES", default=10 * 1024 * 1024)
+# Allowed MIME type prefixes for images (comma-separated env optional)
+_UPLOAD_ALLOWED_PREFIXES = env.str("UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", default="image/")
+UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES = tuple(p.strip() for p in _UPLOAD_ALLOWED_PREFIXES.split(",") if p.strip())
+
+# API throttling: enabled by default; individual endpoints may configure per-user rates
+NINJA_RATELIMIT_ENABLE = env.bool("NINJA_RATELIMIT_ENABLE", default=True)
+
+# Image API rate limits (per user)
+IMAGES_RATE_LIMIT_UPLOAD = env.str("IMAGES_RATE_LIMIT_UPLOAD", default="60/h")
+IMAGES_RATE_LIMIT_BULK_UPLOAD = env.str("IMAGES_RATE_LIMIT_BULK_UPLOAD", default="30/h")
+IMAGES_RATE_LIMIT_BULK_DELETE = env.str("IMAGES_RATE_LIMIT_BULK_DELETE", default="30/h")
+IMAGES_RATE_LIMIT_BULK_ATTACH = env.str("IMAGES_RATE_LIMIT_BULK_ATTACH", default="60/h")
+IMAGES_RATE_LIMIT_BULK_DETACH = env.str("IMAGES_RATE_LIMIT_BULK_DETACH", default="60/h")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "()": "core.utils.logging.JSONFormatter",
+        },
+        "plain": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": LOG_LEVEL,
+            "stream": "ext://sys.stdout",
+            "formatter": "json",
+        },
+        "console_plain": {
+            "class": "logging.StreamHandler",
+            "level": LOG_LEVEL,
+            "stream": "ext://sys.stdout",
+            "formatter": "plain",
+        },
+    },
+    "loggers": {
+        # Minimal audit logger used by images/tags APIs
+        "audit": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Default Django logger (plain text)
+        "django": {
+            "handlers": ["console_plain"],
+            "level": LOG_LEVEL,
+            "propagate": True,
+        },
+    },
+    # Root logger
+    "root": {
+        "handlers": ["console_plain"],
+        "level": LOG_LEVEL,
+    },
+}

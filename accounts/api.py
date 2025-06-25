@@ -21,6 +21,7 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 from core.utils.auth_utils import require_authenticated_user
 from ninja_jwt.schema import TokenObtainPairInputSchema, TokenObtainPairOutputSchema
+from django.conf import settings
 
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
@@ -52,8 +53,9 @@ class CustomJWTController(NinjaJWTDefaultController):
             if not user.check_password(data.password):
                 raise HttpError(401, "Invalid credentials")
                 
-            # Check if email is verified
-            if not user.email_verified:
+            # Check if email is verified (configurable for tests)
+            require_verification = getattr(settings, "REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN", True)
+            if require_verification and not user.email_verified:
                 return 403, UnverifiedUserSchema(
                     detail="Please verify your email address before logging in.",
                     email_verified=False

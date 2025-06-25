@@ -28,7 +28,7 @@ services:
       sh -c "python manage.py wait_for_db &&
              python manage.py migrate django_celery_beat &&
              python manage.py migrate &&
-             if [ \"$DJANGO_ENV\" = \"production\" ]; then 
+             if [ \"$$DJANGO_ENV\" = \"production\" ]; then 
                python manage.py collectstatic --noinput &&
                gunicorn DjangoApiStarter.wsgi:application -c gunicorn.conf.py; 
              else 

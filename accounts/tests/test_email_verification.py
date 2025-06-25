@@ -95,7 +95,10 @@ def test_verify_registration_with_expired_token():
     assert user.email_verified is False
 
 @pytest.mark.django_db
-def test_login_with_unverified_user():
+def test_login_with_unverified_user(settings):
+    # Override the global setting for this specific test
+    settings.REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN = True
+    
     # Arrange
     email = "unverifieduser@example.com"
     password = "securepassword123"

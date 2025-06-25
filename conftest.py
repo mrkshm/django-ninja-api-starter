@@ -1,15 +1,22 @@
 import pytest
-from ninja import NinjaAPI
+import os
 from ninja.testing import TestClient
-from tags.api import get_tags_router
-import importlib
 from django.conf import settings
 import inspect
+from DjangoApiStarter.api import api as project_api
+from ninja import NinjaAPI
 
 # Globally disable Ninja ratelimit for all tests by default
 # (Turn on only for specific tests that explicitly test rate limiting)
 def pytest_configure():
     settings.NINJA_RATELIMIT_ENABLE = False
+    # Allow login without verified email for most tests; specific tests can override this
+    settings.REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN = False
+    # Ensure Ninja registry checks are skipped in tests
+    import os as _os
+    _os.environ.setdefault("NINJA_SKIP_REGISTRY", "true")
+    # Set environment variable to skip Ninja registry validation
+    os.environ.setdefault("NINJA_SKIP_REGISTRY", "true")
 
 @pytest.fixture(autouse=True)
 def patch_ninja_user_rate_throttle(monkeypatch):
@@ -27,10 +34,22 @@ def patch_ninja_user_rate_throttle(monkeypatch):
     else:
         monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request: True)
 
-@pytest.fixture(scope="module")
+
+@pytest.fixture(scope="function")
 def api_client():
-    test_api = NinjaAPI(urls_namespace="test_tags")
-    obtain_pair_router = importlib.import_module("ninja_jwt.routers.obtain").obtain_pair_router
-    test_api.add_router("/token", obtain_pair_router)
-    test_api.add_router("/", get_tags_router())
-    return TestClient(test_api)
+    # Use the main project API to prevent re-attaching shared routers
+    try:
+        NinjaAPI._registry.clear()
+    except Exception:
+        pass
+    return TestClient(project_api)
+
+@pytest.fixture
+def make_auth_headers():
+    """Return a callable that generates Bearer auth headers for a user via /token/pair."""
+    def _make(client: TestClient, user, password: str = "pw") -> dict[str, str]:
+        resp = client.post("/token/pair", json={"email": user.email, "password": password})
+        assert resp.status_code == 200, f"Failed to get token for {user.email}: {resp.status_code} {resp.content}"
+        access = resp.json()["access"]
+        return {"Authorization": f"Bearer {access}"}
+    return _make

@@ -137,37 +137,34 @@ def test_bulk_delete_images():
 
 @pytest.mark.django_db
 def test_attach_and_detach_image():
-    from django.contrib.contenttypes.models import ContentType
     # Create org and user
     org = Organization.objects.create(name="AttachOrg", slug="attachorg")
     user = User.objects.create_user(email="attach@example.com", password="pw", email_verified=True)
     Membership.objects.create(user=user, organization=org, role="owner")
     img = Image.objects.create(file=create_test_image_file(name="att.png"), organization=org, creator=user)
-    
-    # We can't use a real contact, so let's use the organization model as the target object
+
+    # Use organization as the target object for polymorphic relation
     app_label = "organizations"
     model = "organization"
     object_id = org.id
-    
+
     client = Client()
     access = get_access_token("attach@example.com", "pw")
     assert access, "Failed to get access token. Check credentials and token endpoint."
-    
-    # Attach
+
+    # Attach via polymorphic endpoint
+    attach_url = f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/{object_id}/"
     response = client.post(
-        f"/api/v1/images/orgs/{org.slug}/attach/",
-        {"image_id": img.id, "app_label": app_label, "model": model, "object_id": object_id},
+        attach_url,
+        data={"image_ids": [img.id]},
         content_type="application/json",
         HTTP_AUTHORIZATION=f"Bearer {access}"
     )
     assert response.status_code == 200, response.content
-    # Detach
-    response = client.post(
-        f"/api/v1/images/orgs/{org.slug}/detach/",
-        {"image_id": img.id, "app_label": app_label, "model": model, "object_id": object_id},
-        content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {access}"
-    )
+
+    # Detach via DELETE (204 No Content)
+    detach_url = f"/api/v1/images/orgs/{org.slug}/images/{app_label}/{model}/{object_id}/{img.id}/"
+    response = client.delete(detach_url, HTTP_AUTHORIZATION=f"Bearer {access}")
     assert response.status_code == 204, response.content
 
 @pytest.mark.django_db

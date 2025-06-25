@@ -1,5 +1,6 @@
 from typing import Optional
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, Field, ConfigDict
+from datetime import datetime
 
 from tags.schemas import TagOut
 
@@ -21,6 +22,7 @@ class ContactIn(BaseModel):
         return self
 
 class ContactOut(BaseModel):
+    id: int
     display_name: str
     slug: str
     first_name: Optional[str] = None
@@ -30,14 +32,14 @@ class ContactOut(BaseModel):
     phone: Optional[str] = None
     notes: Optional[str] = None
     avatar_path: Optional[str] = None
-    organization: str
-    creator: Optional[str] = None  # User slug
+    # Map organization_slug/creator_slug attributes from the model to desired API field names
+    organization: str = Field(validation_alias="organization_slug")
+    creator: Optional[str] = Field(default=None, validation_alias="creator_slug")
     tags: list[TagOut]
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ContactAvatarResponse(BaseModel):
     avatar_path: Optional[str] = None

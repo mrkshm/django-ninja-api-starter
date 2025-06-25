@@ -9,6 +9,7 @@ from contacts.api import contacts_router
 from tags.api import get_tags_router
 from images.api import router as images_router, custom_validation_error
 from ninja.errors import ValidationError as NinjaValidationError
+from ninja.errors import HttpError
 from organizations.api_export import export_router
 
 # Custom ORJSON Renderer
@@ -44,6 +45,14 @@ api.add_router("/images/", images_router)
 api.add_router("/orgs/", export_router, tags=["organization", "export"])
 # Register error handlers (especially for validation errors)
 api.add_exception_handler(NinjaValidationError, custom_validation_error)
+
+# Normalize HttpError responses to {"detail": string}
+from django.http import JsonResponse as _JsonResponse
+
+def _custom_http_error(request, exc: HttpError):
+    return _JsonResponse({"detail": str(exc)}, status=getattr(exc, "status_code", 400))
+
+api.add_exception_handler(HttpError, _custom_http_error)
 # Register fallback path for NinjaAPI for bulk endpoints
 from django.urls import path, include
 from django.conf.urls import handler404, handler500

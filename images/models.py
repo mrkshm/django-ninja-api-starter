@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from organizations.models import Organization
@@ -46,6 +47,17 @@ class PolymorphicImageRelation(models.Model):
     class Meta:
         unique_together = ('image', 'content_type', 'object_id')
         ordering = ['order', 'pk']
+        constraints = [
+            # Ensure at most one primary (is_cover=True) per (content_type, object_id)
+            models.UniqueConstraint(
+                fields=["content_type", "object_id", "is_cover"],
+                condition=Q(is_cover=True),
+                name="uniq_primary_per_object",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["content_type", "object_id", "order"], name="rel_obj_order_idx"),
+        ]
 
     def __str__(self):
         return f"{self.content_object} - {self.image}"
