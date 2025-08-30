@@ -76,3 +76,7 @@ class BulkAttachOut(BaseModel):
 
 class BulkDetachOut(BaseModel):
     detached: List[int]
+
+
+class SetCoverIn(BaseModel):
+    image_id: int

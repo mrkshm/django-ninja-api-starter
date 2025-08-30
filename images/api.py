@@ -8,7 +8,7 @@ from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from organizations.models import Organization
 from images.models import Image, PolymorphicImageRelation
-from images.schemas import ImageOut, PolymorphicImageRelationOut, ImageVariants, BulkAttachOut, BulkDetachOut, ImagePatchIn
+from images.schemas import ImageOut, PolymorphicImageRelationOut, ImageVariants, BulkAttachOut, BulkDetachOut, ImagePatchIn, SetCoverIn
 from ninja.pagination import LimitOffsetPagination, paginate
 from ninja.throttling import UserRateThrottle
 from django.db import transaction
@@ -98,6 +98,39 @@ def get_org_for_request(request, org_slug):
     check_contact_member(user, org)
     return org
 
+def _build_relative_urls(file_name: str) -> tuple[str, ImageVariants]:
+    base, ext = os.path.splitext(file_name)
+    # Use stable proxy route under /media/<key>
+    def rel(key: str) -> str:
+        return f"/media/{key}"
+
+    def exists(key: str) -> bool:
+        try:
+            return default_storage.exists(key)
+        except Exception:
+            return False
+
+    # Original
+    original_key = file_name
+    original_url = rel(original_key) if exists(original_key) else None
+
+    # Variants (only include if actually present in storage)
+    thumb_key = f"{base}_thumb.webp"
+    sm_key = f"{base}_sm.webp"
+    md_key = f"{base}_md.webp"
+    lg_key = f"{base}_lg.webp"
+
+    # Always provide strings for variants; fall back to original URL when a variant is missing
+    original_or_fallback = (original_url or rel(original_key))
+    variants = ImageVariants(
+        original=original_or_fallback,
+        thumb=(rel(thumb_key) if exists(thumb_key) else original_or_fallback),
+        sm=(rel(sm_key) if exists(sm_key) else original_or_fallback),
+        md=(rel(md_key) if exists(md_key) else original_or_fallback),
+        lg=(rel(lg_key) if exists(lg_key) else original_or_fallback),
+    )
+    return original_or_fallback, variants
+
 # List all images for an organization
 @router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
@@ -116,15 +149,7 @@ def list_images_for_org(request, org_slug: str, ordering: str | None = None):
     out: list[dict] = []
     for img in images:
         file_name = img.file.name if hasattr(img.file, 'name') else str(img.file)
-        base, ext = os.path.splitext(file_name)
-        url = default_storage.url(file_name) if file_name else None
-        variants = ImageVariants(
-            original=url,
-            thumb=default_storage.url(f"{base}_thumb.webp"),
-            sm=default_storage.url(f"{base}_sm.webp"),
-            md=default_storage.url(f"{base}_md.webp"),
-            lg=default_storage.url(f"{base}_lg.webp"),
-        )
+        url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
         out.append({
             "id": img.id,
             "file": file_name,
@@ -170,15 +195,7 @@ def list_images_for_object(request, org_slug: str, app_label: str, model: str, o
     result = []
     for rel in relations:
         file_name = rel.image.file.name if hasattr(rel.image.file, 'name') else str(rel.image.file)
-        base, ext = os.path.splitext(file_name)
-        url = default_storage.url(file_name) if file_name else None
-        variants = ImageVariants(
-            original=url,
-            thumb=default_storage.url(f"{base}_thumb.webp"),
-            sm=default_storage.url(f"{base}_sm.webp"),
-            md=default_storage.url(f"{base}_md.webp"),
-            lg=default_storage.url(f"{base}_lg.webp"),
-        )
+        url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
         result.append({
             "id": rel.id,
             "image": {
@@ -234,15 +251,7 @@ def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: in
                 org.id, getattr(user, "id", None), app_label, model, obj_id, image.id, rel.id,
             )
         file_name = image.file.name if hasattr(image.file, 'name') else str(image.file)
-        base, ext = os.path.splitext(file_name)
-        url = default_storage.url(file_name) if file_name else None
-        variants = ImageVariants(
-            original=url,
-            thumb=default_storage.url(f"{base}_thumb.webp"),
-            sm=default_storage.url(f"{base}_sm.webp"),
-            md=default_storage.url(f"{base}_md.webp"),
-            lg=default_storage.url(f"{base}_lg.webp"),
-        )
+        url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
         out.append({
             "id": rel.id,
             "image": {
@@ -338,6 +347,7 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
     )
     if not rels:
         return {"detail": "ok"}
+
     rel_by_image = {r.image_id: r for r in rels}
 
     provided = data.image_ids
@@ -357,22 +367,56 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
         updates = []
         for idx, image_id in enumerate(provided):
             rel = rel_by_image[image_id]
-            new_is_cover = (idx == 0)
-            changed = False
             if rel.order != idx:
                 rel.order = idx
-                changed = True
-            if rel.is_cover != new_is_cover:
-                rel.is_cover = new_is_cover
-                changed = True
-            if changed:
                 updates.append(rel)
         if updates:
-            PolymorphicImageRelation.objects.bulk_update(updates, ["order", "is_cover"]) 
+            # Update only the order first
+            PolymorphicImageRelation.objects.bulk_update(updates, ["order"]) 
+        # Flip cover safely: clear any existing cover then set the new one
+        PolymorphicImageRelation.objects.filter(
+            content_type=ct, object_id=obj.pk, is_cover=True
+        ).update(is_cover=False)
+        if provided:
+            PolymorphicImageRelation.objects.filter(
+                content_type=ct, object_id=obj.pk, image_id=provided[0]
+            ).update(is_cover=True)
         logger.info(
             "audit:image_reorder org=%s user=%s app=%s model=%s obj=%s images=%s",
             org.id, getattr(user, "id", None), app_label, model, obj_id, provided,
         )
+    return {"detail": "ok"}
+
+# Set an image as cover for an object (does not modify order)
+@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", auth=JWTAuth())
+def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn):
+    org = get_org_for_request(request, org_slug)
+    user = request.user
+    Model = apps.get_model(app_label, model)
+    obj = get_object_or_404(Model, pk=obj_id)
+    check_object_belongs_to_org(obj, org)
+    ct = ContentType.objects.get_for_model(obj)
+
+    # Ensure the image exists and belongs to the organization
+    image = get_object_or_404(Image, id=data.image_id, organization=org)
+    # Ensure the relation exists (image must be attached to the object)
+    _ = get_object_or_404(PolymorphicImageRelation, image=image, content_type=ct, object_id=obj.pk)
+
+    with transaction.atomic():
+        # Lock all relations for this object to prevent race conditions
+        qs = (
+            PolymorphicImageRelation.objects
+            .select_for_update()
+            .filter(content_type=ct, object_id=obj.pk)
+        )
+        # Clear any existing cover then set the selected one
+        qs.filter(is_cover=True).update(is_cover=False)
+        qs.filter(image_id=data.image_id).update(is_cover=True)
+
+    logger.info(
+        "audit:image_set_cover org=%s user=%s app=%s model=%s obj=%s image=%s",
+        org.id, getattr(user, "id", None), app_label, model, obj_id, data.image_id,
+    )
     return {"detail": "ok"}
 
 # Bulk detach images from an object
@@ -446,14 +490,7 @@ def edit_image_metadata(request, org_slug: str, image_id: int, data: ImagePatchI
     # Build response with variants
     file_name = image.file.name if hasattr(image.file, 'name') else str(image.file)
     base, ext = os.path.splitext(file_name)
-    url = default_storage.url(file_name) if file_name else None
-    variants = ImageVariants(
-        original=url,
-        thumb=default_storage.url(f"{base}_thumb.webp"),
-        sm=default_storage.url(f"{base}_sm.webp"),
-        md=default_storage.url(f"{base}_md.webp"),
-        lg=default_storage.url(f"{base}_lg.webp"),
-    )
+    url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
     out = {
         "id": image.id,
         "file": file_name,
@@ -481,9 +518,19 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
     prefixes = getattr(settings, "UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", ("image/",))
     if not any(str(file.content_type or "").startswith(p) for p in prefixes):
         return 400, {"detail": "Invalid file type. Only images are allowed."}
-    # Save file
+    # Save original file and generate variants
     filename = generate_upload_filename(f"img_{org.slug[:8]}", file.name)
-    upload_to_storage(filename, file.read())
+    data = file.read()
+    upload_to_storage(filename, data)
+    # Generate and upload webp variants
+    try:
+        variants_bytes = resize_images(data)
+        base, ext = os.path.splitext(filename)
+        for key, content in variants_bytes.items():
+            variant_key = f"{base}_{key}.webp"
+            upload_to_storage(variant_key, content)
+    except Exception as e:
+        logger.warning("images:variant_generate_failed org=%s file=%s err=%s", org.id, filename, str(e))
     img = Image.objects.create(
         file=filename,
         organization=org,
@@ -495,14 +542,7 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
     # Convert model to dictionary with proper types for validation
     file_name = str(img.file)
     base, ext = os.path.splitext(file_name)
-    url = default_storage.url(file_name)
-    variants = ImageVariants(
-        original=url,
-        thumb=default_storage.url(f"{base}_thumb.webp"),
-        sm=default_storage.url(f"{base}_sm.webp"),
-        md=default_storage.url(f"{base}_md.webp"),
-        lg=default_storage.url(f"{base}_lg.webp"),
-    )
+    url, variants = _build_relative_urls(file_name)
     img_dict = {
         "id": img.id,
         "file": file_name,
@@ -548,7 +588,17 @@ def bulk_upload_images(request, org_slug: str):
                     responses.append(BulkUploadResponse(status="error", error="Invalid file type", file=file.name))
                     continue
                 filename = generate_upload_filename(f"img_{org.slug[:8]}", file.name)
-                upload_to_storage(filename, file.read())
+                data = file.read()
+                upload_to_storage(filename, data)
+                # Generate and upload webp variants
+                try:
+                    variants_bytes = resize_images(data)
+                    base, ext = os.path.splitext(filename)
+                    for key, content in variants_bytes.items():
+                        variant_key = f"{base}_{key}.webp"
+                        upload_to_storage(variant_key, content)
+                except Exception as e:
+                    logger.warning("images:variant_generate_failed org=%s file=%s err=%s", org.id, filename, str(e))
                 img = Image.objects.create(
                     file=filename,
                     organization=org,

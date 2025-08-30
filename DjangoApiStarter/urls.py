@@ -17,6 +17,7 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
+from images.views import media_serve
 from django.http import HttpResponse
 from .api import api
 
@@ -27,4 +28,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", api.urls),
     path("kamal/up/", health_check),
+    path("media/<path:key>", media_serve, name="media-serve"),
 ]

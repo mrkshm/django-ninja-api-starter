@@ -2,7 +2,7 @@
 
 A starter template for building REST APIs with [Django Ninja](https://django-ninja.dev) and Django.
 
-Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow, ImageKit... all that good stuff.
+Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow... all that good stuff.
 
 ## Features
 
@@ -217,10 +217,10 @@ You can upload images and attach them to any model (contacts, organizations, etc
   - `POST /api/v1/images/orgs/{org_slug}/bulk-upload/` (multipart/form-data, field: `files`)
 - **Bulk delete images**
   - `POST /api/v1/images/orgs/{org_slug}/bulk-delete/` with body `{ "ids": [1,2,3] }`
-- **Attach image to any object**
-  - `POST /api/v1/images/orgs/{org_slug}/attach/` with body `{ "image_id": 1, "app_label": "contacts", "model": "contact", "object_id": 42 }`
-- **Detach image from any object**
-  - `POST /api/v1/images/orgs/{org_slug}/detach/` (same payload as attach)
+- **Attach images to a specific object**
+  - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/` with body `{ "image_ids": [1,2,3] }`
+- **Detach single image from an object**
+  - `DELETE /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/{image_id}/`
 - **Bulk attach/detach to a specific object**
   - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/` with body `{ "image_ids": [1,2,3] }`
   - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/` with body `{ "image_ids": [1,2,3] }`
@@ -229,6 +229,13 @@ You can upload images and attach them to any model (contacts, organizations, etc
   - `GET /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/`
 - **Update image metadata**
   - `PATCH /api/v1/images/orgs/{org_slug}/images/{image_id}/`
+
+#### Stable Media Proxy and Variants
+
+- Images are served via a stable proxy endpoint: `GET /media/<path:key>` (`images.views.media_serve`).
+- API responses return stable, relative URLs for `url` and `variants { original, thumb, sm, md, lg }`.
+- If a specific variant file is missing, the API falls back to the original URL for that variant, ensuring strings for all fields.
+- See `docs/polymorphic-images.md` for details on sizes, caching, and a backfill command to generate variants for existing images.
 
 **All API details and schemas are fully documented in the OpenAPI (Swagger) docs.**
 

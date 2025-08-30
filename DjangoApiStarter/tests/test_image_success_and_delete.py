@@ -36,10 +36,11 @@ class TestImageSuccessAndDeletion(TestCase):
             self.assertTrue(resp.url.startswith("/media/"))
             base = os.path.splitext(resp.file)[0]
             self.assertEqual(resp.variants.original, resp.url)
-            self.assertEqual(resp.variants.thumb, f"/media/{base}_thumb.webp")
-            self.assertEqual(resp.variants.sm, f"/media/{base}_sm.webp")
-            self.assertEqual(resp.variants.md, f"/media/{base}_md.webp")
-            self.assertEqual(resp.variants.lg, f"/media/{base}_lg.webp")
+            # In tests, variant files are not actually present; backend now falls back to original
+            self.assertEqual(resp.variants.thumb, resp.url)
+            self.assertEqual(resp.variants.sm, resp.url)
+            self.assertEqual(resp.variants.md, resp.url)
+            self.assertEqual(resp.variants.lg, resp.url)
 
     @override_settings(UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024, UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",))
     def test_bulk_upload_success(self):
@@ -65,13 +66,14 @@ class TestImageSuccessAndDeletion(TestCase):
             out_by_id = {img["id"]: img for img in images_out}
             for img_id in ids:
                 img = out_by_id[img_id]
-                base = os.path.splitext(img["file"])[0]
-                assert img["url"] == f"/media/{img['file']}"
+                assert img["url"].startswith("/media/")
                 variants = img["variants"]
-                assert variants["thumb"] == f"/media/{base}_thumb.webp"
-                assert variants["sm"] == f"/media/{base}_sm.webp"
-                assert variants["md"] == f"/media/{base}_md.webp"
-                assert variants["lg"] == f"/media/{base}_lg.webp"
+                # Fallback to original is expected in test environment (no variants written)
+                assert variants["original"] == img["url"]
+                assert variants["thumb"] == img["url"]
+                assert variants["sm"] == img["url"]
+                assert variants["md"] == img["url"]
+                assert variants["lg"] == img["url"]
 
     def test_delete_removes_original_and_variants(self):
         # Create image with a known file name
