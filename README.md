@@ -20,7 +20,7 @@ Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow... all that goo
 - PostGIS support
 - Gunicorn configuration
 - Kamal deployment
-- Test Coverage: 97%
+
 
 ## Renaming the Project
 
@@ -34,6 +34,11 @@ If you want to use this starter as the base for your own project, you should ren
      find . -type f -exec sed -i '' 's/DjangoApiStarter/MyProject/g' {} +
      # Replace django-api-starter with myproject everywhere
      find . -type f -exec sed -i '' 's/django-api-starter/myproject/g' {} +
+     ```
+   - On Linux (GNU sed), use:
+     ```sh
+     git ls-files | xargs sed -i 's/DjangoApiStarter/MyProject/g'
+     git ls-files | xargs sed -i 's/django-api-starter/myproject/g'
      ```
 3. **Rename the main project directory** (`DjangoApiStarter/`) to your new name.
 4. **Update references** in files like `manage.py`, `wsgi.py`, `asgi.py`, Dockerfiles, and `config/deploy.yml` if needed.
@@ -72,6 +77,21 @@ FRONTEND_URL=http://localhost:3000
 
 # Server Configuration
 DJANGO_ENV=development  # Set to 'production' to use Gunicorn
+```
+
+### Quickstart
+
+```bash
+# 1) Copy env and start services
+cp .env.example .env
+docker compose up -d --build
+
+# 2) Apply migrations and create a superuser
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py createsuperuser
+
+# 3) Open Swagger (when running locally)
+open http://localhost:8000/api/docs
 ```
 
 ## Details
@@ -125,7 +145,7 @@ Example use cases:
 - [x] GDPR-compliant data export
 - [x] Admin UI
 - [x] Easy deployment with Kamal
-- [x] Get testing percentage to a reasonable number -> current coverage is 97%
+- [x] Get testing percentage to a reasonable number
 - [x] Better docs
 
 ## Running Tests
@@ -147,97 +167,25 @@ This guarantees all file operations use the local filesystem during tests.
 
 For more details, see [`docs/testing.md`](docs/testing.md).
 
-## Polymorphic Tagging (Organization-Scoped)
+Run tests:
 
-You can assign tags to any model using the ContentTypes framework. Tags are scoped to the user's current organization and are unique within each organization. All tag API endpoints require the organization slug in the URL, and users may only access tags for organizations they are currently active in.
-
-### Tag Endpoints
-
-- **Assign tags to an object**
-  - `POST /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/`
-  - Example: `/api/v1/orgs/acme-inc/tags/contacts/contact/42/` with body `["vip", "newsletter"]`
-- **Remove a tag from an object**
-  - `DELETE /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/`
-  - Example: `/api/v1/orgs/acme-inc/tags/contacts/contact/42/vip/`
-- **List all tags for an organization**
-  - `GET /api/v1/orgs/{org_slug}/tags/`
-- **Edit a tag's name**
-  - `PATCH /api/v1/orgs/{org_slug}/tags/{tag_id}/` (body: `{ "name": "newname" }`)
-- **Delete a tag**
-  - `DELETE /api/v1/orgs/{org_slug}/tags/{tag_id}/`
-
-### How it works
-
-- Tags are stored in the `tags` app using the `Tag` and `TaggedItem` models.
-- Tag assignment is polymorphic: any model can be tagged by specifying its `app_label`, `model` name, and object ID.
-- The system uses Django's ContentTypes to link tags to arbitrary models.
-- All tag actions are restricted to the user's current organization (enforced via org slug in the URL and membership checks).
-
-### Example: Tagging a Contact
-
-To assign tags to a contact with ID 42 in organization `acme-inc`:
-
-```http
-POST /api/v1/orgs/acme-inc/tags/contacts/contact/42/
-Body: ["vip", "newsletter"]
+```bash
+docker compose exec web pytest -q
 ```
 
-To remove the tag `vip` from the same contact:
+## API Docs
 
-```http
-DELETE /api/v1/orgs/acme-inc/tags/contacts/contact/42/vip/
-```
+Details about the API routes are available in the docs:
 
-### Notes
+- Images & Tags API: see `docs/api-routes.md`
+- Interactive OpenAPI (Swagger): available at `/api/docs` when running the server
+  - Local dev: http://localhost:8000/api/docs
 
-- Tags are unique **per organization**. The same tag name or slug can exist in different organizations.
-- Tags are always associated with an organization (ForeignKey).
-- All tag endpoints require authentication and org membership.
-- Only the user's current org is accessible in the API.
+## Polymorphic Images and Tags
 
-## Polymorphic Images (Organization-Scoped)
-
-You can upload images and attach them to any model (contacts, organizations, etc.) using Django's ContentTypes framework. Images are always scoped to the user's current organization. All image API endpoints require the organization slug in the URL, and users may only access images for organizations they are currently active in.
-
-### Image Features
-
-- Upload single or multiple images (bulk upload)
-- Automatic generation of multiple .webp versions (thumb, small, medium, large)
-- Attach/detach images to any model (polymorphic relation)
-- Set cover images, custom alt text, title, and description per relation
-- List images for an organization or for a specific object
-- Update image metadata (title, description, alt text)
-- All endpoints require JWT authentication and enforce org membership
-
-### Image Endpoints
-
-- **Upload image**
-  - `POST /api/v1/images/orgs/{org_slug}/images/` (multipart/form-data, field: `file`)
-- **Bulk upload images**
-  - `POST /api/v1/images/orgs/{org_slug}/bulk-upload/` (multipart/form-data, field: `files`)
-- **Bulk delete images**
-  - `POST /api/v1/images/orgs/{org_slug}/bulk-delete/` with body `{ "ids": [1,2,3] }`
-- **Attach images to a specific object**
-  - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/` with body `{ "image_ids": [1,2,3] }`
-- **Detach single image from an object**
-  - `DELETE /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/{image_id}/`
-- **Bulk attach/detach to a specific object**
-  - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/` with body `{ "image_ids": [1,2,3] }`
-  - `POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/` with body `{ "image_ids": [1,2,3] }`
-- **List images for org or object**
-  - `GET /api/v1/images/orgs/{org_slug}/images/`
-  - `GET /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/`
-- **Update image metadata**
-  - `PATCH /api/v1/images/orgs/{org_slug}/images/{image_id}/`
-
-#### Stable Media Proxy and Variants
-
-- Images are served via a stable proxy endpoint: `GET /media/<path:key>` (`images.views.media_serve`).
-- API responses return stable, relative URLs for `url` and `variants { original, thumb, sm, md, lg }`.
-- If a specific variant file is missing, the API falls back to the original URL for that variant, ensuring strings for all fields.
-- See `docs/polymorphic-images.md` for details on sizes, caching, and a backfill command to generate variants for existing images.
-
-**All API details and schemas are fully documented in the OpenAPI (Swagger) docs.**
+- Polymorphic Tags: assign, list, unassign, CRUD, org scoping
+- Polymorphic Images: upload, attach/detach, reorder, set/unset cover, variants
+- Auth, rate limits, and audit logging
 
 ## Organization Data Export (GDPR-Compliant)
 
@@ -297,7 +245,6 @@ By default, this API uses a **loose org permission model**:
 
 - **All members of an organization can perform all actions** (create, update, delete, view) on all resources in that organization.
 - No distinction is made between admin, owner, or member for access control—membership is sufficient.
-- This makes onboarding and development simple and fast for new projects and teams.
 
 ### How to Tighten Permissions
 

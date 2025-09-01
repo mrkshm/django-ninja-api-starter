@@ -163,6 +163,23 @@ This document describes all REST API endpoints provided by this project. For ful
     - All images must belong to the same organization.
     - Membership and object-ownership enforced; returns normalized errors `{ detail: string }`.
   - 200 → List[PolymorphicImageRelationOut] after reordering
+
+- POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover
+  - Set a specific attached image as the cover (primary) without changing order
+  - Body: `{ "image_id": number }`
+  - Behavior:
+    - Transactional and idempotent
+    - Validates the image is attached to the target object and belongs to the same organization
+    - Clears any existing cover and sets the provided `image_id` as `is_cover=true`
+  - 200 → `{ detail: "ok" }`
+
+- POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover
+  - Unset any current cover (primary) without changing order
+  - Body: none
+  - Behavior:
+    - Transactional and idempotent
+    - Sets `is_cover=false` for all relations of the target object
+  - 200 → `{ detail: "ok" }`
 - POST /api/v1/images/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/
   - Bulk attach images to an object
   - Body: `BulkImageIdsIn { image_ids: number[] }`
@@ -201,6 +218,9 @@ Notes:
 
 - Ordering and primary live on the relation (`PolymorphicImageRelation`) so the same image can have different positions/primary status per object.
 - Database guarantees at most one primary per object via a partial unique constraint.
+- Primary can be set in two ways:
+  - By reorder: the first in the provided list becomes primary.
+  - Directly via `set_cover` / removed via `unset_cover` without changing order.
 - Index on `(content_type, object_id, order)` for efficient ordered reads.
 
 ---
@@ -288,6 +308,7 @@ Configured in `DjangoApiStarter/settings.py` under `LOGGING` with a custom JSON 
 
 Examples of events:
 - `audit:image_attach`, `audit:image_bulk_attach`, `audit:image_bulk_detach`, `audit:image_detach`, `audit:image_delete`
+- `audit:image_set_cover`, `audit:image_unset_cover`, `audit:image_reorder`
 - `audit:tag_create`, `audit:tag_assign`, `audit:tag_bulk_unassign`, `audit:tag_unassign`, `audit:tag_delete`
 - `audit:rate_limited` — emitted when a request is throttled (429), includes `user`, `org`, `path`, `rate`, `ip`
 

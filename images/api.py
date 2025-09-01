@@ -419,6 +419,30 @@ def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: 
     )
     return {"detail": "ok"}
 
+# Unset any cover image for an object (does not modify order)
+@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", auth=JWTAuth())
+def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int):
+    org = get_org_for_request(request, org_slug)
+    user = request.user
+    Model = apps.get_model(app_label, model)
+    obj = get_object_or_404(Model, pk=obj_id)
+    check_object_belongs_to_org(obj, org)
+    ct = ContentType.objects.get_for_model(obj)
+
+    with transaction.atomic():
+        qs = (
+            PolymorphicImageRelation.objects
+            .select_for_update()
+            .filter(content_type=ct, object_id=obj.pk)
+        )
+        qs.filter(is_cover=True).update(is_cover=False)
+
+    logger.info(
+        "audit:image_unset_cover org=%s user=%s app=%s model=%s obj=%s",
+        org.id, getattr(user, "id", None), app_label, model, obj_id,
+    )
+    return {"detail": "ok"}
+
 # Bulk detach images from an object
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/", response=BulkDetachOut, auth=JWTAuth(), throttle=[bulk_detach_throttle])
 def bulk_detach_images(
