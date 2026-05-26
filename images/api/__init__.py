@@ -1,10 +1,14 @@
-from typing import List
-import logging
-from ninja import Router, File, UploadedFile, Status
-from ninja.errors import HttpError, ValidationError as NinjaValidationError
-from ninja_jwt.authentication import JWTAuth
-from django.shortcuts import get_object_or_404
-from images.models import Image, PolymorphicImageRelation
+import os
+from importlib import import_module
+
+from django.core.files.storage import default_storage
+from django.http import JsonResponse
+
+from core.utils.idempotency import HEADER_NAME, read_cached_response, store_cached_response
+from core.utils.image import resize_images
+from core.utils.storage import upload_to_storage
+from core.utils.utils import generate_upload_filename
+from images.api.common import get_org_for_request, logger, router
 from images.api_schemas import (
     BulkDeleteResponse,
     BulkImageIdsIn,
@@ -12,9 +16,6 @@ from images.api_schemas import (
     ImageIdsIn,
     ReorderIn,
 )
-from images.schemas import DetailResponse, ImageOut, PolymorphicImageRelationOut, BulkAttachOut, BulkDetachOut, ImagePatchIn, SetCoverIn
-from images.serializers import serialize_image, serialize_image_relation
-from ninja.pagination import LimitOffsetPagination, paginate
 from images.throttles import (
     LoggingUserRateThrottle,
     bulk_attach_throttle,
@@ -23,494 +24,70 @@ from images.throttles import (
     bulk_upload_throttle,
     upload_throttle,
 )
-from django.db import transaction
-from core.utils.idempotency import read_cached_response, store_cached_response, HEADER_NAME
-from django.core.files.storage import default_storage
-from core.utils.utils import generate_upload_filename
-from core.utils.image import resize_images
-from core.utils.storage import upload_to_storage
-from django.utils import timezone
-from django.core.files.base import ContentFile
-import os
-from datetime import datetime
-from django.http import JsonResponse
-from core.utils.polymorphic import resolve_org_for_request, resolve_org_scoped_content_object
-from django.conf import settings
 
-router = Router(tags=["images"])
-logger = logging.getLogger("audit")
+_listing = import_module("images.api.listing")
+_relations = import_module("images.api.relations")
+_ordering = import_module("images.api.ordering")
+_metadata = import_module("images.api.metadata")
+_uploads = import_module("images.api.uploads")
+_deletion = import_module("images.api.deletion")
 
-# Helper function to check org membership using the new permission helper
-def get_org_for_request(request, org_slug):
-    return resolve_org_for_request(request, org_slug)
+list_images_for_org = _listing.list_images_for_org
+list_images_for_object = _listing.list_images_for_object
+attach_images = _relations.attach_images
+bulk_attach_images = _relations.bulk_attach_images
+bulk_detach_images = _relations.bulk_detach_images
+remove_image_from_object = _relations.remove_image_from_object
+reorder_images = _ordering.reorder_images
+set_cover_image = _ordering.set_cover_image
+unset_cover_image = _ordering.unset_cover_image
+edit_image_metadata = _metadata.edit_image_metadata
+upload_image = _uploads.upload_image
+bulk_upload_images = _uploads.bulk_upload_images
+delete_image = _deletion.delete_image
+bulk_delete_images = _deletion.bulk_delete_images
 
-# List all images for an organization
-@router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())
-@paginate(LimitOffsetPagination)
-def list_images_for_org(request, org_slug: str, ordering: str | None = None):
-    org = get_org_for_request(request, org_slug)
-    ordering_map = {
-        None: "-created_at",
-        "created_at": "created_at",
-        "-created_at": "-created_at",
-        "title": "title",
-        "-title": "-title",
-    }
-    if ordering not in ordering_map:
-        raise HttpError(400, "Invalid ordering. Allowed: created_at, -created_at, title, -title")
-    return [
-        serialize_image(image)
-        for image in Image.objects.filter(organization=org).order_by(ordering_map[ordering])
-    ]
-
-# List all images for an object
-@router.get("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
-@paginate(LimitOffsetPagination)
-def list_images_for_object(request, org_slug: str, app_label: str, model: str, obj_id: int, ordering: str | None = None):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    ct = resolved.content_type
-    # Support ordering by relation order (default), then fallback to image fields
-    ordering_map = {
-        None: "order",
-        "order": "order",
-        "-order": "-order",
-        "created_at": "image__created_at",
-        "-created_at": "-image__created_at",
-        "title": "image__title",
-        "-title": "-image__title",
-    }
-    if ordering not in ordering_map:
-        raise HttpError(400, "Invalid ordering. Allowed: created_at, -created_at, title, -title")
-    relations = (
-        PolymorphicImageRelation.objects
-        .filter(content_type=ct, object_id=obj_id)
-        .select_related("image")
-        .order_by(ordering_map[ordering], "pk")
-    )
-    return [serialize_image_relation(relation) for relation in relations]
-
-# Attach images to an object
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
-def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ImageIdsIn):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    ct = resolved.content_type
-    user = request.user
-    out = []
-    # Determine current ordering and primary for this object
-    rel_qs = PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj_id)
-    has_primary = rel_qs.filter(is_cover=True).exists()
-    existing_orders = rel_qs.exclude(order__isnull=True).values_list("order", flat=True)
-    next_order = (max(existing_orders) + 1) if existing_orders else 0
-    for image_id in data.image_ids:
-        image = get_object_or_404(Image, id=image_id, organization=org)
-        rel, created = PolymorphicImageRelation.objects.get_or_create(
-            image=image, content_type=ct, object_id=obj_id
-        )
-        if created:
-            # Assign default order and primary
-            if rel.order is None:
-                rel.order = next_order
-                next_order += 1
-            if not has_primary:
-                rel.is_cover = True
-                has_primary = True
-            rel.save(update_fields=["order", "is_cover"])  # ensure persisted
-            logger.info(
-                "audit:image_attach org=%s user=%s app=%s model=%s obj=%s image=%s rel=%s",
-                org.id, getattr(user, "id", None), app_label, model, obj_id, image.id, rel.id,
-            )
-        out.append(serialize_image_relation(rel))
-    return out
-
-# Bulk attach images to an object
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/", response=BulkAttachOut, auth=JWTAuth(), throttle=[bulk_attach_throttle])
-def bulk_attach_images(
-    request,
-    org_slug: str,
-    app_label: str,
-    model: str,
-    obj_id: int,
-    data: BulkImageIdsIn,
-):
-    # Idempotency check
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data) if status != 200 else data
-
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    obj = resolved.obj
-    ct = resolved.content_type
-    user = request.user
-    requested_ids = set(data.image_ids)
-    images = Image.objects.filter(id__in=requested_ids, organization=org)
-    found_ids = set(images.values_list("id", flat=True))
-    missing = requested_ids - found_ids
-    if missing:
-        # Some images do not belong to this org or do not exist
-        raise HttpError(403, "One or more images do not belong to this organization")
-    attached = []
-    with transaction.atomic():
-        rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(content_type=ct, object_id=obj.pk)
-        has_primary = rel_qs.filter(is_cover=True).exists()
-        existing_orders = rel_qs.exclude(order__isnull=True).values_list("order", flat=True)
-        next_order = (max(existing_orders) + 1) if existing_orders else 0
-        for image in images:
-            rel, created = PolymorphicImageRelation.objects.get_or_create(
-                image=image,
-                content_type=ct,
-                object_id=obj.pk,
-            )
-            if created:
-                if rel.order is None:
-                    rel.order = next_order
-                    next_order += 1
-                if not has_primary:
-                    rel.is_cover = True
-                    has_primary = True
-                rel.save(update_fields=["order", "is_cover"])  # persist defaults
-                attached.append(image.id)
-    if attached:
-        logger.info(
-            "audit:image_bulk_attach org=%s user=%s app=%s model=%s obj=%s attached=%s",
-            org.id, getattr(user, "id", None), app_label, model, obj_id, attached,
-        )
-    resp = {"attached": attached}
-    store_cached_response(request, 200, resp)
-    return resp
-
-# Reorder images for an object and set primary to the first
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", response=DetailResponse, auth=JWTAuth())
-def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ReorderIn):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    obj = resolved.obj
-    ct = resolved.content_type
-    user = request.user
-
-    rels = list(
-        PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj.pk).select_related("image")
-    )
-    if not rels:
-        return DetailResponse(detail="ok")
-
-    rel_by_image = {r.image_id: r for r in rels}
-
-    provided = data.image_ids
-    if len(set(provided)) != len(provided):
-        raise HttpError(400, "Duplicate image ids in request")
-    missing = [iid for iid in provided if iid not in rel_by_image]
-    if missing:
-        raise HttpError(400, "One or more image ids are not attached to this object")
-    if len(provided) != len(rels):
-        raise HttpError(400, "Reorder must include all currently attached image ids")
-
-    img_org_ids = {r.image.organization_id for r in rels}
-    if img_org_ids != {org.id}:
-        raise HttpError(403, "One or more images do not belong to this organization")
-
-    with transaction.atomic():
-        updates = []
-        for idx, image_id in enumerate(provided):
-            rel = rel_by_image[image_id]
-            if rel.order != idx:
-                rel.order = idx
-                updates.append(rel)
-        if updates:
-            # Update only the order first
-            PolymorphicImageRelation.objects.bulk_update(updates, ["order"]) 
-        # Flip cover safely: clear any existing cover then set the new one
-        PolymorphicImageRelation.objects.filter(
-            content_type=ct, object_id=obj.pk, is_cover=True
-        ).update(is_cover=False)
-        if provided:
-            PolymorphicImageRelation.objects.filter(
-                content_type=ct, object_id=obj.pk, image_id=provided[0]
-            ).update(is_cover=True)
-        logger.info(
-            "audit:image_reorder org=%s user=%s app=%s model=%s obj=%s images=%s",
-            org.id, getattr(user, "id", None), app_label, model, obj_id, provided,
-        )
-    return DetailResponse(detail="ok")
-
-# Set an image as cover for an object (does not modify order)
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", response=DetailResponse, auth=JWTAuth())
-def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    obj = resolved.obj
-    ct = resolved.content_type
-    user = request.user
-
-    # Ensure the image exists and belongs to the organization
-    image = get_object_or_404(Image, id=data.image_id, organization=org)
-    # Ensure the relation exists (image must be attached to the object)
-    _ = get_object_or_404(PolymorphicImageRelation, image=image, content_type=ct, object_id=obj.pk)
-
-    with transaction.atomic():
-        # Lock all relations for this object to prevent race conditions
-        qs = (
-            PolymorphicImageRelation.objects
-            .select_for_update()
-            .filter(content_type=ct, object_id=obj.pk)
-        )
-        # Clear any existing cover then set the selected one
-        qs.filter(is_cover=True).update(is_cover=False)
-        qs.filter(image_id=data.image_id).update(is_cover=True)
-
-    logger.info(
-        "audit:image_set_cover org=%s user=%s app=%s model=%s obj=%s image=%s",
-        org.id, getattr(user, "id", None), app_label, model, obj_id, data.image_id,
-    )
-    return DetailResponse(detail="ok")
-
-# Unset any cover image for an object (does not modify order)
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", response=DetailResponse, auth=JWTAuth())
-def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    obj = resolved.obj
-    ct = resolved.content_type
-    user = request.user
-
-    with transaction.atomic():
-        qs = (
-            PolymorphicImageRelation.objects
-            .select_for_update()
-            .filter(content_type=ct, object_id=obj.pk)
-        )
-        qs.filter(is_cover=True).update(is_cover=False)
-
-    logger.info(
-        "audit:image_unset_cover org=%s user=%s app=%s model=%s obj=%s",
-        org.id, getattr(user, "id", None), app_label, model, obj_id,
-    )
-    return DetailResponse(detail="ok")
-
-# Bulk detach images from an object
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/", response=BulkDetachOut, auth=JWTAuth(), throttle=[bulk_detach_throttle])
-def bulk_detach_images(
-    request,
-    org_slug: str,
-    app_label: str,
-    model: str,
-    obj_id: int,
-    data: BulkImageIdsIn,
-):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data) if status != 200 else data
-
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    obj = resolved.obj
-    ct = resolved.content_type
-    user = request.user
-    images = Image.objects.filter(id__in=data.image_ids, organization=org)
-    detached = []
-    with transaction.atomic():
-        for image in images:
-            deleted, _ = PolymorphicImageRelation.objects.filter(
-                image=image,
-                content_type=ct,
-                object_id=obj.pk,
-            ).delete()
-            if deleted:
-                detached.append(image.id)
-    if detached:
-        logger.info(
-            "audit:image_bulk_detach org=%s user=%s app=%s model=%s obj=%s detached=%s",
-            org.id, getattr(user, "id", None), app_label, model, obj_id, detached,
-        )
-    resp = {"detached": detached}
-    store_cached_response(request, 200, resp)
-    return resp
-
-# Remove an image from an object
-@router.delete("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/{image_id}/", auth=JWTAuth(), response={204: None})
-def remove_image_from_object(request, org_slug: str, app_label: str, model: str, obj_id: int, image_id: int):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
-    org = resolved.organization
-    ct = resolved.content_type
-    user = request.user
-    rel = get_object_or_404(PolymorphicImageRelation, image_id=image_id, content_type=ct, object_id=obj_id)
-    rel.delete()
-    logger.info(
-        "audit:image_detach org=%s user=%s app=%s model=%s obj=%s image=%s",
-        org.id, getattr(user, "id", None), app_label, model, obj_id, image_id,
-    )
-    return Status(204, None)
-
-# Edit image metadata (title, description, alt_text)
-@router.patch("/orgs/{org_slug}/images/{image_id}/", response={200: ImageOut, 400: dict}, auth=JWTAuth())
-def edit_image_metadata(request, org_slug: str, image_id: int, data: ImagePatchIn):
-    org = get_org_for_request(request, org_slug)
-    image = get_object_or_404(Image, id=image_id, organization=org)
-    payload = data.model_dump(exclude_unset=True)
-    # Apply only known fields
-    for field in ("title", "description", "alt_text"):
-        if field in payload:
-            setattr(image, field, payload[field])
-    image.save()
-    return serialize_image(image)
-
-# Upload a new image (with resizing, storing only the base filename)
-@router.post("/orgs/{org_slug}/images/", response={200: ImageOut, 400: dict}, auth=JWTAuth(), throttle=[upload_throttle])
-def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
-    org = get_org_for_request(request, org_slug)
-    user = request.user
-    # File validation using centralized settings
-    max_bytes = getattr(settings, "UPLOAD_IMAGE_MAX_BYTES", 10 * 1024 * 1024)
-    if file.size > max_bytes:
-        return Status(400, {"detail": f"File too large. Maximum allowed size is {int(max_bytes/1024/1024)}MB."})
-    prefixes = getattr(settings, "UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", ("image/",))
-    if not any(str(file.content_type or "").startswith(p) for p in prefixes):
-        return Status(400, {"detail": "Invalid file type. Only images are allowed."})
-    # Save original file and generate variants
-    filename = generate_upload_filename(f"img_{org.slug[:8]}", file.name)
-    data = file.read()
-    upload_to_storage(filename, data)
-    # Generate and upload webp variants
-    try:
-        variants_bytes = resize_images(data)
-        base, ext = os.path.splitext(filename)
-        for key, content in variants_bytes.items():
-            variant_key = f"{base}_{key}.webp"
-            upload_to_storage(variant_key, content)
-    except Exception as e:
-        logger.warning("images:variant_generate_failed org=%s file=%s err=%s", org.id, filename, str(e))
-    img = Image.objects.create(
-        file=filename,
-        organization=org,
-        creator_id=getattr(user, "id", None),
-        title=file.name,
-        description="",
-        alt_text=""
-    )
-    return serialize_image(img)
-
-# Bulk upload images
-@router.post("/orgs/{org_slug}/bulk-upload/", response=List[BulkUploadResponse], auth=JWTAuth(), throttle=[bulk_upload_throttle])
-def bulk_upload_images(request, org_slug: str):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data) if status != 200 else data
-
-    org = get_org_for_request(request, org_slug)
-    user = request.user
-    responses = []
-    
-    # Ensure 'files' is in the request
-    files = request.FILES.getlist('files')
-    if not files:
-        return [BulkUploadResponse(status="error", error="No files uploaded")]
-    
-    with transaction.atomic():
-        for file in files:
-            try:
-                max_bytes = getattr(settings, "UPLOAD_IMAGE_MAX_BYTES", 10 * 1024 * 1024)
-                if file.size > max_bytes:
-                    responses.append(BulkUploadResponse(status="error", error="File too large", file=file.name))
-                    continue
-                prefixes = getattr(settings, "UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", ("image/",))
-                if not any(str(file.content_type or "").startswith(p) for p in prefixes):
-                    responses.append(BulkUploadResponse(status="error", error="Invalid file type", file=file.name))
-                    continue
-                filename = generate_upload_filename(f"img_{org.slug[:8]}", file.name)
-                data = file.read()
-                upload_to_storage(filename, data)
-                # Generate and upload webp variants
-                try:
-                    variants_bytes = resize_images(data)
-                    base, ext = os.path.splitext(filename)
-                    for key, content in variants_bytes.items():
-                        variant_key = f"{base}_{key}.webp"
-                        upload_to_storage(variant_key, content)
-                except Exception as e:
-                    logger.warning("images:variant_generate_failed org=%s file=%s err=%s", org.id, filename, str(e))
-                img = Image.objects.create(
-                    file=filename,
-                    organization=org,
-                    creator_id=getattr(user, "id", None),
-                    title=file.name,
-                    description="",
-                    alt_text=""
-                )
-                responses.append(BulkUploadResponse(status="success", id=img.id, file=str(img.file)))
-            except Exception as e:
-                responses.append(BulkUploadResponse(status="error", error=str(e), file=file.name if hasattr(file, 'name') else 'unknown'))
-    store_cached_response(request, 200, [r.model_dump() if hasattr(r, 'model_dump') else r for r in responses])
-    return responses
-
-# Delete an image (removes all versions from storage and all relations)
-@router.delete("/orgs/{org_slug}/images/{image_id}/", auth=JWTAuth(), response={204: None})
-def delete_image(request, org_slug: str, image_id: int):
-    org = get_org_for_request(request, org_slug)
-    image = get_object_or_404(Image, id=image_id, organization=org)
-    PolymorphicImageRelation.objects.filter(image=image).delete()
-    base, ext = os.path.splitext(image.file.name if hasattr(image.file, 'name') else image.file)
-    for suffix in ["thumb", "sm", "md", "lg"]:
-        versioned_filename = f"{base}_{suffix}.webp"
-        default_storage.delete(versioned_filename)
-    default_storage.delete(image.file.name if hasattr(image.file, 'name') else image.file)
-    image.delete()
-    logger.info(
-        "audit:image_delete org=%s user=%s image=%s",
-        org.id, getattr(request.user, "id", None), image_id,
-    )
-    return Status(204, None)
-
-# Bulk delete images
-@router.post("/orgs/{org_slug}/bulk-delete/", response={204: None, 400: dict}, auth=JWTAuth(), throttle=[bulk_delete_throttle])
-def bulk_delete_images(request, org_slug: str):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data)
-
-    org = get_org_for_request(request, org_slug)
-    user = request.user
-    
-    # Parse JSON data from request body
-    try:
-        data = request.POST.dict() if request.POST else {}
-        if not data and request.body:
-            import json
-            data = json.loads(request.body.decode('utf-8'))
-            
-        ids = data.get("ids", [])
-        if not ids:
-            return Status(400, {"detail": "No ids provided for deletion"})
-        
-        with transaction.atomic():
-            for img_id in ids:
-                try:
-                    image = Image.objects.get(id=img_id, organization=org)
-                    image.delete()
-                    logger.info(
-                        "audit:image_delete org=%s user=%s image=%s",
-                        org.id, getattr(user, "id", None), img_id,
-                    )
-                except Exception:
-                    continue
-        store_cached_response(request, 204, None)
-        return Status(204, None)
-        
-    except json.JSONDecodeError:
-        return Status(400, {"detail": "Invalid JSON data"})
-    except Exception as e:
-        return Status(400, {"detail": str(e)})
-
-
-
- 
-
-# Upload image: return 400 on validation error (not 422)
 
 def custom_validation_error(request, exc):
-    # Return 400 instead of 422 for validation errors
     return JsonResponse({"detail": str(exc)}, status=400)
+
+
+__all__ = [
+    "BulkDeleteResponse",
+    "BulkImageIdsIn",
+    "BulkUploadResponse",
+    "HEADER_NAME",
+    "ImageIdsIn",
+    "LoggingUserRateThrottle",
+    "ReorderIn",
+    "attach_images",
+    "bulk_attach_images",
+    "bulk_attach_throttle",
+    "bulk_delete_images",
+    "bulk_delete_throttle",
+    "bulk_detach_images",
+    "bulk_detach_throttle",
+    "bulk_upload_images",
+    "bulk_upload_throttle",
+    "custom_validation_error",
+    "default_storage",
+    "delete_image",
+    "edit_image_metadata",
+    "generate_upload_filename",
+    "get_org_for_request",
+    "list_images_for_object",
+    "list_images_for_org",
+    "logger",
+    "os",
+    "read_cached_response",
+    "remove_image_from_object",
+    "reorder_images",
+    "resize_images",
+    "router",
+    "set_cover_image",
+    "store_cached_response",
+    "unset_cover_image",
+    "upload_image",
+    "upload_throttle",
+    "upload_to_storage",
+]
