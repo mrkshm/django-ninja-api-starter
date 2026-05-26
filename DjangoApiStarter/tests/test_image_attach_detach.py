@@ -16,6 +16,10 @@ from organizations.models import Membership, Organization
 from contacts.models import Contact
 
 
+def unwrap_status(response):
+    return response.status_code, response.value
+
+
 class TestImageAttachDetach(TestCase):
     def _req(self):
         return SimpleNamespace(user=self.user, headers={}, META={})
@@ -38,7 +42,7 @@ class TestImageAttachDetach(TestCase):
         self.assertEqual(len(out), 1)
         self.assertTrue(PolymorphicImageRelation.objects.filter(image_id=self.img1.id, object_id=self.contact.id).exists())
         # Remove via remove_image_from_object
-        status, _ = remove_image_from_object(req, self.org.slug, "contacts", "contact", self.contact.id, self.img1.id)
+        status, _ = unwrap_status(remove_image_from_object(req, self.org.slug, "contacts", "contact", self.contact.id, self.img1.id))
         self.assertEqual(status, 204)
         self.assertFalse(PolymorphicImageRelation.objects.filter(image_id=self.img1.id, object_id=self.contact.id).exists())
 

@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from ninja.testing import TestClient
 from django.conf import settings
 from django.core.cache import cache
-import inspect
 from DjangoApiStarter.api import api as project_api
 from ninja import NinjaAPI
 
@@ -71,18 +70,13 @@ def clear_cache_between_tests():
 @pytest.fixture(autouse=True)
 def patch_ninja_user_rate_throttle(monkeypatch):
     """
-    Patch UserRateThrottle.allow_request to always allow during tests,
-    regardless of signature (handles both with/without 'view').
+    Patch UserRateThrottle.allow_request to always allow during tests.
     """
     try:
         from ninja.throttling import UserRateThrottle
     except ImportError:
         return  # If not present, skip
-    sig = inspect.signature(UserRateThrottle.allow_request)
-    if len(sig.parameters) == 3:
-        monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request, view: True)
-    else:
-        monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request: True)
+    monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request: True)
 
 
 @pytest.fixture(scope="function")

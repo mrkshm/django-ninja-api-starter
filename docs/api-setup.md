@@ -57,14 +57,13 @@ def api_client():
 
 **How:**
 
-- Patch the rate limiter to always allow requests in tests, handling both possible method signatures (`allow_request(self, request)` and `allow_request(self, request, view)`).
+- Patch the rate limiter to always allow requests in tests. The pinned Django Ninja version uses `allow_request(self, request)`.
 
 **Example:**
 
 ```python
 # conftest.py
 import pytest
-import inspect
 
 @pytest.fixture(autouse=True)
 def patch_ninja_user_rate_throttle(monkeypatch):
@@ -72,11 +71,7 @@ def patch_ninja_user_rate_throttle(monkeypatch):
         from ninja.throttling import UserRateThrottle
     except ImportError:
         return
-    sig = inspect.signature(UserRateThrottle.allow_request)
-    if len(sig.parameters) == 3:
-        monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request, view: True)
-    else:
-        monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request: True)
+    monkeypatch.setattr(UserRateThrottle, "allow_request", lambda self, request: True)
 ```
 
 ---

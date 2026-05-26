@@ -27,12 +27,12 @@ After extracting image response serialization, `images/api.py` is smaller and ea
 - rate-limit configuration
 - validation error override
 
-That is enough to justify a future split, but not immediately. Two higher-value image decisions should happen first:
+That is enough to justify a future split, but not immediately. The media URL policy is now settled as public bearer-style URLs with deterministic variant paths, so future image cleanup should focus on behavior boundaries rather than storage URL checks.
 
-- decide whether `/media/<key>` is public, signed, or authenticated
 - tighten bulk delete/upload error semantics
+- split only if a specific behavior area becomes hard to change safely
 
-Splitting before those decisions would likely move unstable code between files and create extra import churn.
+Splitting before a concrete behavior problem appears would likely move stable code between files and create extra import churn.
 
 ## Future Split Shape
 

@@ -1,6 +1,6 @@
 from typing import List, Optional
 import logging
-from ninja import Router, File, UploadedFile, Schema
+from ninja import Router, File, UploadedFile, Schema, Status
 from ninja.errors import HttpError, ValidationError as NinjaValidationError
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
@@ -36,11 +36,7 @@ IMAGES_RATE_LIMIT_BULK_DETACH = "60/h"
 class LoggingUserRateThrottle(UserRateThrottle):
     """User rate throttle that logs when a request is throttled (429)."""
     def allow_request(self, request, view=None):
-        try:
-            allowed = super().allow_request(request, view)
-        except TypeError:
-            # Compatibility with possible 2-arg signature
-            allowed = super().allow_request(request)
+        allowed = super().allow_request(request)
         if not allowed:
             user_id = getattr(getattr(request, "user", None), "id", None)
             org = None
@@ -186,7 +182,7 @@ def bulk_attach_images(
     cached = read_cached_response(request)
     if cached:
         status, data = cached
-        return (status, data) if status != 200 else data
+        return Status(status, data) if status != 200 else data
 
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
     org = resolved.organization
@@ -351,7 +347,7 @@ def bulk_detach_images(
     cached = read_cached_response(request)
     if cached:
         status, data = cached
-        return (status, data) if status != 200 else data
+        return Status(status, data) if status != 200 else data
 
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
     org = resolved.organization
@@ -391,7 +387,7 @@ def remove_image_from_object(request, org_slug: str, app_label: str, model: str,
         "audit:image_detach org=%s user=%s app=%s model=%s obj=%s image=%s",
         org.id, getattr(user, "id", None), app_label, model, obj_id, image_id,
     )
-    return 204, None
+    return Status(204, None)
 
 # Edit image metadata (title, description, alt_text)
 @router.patch("/orgs/{org_slug}/images/{image_id}/", response={200: ImageOut, 400: dict}, auth=JWTAuth())
@@ -414,10 +410,10 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
     # File validation using centralized settings
     max_bytes = getattr(settings, "UPLOAD_IMAGE_MAX_BYTES", 10 * 1024 * 1024)
     if file.size > max_bytes:
-        return 400, {"detail": f"File too large. Maximum allowed size is {int(max_bytes/1024/1024)}MB."}
+        return Status(400, {"detail": f"File too large. Maximum allowed size is {int(max_bytes/1024/1024)}MB."})
     prefixes = getattr(settings, "UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", ("image/",))
     if not any(str(file.content_type or "").startswith(p) for p in prefixes):
-        return 400, {"detail": "Invalid file type. Only images are allowed."}
+        return Status(400, {"detail": "Invalid file type. Only images are allowed."})
     # Save original file and generate variants
     filename = generate_upload_filename(f"img_{org.slug[:8]}", file.name)
     data = file.read()
@@ -447,7 +443,7 @@ def bulk_upload_images(request, org_slug: str):
     cached = read_cached_response(request)
     if cached:
         status, data = cached
-        return (status, data) if status != 200 else data
+        return Status(status, data) if status != 200 else data
 
     org = get_org_for_request(request, org_slug)
     user = request.user
@@ -511,7 +507,7 @@ def delete_image(request, org_slug: str, image_id: int):
         "audit:image_delete org=%s user=%s image=%s",
         org.id, getattr(request.user, "id", None), image_id,
     )
-    return 204, None
+    return Status(204, None)
 
 # Bulk delete images
 @router.post("/orgs/{org_slug}/bulk-delete/", response={204: None, 400: dict}, auth=JWTAuth(), throttle=[bulk_delete_throttle])
@@ -519,7 +515,7 @@ def bulk_delete_images(request, org_slug: str):
     cached = read_cached_response(request)
     if cached:
         status, data = cached
-        return (status, data)
+        return Status(status, data)
 
     org = get_org_for_request(request, org_slug)
     user = request.user
@@ -533,7 +529,7 @@ def bulk_delete_images(request, org_slug: str):
             
         ids = data.get("ids", [])
         if not ids:
-            return 400, {"detail": "No ids provided for deletion"}
+            return Status(400, {"detail": "No ids provided for deletion"})
         
         with transaction.atomic():
             for img_id in ids:
@@ -547,12 +543,12 @@ def bulk_delete_images(request, org_slug: str):
                 except Exception:
                     continue
         store_cached_response(request, 204, None)
-        return 204, None
+        return Status(204, None)
         
     except json.JSONDecodeError:
-        return 400, {"detail": "Invalid JSON data"}
+        return Status(400, {"detail": "Invalid JSON data"})
     except Exception as e:
-        return 400, {"detail": str(e)}
+        return Status(400, {"detail": str(e)})
 
 
 

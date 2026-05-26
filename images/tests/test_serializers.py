@@ -1,6 +1,7 @@
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.storage import default_storage
 
 from contacts.models import Contact
 from images.models import Image, PolymorphicImageRelation
@@ -9,7 +10,12 @@ from organizations.models import Organization
 
 
 @pytest.mark.django_db
-def test_serialize_image_adds_stable_media_urls():
+def test_serialize_image_adds_stable_media_urls(monkeypatch):
+    def fail_exists(_name):
+        raise AssertionError("serialize_image must not perform storage existence checks")
+
+    monkeypatch.setattr(default_storage, "exists", fail_exists)
+
     User = get_user_model()
     user = User.objects.create_user(email="image-serializer@example.com", password="pw")
     org = Organization.objects.create(name="Images", slug="images", type="group")
@@ -28,7 +34,10 @@ def test_serialize_image_adds_stable_media_urls():
     assert out.file == "images/example.jpg"
     assert out.url == "/media/images/example.jpg"
     assert out.variants.original == out.url
-    assert out.variants.thumb == out.url
+    assert out.variants.thumb == "/media/images/example_thumb.webp"
+    assert out.variants.sm == "/media/images/example_sm.webp"
+    assert out.variants.md == "/media/images/example_md.webp"
+    assert out.variants.lg == "/media/images/example_lg.webp"
     assert out.title == "Example"
     assert out.organization == org.id
     assert out.creator == user.id

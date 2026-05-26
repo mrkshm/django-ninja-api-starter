@@ -1,82 +1,55 @@
-from ninja import Router, Status
+import os
+import secrets
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+from django.utils import timezone
+from ninja import Router, Status
+from ninja.errors import HttpError
+from ninja.throttling import UserRateThrottle
+from ninja_extra import api_controller, route
+from ninja_jwt.authentication import JWTAuth
 from ninja_jwt.controller import NinjaJWTDefaultController
 from ninja_jwt.tokens import RefreshToken
-from ninja.errors import ValidationError, HttpError
-from ninja_jwt.authentication import JWTAuth
-from django.core.validators import validate_email
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from core.email_utils import send_email
-from core.tasks import send_email_task
-import secrets
+from ninja_jwt.schema import TokenObtainPairInputSchema
+
 from accounts.models import PendingEmailChange, PendingPasswordReset, PendingRegistration
-from django.conf import settings
-import os
-from ninja.throttling import UserRateThrottle
-from ninja import Schema
-from django.db import transaction
-from PIL import UnidentifiedImageError
-from io import BytesIO
-from django.core.files.base import ContentFile
+from accounts.schemas import (
+    ChangePasswordSchema,
+    CustomTokenOutputSchema,
+    EmailSchema,
+    EmailUpdateSchema,
+    PasswordResetRequestSchema,
+    PasswordResetSchema,
+    RegisterSchema,
+    UnverifiedUserSchema,
+)
+from accounts.services import authenticate_for_token, issue_token_pair
+from core.tasks import send_email_task
 from core.utils.auth_utils import require_authenticated_user
-from ninja_jwt.schema import TokenObtainPairInputSchema, TokenObtainPairOutputSchema
-from django.conf import settings
 
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 2
 
-# Custom JWT controller that adds email verification check
-from ninja_extra import api_controller, route
-
-# Define custom schemas for responses
-class UnverifiedUserSchema(Schema):
-    detail: str
-    email_verified: bool = False
-
-class CustomTokenOutputSchema(Schema):
-    access: str
-    refresh: str
-    email: str = ""  # Add the email field that seems to be required
-
 @api_controller('/token', tags=['Auth'])
 class CustomJWTController(NinjaJWTDefaultController):
     @route.post("/pair", response={200: CustomTokenOutputSchema, 403: UnverifiedUserSchema}, url_name="token_obtain_pair")
     def obtain_token(self, request, data: TokenObtainPairInputSchema):
-        # First validate credentials using parent method
-        try:
-            # Get the user by email for validation
-            user = User.objects.get(email=data.email)
-            password = data.password
-            if hasattr(password, "get_secret_value"):
-                password = password.get_secret_value()
-            
-            # Check if the password is valid
-            if not user.check_password(password):
-                raise HttpError(401, "Invalid credentials")
-                
-            # Check if email is verified (configurable for tests)
-            require_verification = getattr(settings, "REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN", True)
-            if require_verification and not user.email_verified:
-                return Status(
-                    403,
-                    UnverifiedUserSchema(
-                        detail="Please verify your email address before logging in.",
-                        email_verified=False
-                    ),
-                )
-            
-            # Email is verified, generate tokens
-            refresh = RefreshToken.for_user(user)
-            return CustomTokenOutputSchema(
-                access=str(refresh.access_token),
-                refresh=str(refresh),
-                email=user.email  # Include the email field
+        user, is_verified = authenticate_for_token(data.email, data.password)
+        if not is_verified:
+            return Status(
+                403,
+                UnverifiedUserSchema(
+                    detail="Please verify your email address before logging in.",
+                    email_verified=False,
+                ),
             )
-                
-        except User.DoesNotExist:
-            raise HttpError(401, "Invalid credentials")
+
+        access, refresh = issue_token_pair(user)
+        return CustomTokenOutputSchema(access=access, refresh=refresh, email=user.email)
 
 auth_router = Router()
 User = get_user_model()
@@ -101,31 +74,6 @@ def send_verification_email(user, token):
         send_email_task.delay(subject, body_text.strip(), [user.email])
     except Exception as e:
         raise HttpError(500, f"Failed to send verification email: {str(e)}")
-
-class RegisterSchema(Schema):
-    email: str
-    password: str
-
-class TokenPairSchema(Schema):
-    access: str
-    refresh: str
-
-class ChangePasswordSchema(Schema):
-    old_password: str
-    new_password: str
-
-class EmailUpdateSchema(Schema):
-    email: str
-
-class EmailSchema(Schema):
-    email: str
-
-class PasswordResetRequestSchema(Schema):
-    email: str
-
-class PasswordResetSchema(Schema):
-    token: str
-    new_password: str
 
 email_change_throttle = UserRateThrottle('3/h')
 password_reset_throttle = UserRateThrottle('3/h')
@@ -244,7 +192,7 @@ def request_email_change(request, data: EmailUpdateSchema):
     # Validate email format
     try:
         validate_email(new_email)
-    except ValidationError:
+    except DjangoValidationError:
         raise HttpError(400, "Invalid email address")
     # Uniqueness check (case-insensitive)
     if User.objects.filter(email__iexact=new_email).exclude(id=user.id).exists():
@@ -302,7 +250,7 @@ def request_password_reset(request, data: PasswordResetRequestSchema):
     email = data.email.strip().lower()
     try:
         validate_email(email)
-    except ValidationError:
+    except DjangoValidationError:
         # Always return generic response
         return {"detail": "If the email exists, a password reset link has been sent."}
     user = User.objects.filter(email__iexact=email).first()

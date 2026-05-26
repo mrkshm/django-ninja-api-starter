@@ -10,6 +10,10 @@ from images.models import Image
 from organizations.models import Organization
 
 
+def unwrap_status(response):
+    return response.status_code, response.value
+
+
 class TestImageSuccessAndDeletion(TestCase):
     def _req(self):
         return SimpleNamespace(user=self.user, headers={}, META={}, FILES=SimpleNamespace(getlist=lambda name: []))
@@ -36,11 +40,10 @@ class TestImageSuccessAndDeletion(TestCase):
             self.assertTrue(resp.url.startswith("/media/"))
             base = os.path.splitext(resp.file)[0]
             self.assertEqual(resp.variants.original, resp.url)
-            # In tests, variant files are not actually present; backend now falls back to original
-            self.assertEqual(resp.variants.thumb, resp.url)
-            self.assertEqual(resp.variants.sm, resp.url)
-            self.assertEqual(resp.variants.md, resp.url)
-            self.assertEqual(resp.variants.lg, resp.url)
+            self.assertEqual(resp.variants.thumb, f"/media/{base}_thumb.webp")
+            self.assertEqual(resp.variants.sm, f"/media/{base}_sm.webp")
+            self.assertEqual(resp.variants.md, f"/media/{base}_md.webp")
+            self.assertEqual(resp.variants.lg, f"/media/{base}_lg.webp")
 
     @override_settings(UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024, UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",))
     def test_bulk_upload_success(self):
@@ -68,12 +71,12 @@ class TestImageSuccessAndDeletion(TestCase):
                 img = out_by_id[img_id]
                 assert img.url.startswith("/media/")
                 variants = img.variants
-                # Fallback to original is expected in test environment (no variants written)
                 assert variants.original == img.url
-                assert variants.thumb == img.url
-                assert variants.sm == img.url
-                assert variants.md == img.url
-                assert variants.lg == img.url
+                base = os.path.splitext(img.file)[0]
+                assert variants.thumb == f"/media/{base}_thumb.webp"
+                assert variants.sm == f"/media/{base}_sm.webp"
+                assert variants.md == f"/media/{base}_md.webp"
+                assert variants.lg == f"/media/{base}_lg.webp"
 
     def test_delete_removes_original_and_variants(self):
         # Create image with a known file name
@@ -81,7 +84,7 @@ class TestImageSuccessAndDeletion(TestCase):
         req = self._req()
         with patch("images.api.get_org_for_request", return_value=self.org), \
              patch("images.api.default_storage.delete") as mock_delete:
-            status, _ = delete_image(req, self.org.slug, img.id)
+            status, _ = unwrap_status(delete_image(req, self.org.slug, img.id))
             self.assertEqual(status, 204)
             # Original + 4 variants
             base = "images/xyz"

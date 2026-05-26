@@ -85,7 +85,7 @@ To ensure image URLs do not expire and remain cacheable, the backend exposes a s
 - Image responses include `url` and a `variants` object: `{ original, thumb, sm, md, lg }`.
 - All fields are stable, relative paths under `/media/`.
 - Filenames follow: `<base>_thumb.webp`, `<base>_sm.webp`, `<base>_md.webp`, `<base>_lg.webp`.
-- If a variant file is missing, the API falls back to the original URL for that variant. This guarantees all variant fields are strings and avoids nulls in clients that validate types strictly.
+- Variant URLs are deterministic and do not perform storage existence checks during API serialization. If a variant file is missing, the media endpoint returns 404 for that specific variant URL.
 
 ### Variant Generation on Upload
 
@@ -114,9 +114,10 @@ Notes:
 ### Frontend Integration Notes
 
 - Client code should treat these URLs as relative and prefix with the API base URL when needed.
-- Use smaller variants (`thumb` for grids, `md`/`lg` for viewers) and rely on the API to fall back to `original` when variants are unavailable.
+- Use smaller variants (`thumb` for grids, `md`/`lg` for viewers). Missing variants return 404 at the media endpoint.
 - Because URLs are stable and cacheable, placing a CDN in front of the API can significantly improve performance.
 
 ### Security Considerations
 
-- The media proxy currently serves files without auth checks. If your use case requires access control, add authentication/authorization in `media_serve` before streaming files.
+- Media URLs are intentionally public bearer-style URLs. Possession of a stable `/media/<key>` URL is enough to fetch the file.
+- If uploaded images become private organization data, replace this with signed URLs or an authenticated media proxy before relying on object-level secrecy.

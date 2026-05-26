@@ -16,6 +16,10 @@ from organizations.models import Membership, Organization
 from contacts.models import Contact
 
 
+def unwrap_status(response):
+    return response.status_code, response.value
+
+
 @override_settings(CACHES={
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -128,8 +132,8 @@ class TestIdempotencyBulk(TestCase):
         req2 = self._req("POST", path, "key-4")
         req2.body = body
         with patch("images.api.get_org_for_request", return_value=self.org):
-            status1, _ = bulk_delete_images(req1, self.org.slug)
-            status2, _ = bulk_delete_images(req2, self.org.slug)
+            status1, _ = unwrap_status(bulk_delete_images(req1, self.org.slug))
+            status2, _ = unwrap_status(bulk_delete_images(req2, self.org.slug))
             self.assertEqual(status1, 204)
             self.assertEqual(status2, 204)
             self.assertEqual(Image.objects.filter(id__in=[img1.id, img2.id]).count(), 0)

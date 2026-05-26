@@ -6,6 +6,10 @@ from unittest.mock import patch
 from images.api import upload_image, bulk_upload_images
 
 
+def unwrap_status(response):
+    return response.status_code, response.value
+
+
 class TestImageUploadValidations(TestCase):
     def _req(self):
         # Minimal request stub with user and headers/FILES
@@ -18,7 +22,7 @@ class TestImageUploadValidations(TestCase):
         content = b"x" * (tiny_limit + 1)
         f = SimpleUploadedFile("test.png", content, content_type="image/png")
         with patch("images.api.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
-            status, body = upload_image(req, "acme", f)
+            status, body = unwrap_status(upload_image(req, "acme", f))
             self.assertEqual(status, 400)
             self.assertIn("File too large", body["detail"]) 
 
@@ -27,7 +31,7 @@ class TestImageUploadValidations(TestCase):
         req = self._req()
         f = SimpleUploadedFile("doc.pdf", b"%PDF-1.4", content_type="application/pdf")
         with patch("images.api.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
-            status, body = upload_image(req, "acme", f)
+            status, body = unwrap_status(upload_image(req, "acme", f))
             self.assertEqual(status, 400)
             self.assertIn("Invalid file type", body["detail"]) 
 

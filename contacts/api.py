@@ -1,4 +1,4 @@
-from ninja import Router, Schema
+from ninja import Router, Schema, Status
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
@@ -225,9 +225,9 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
     # File validation: max size 10MB
     MAX_SIZE = 10 * 1024 * 1024
     if file.size > MAX_SIZE:
-        return 400, DetailResponse(detail="File too large. Maximum allowed size is 10MB.")
+        return Status(400, DetailResponse(detail="File too large. Maximum allowed size is 10MB."))
     if not file.content_type.startswith("image/"):
-        return 400, DetailResponse(detail="Invalid file type. Only images are allowed.")
+        return Status(400, DetailResponse(detail="Invalid file type. Only images are allowed."))
     try:
         # Resize images (small, large)
         small_bytes, large_bytes = resize_avatar_images(file.read())
@@ -256,14 +256,14 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
             large_avatar_url=large_avatar_url
         )
     except Exception as e:
-        return 400, DetailResponse(detail=f"Failed to process avatar: {str(e)}")
+        return Status(400, DetailResponse(detail=f"Failed to process avatar: {str(e)}"))
 
 @contacts_router.delete("/{slug}/avatar/", auth=JWTAuth(), response={200: DetailResponse, 404: DetailResponse})
 def delete_contact_avatar(request, slug: str):
     contact = get_object_or_404(Contact, slug=slug)
     assert_org_write(getattr(request, "auth", request.user), contact.organization)
     if not contact.avatar_path:
-        return 404, DetailResponse(detail="No avatar to delete.")
+        return Status(404, DetailResponse(detail="No avatar to delete."))
     delete_existing_avatar(contact)
     contact.avatar_path = None
     contact.save(update_fields=["avatar_path"])

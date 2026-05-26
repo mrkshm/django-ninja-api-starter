@@ -1,7 +1,5 @@
 import os
 
-from django.core.files.storage import default_storage
-
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, ImageVariants, PolymorphicImageRelationOut
 
@@ -12,24 +10,14 @@ def build_relative_urls(file_name: str) -> tuple[str, ImageVariants]:
     def rel(key: str) -> str:
         return f"/media/{key}"
 
-    def exists(key: str) -> bool:
-        try:
-            return default_storage.exists(key)
-        except Exception:
-            return False
-
-    original_key = file_name
-    original_url = rel(original_key) if exists(original_key) else None
-    original_or_fallback = original_url or rel(original_key)
-
     variants = ImageVariants(
-        original=original_or_fallback,
-        thumb=rel(f"{base}_thumb.webp") if exists(f"{base}_thumb.webp") else original_or_fallback,
-        sm=rel(f"{base}_sm.webp") if exists(f"{base}_sm.webp") else original_or_fallback,
-        md=rel(f"{base}_md.webp") if exists(f"{base}_md.webp") else original_or_fallback,
-        lg=rel(f"{base}_lg.webp") if exists(f"{base}_lg.webp") else original_or_fallback,
+        original=rel(file_name),
+        thumb=rel(f"{base}_thumb.webp"),
+        sm=rel(f"{base}_sm.webp"),
+        md=rel(f"{base}_md.webp"),
+        lg=rel(f"{base}_lg.webp"),
     )
-    return original_or_fallback, variants
+    return variants.original, variants
 
 
 def serialize_image(image: Image) -> ImageOut:

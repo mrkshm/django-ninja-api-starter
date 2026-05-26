@@ -2,6 +2,45 @@ from ninja import Schema, Field
 from typing import Optional
 from datetime import datetime
 
+
+class UnverifiedUserSchema(Schema):
+    detail: str
+    email_verified: bool = False
+
+
+class CustomTokenOutputSchema(Schema):
+    access: str
+    refresh: str
+    email: str
+
+
+class RegisterSchema(Schema):
+    email: str
+    password: str
+
+
+class ChangePasswordSchema(Schema):
+    old_password: str
+    new_password: str
+
+
+class EmailUpdateSchema(Schema):
+    email: str
+
+
+class EmailSchema(Schema):
+    email: str
+
+
+class PasswordResetRequestSchema(Schema):
+    email: str
+
+
+class PasswordResetSchema(Schema):
+    token: str
+    new_password: str
+
+
 class UserProfileOut(Schema):
     id: int
     email: str
