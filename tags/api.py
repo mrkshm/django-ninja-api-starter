@@ -3,25 +3,18 @@ import logging
 from django.shortcuts import get_object_or_404
 from tags.models import Tag, TaggedItem
 from tags.schemas import TagCreate, TagOut, TagUpdate
-from django.contrib.contenttypes.models import ContentType
 from django.utils.text import slugify
-from django.apps import apps
-from organizations.models import Organization
-from organizations.permissions import is_member
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth
 from ninja.pagination import LimitOffsetPagination, paginate
-from core.utils.auth_utils import check_object_belongs_to_org, get_org_or_404, check_contact_member
+from core.utils.polymorphic import resolve_org_for_request, resolve_org_scoped_content_object
 
 # Module-level router and logger
 router = Router(tags=["tags"])
 logger = logging.getLogger("audit")
 
 def get_org_for_request(request, org_slug):
-    user = request.user
-    org = get_org_or_404(org_slug)
-    check_contact_member(user, org)
-    return org
+    return resolve_org_for_request(request, org_slug)
 
 @router.get("/orgs/{org_slug}/tags/", response=list[TagOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
@@ -73,11 +66,9 @@ def create_tag(request, org_slug: str, data: TagCreate):
 @paginate(LimitOffsetPagination)
 def list_tags_for_object(request, org_slug: str, app_label: str, model: str, obj_id: int, ordering: str | None = None):
     """List tags for a specific object (paginated)."""
-    org = get_org_for_request(request, org_slug)
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    ct = resolved.content_type
 
     ordering_map = {
         None: "name",
@@ -106,11 +97,9 @@ def assign_tags(request, org_slug: str, app_label: str, model: str, obj_id: int,
     Example payload:
     ["vip", "newsletter"]
     """
-    org = get_org_for_request(request, org_slug)
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    ct = resolved.content_type
 
     out: list[Tag] = []
     for name in data:
@@ -166,11 +155,9 @@ def unassign_tags(request, org_slug: str, app_label: str, model: str, obj_id: in
     Accepts a JSON array of tag IDs. Example payload:
     [1, 4, 7]
     """
-    org = get_org_for_request(request, org_slug)
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    ct = resolved.content_type
 
     qs = TaggedItem.objects.filter(
         tag_id__in=tag_ids,
@@ -189,11 +176,9 @@ def unassign_tags(request, org_slug: str, app_label: str, model: str, obj_id: in
 @router.delete("/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/", auth=JWTAuth())
 def unassign_tag_by_slug(request, org_slug: str, app_label: str, model: str, obj_id: int, slug: str):
     """Unassign a single tag from an object by tag slug."""
-    org = get_org_for_request(request, org_slug)
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    ct = resolved.content_type
 
     try:
         tag = Tag.objects.get(organization=org, slug=slug)

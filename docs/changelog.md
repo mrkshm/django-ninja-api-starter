@@ -30,7 +30,7 @@
   - [x] Return variant URLs or a predictable path scheme for `thumb/sm/md/lg`
 
 - [x] Permissions and audit
-  - [x] Ensure `check_contact_member`/org membership is applied uniformly across all endpoints
+  - [x] Ensure centralized organization access checks are applied uniformly across all endpoints
   - [x] Add audit logging on attach/detach/delete operations (user, org, object)
   - [x] Permission tests per route (non-member forbidden, cross-org rejected)
     - [x] Tags: all endpoints (list/search, by-slug, list for object, assign, update, delete, bulk unassign, unassign by slug)

@@ -1,7 +1,7 @@
 import pytest
 from ninja.errors import HttpError
 from organizations.models import Organization
-from core.utils.auth_utils import require_authenticated_user, check_contact_member, get_org_or_404, check_object_belongs_to_org
+from core.utils.auth_utils import require_authenticated_user, get_org_or_404, check_object_belongs_to_org
 
 class DummyUser:
     def __init__(self, is_authenticated):
@@ -72,20 +72,3 @@ def test_require_authenticated_user_false():
 def test_require_authenticated_user_true():
     user = DummyUser(is_authenticated=True)
     require_authenticated_user(user)  # Should not raise
-
-@pytest.mark.django_db
-def test_check_contact_member_allows_member(monkeypatch):
-    user = object()
-    org = object()
-    monkeypatch.setattr("core.utils.auth_utils.is_member", lambda u, o: True)
-    check_contact_member(user, org)
-
-@pytest.mark.django_db
-def test_check_contact_member_denies_non_member(monkeypatch):
-    user = object()
-    org = object()
-    monkeypatch.setattr("core.utils.auth_utils.is_member", lambda u, o: False)
-    with pytest.raises(HttpError) as exc:
-        check_contact_member(user, org)
-    assert exc.value.status_code == 403
-    assert "access" in str(exc.value).lower()

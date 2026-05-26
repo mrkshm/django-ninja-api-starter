@@ -6,6 +6,7 @@ from core.utils import make_it_unique
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.core.cache import cache
+from organizations.access import membership_role_cache_key
 
 User = get_user_model()
 
@@ -40,6 +41,7 @@ def delete_personal_org_on_user_delete(sender, instance, **kwargs):
 def invalidate_membership_cache(sender, instance, **kwargs):
     user_id = instance.user_id
     org_id = instance.organization_id
+    cache.delete(membership_role_cache_key(user_id, org_id))
     for kind in ["is_owner", "is_admin", "is_member"]:
         cache_key = f"{kind}_{user_id}_{org_id}"
         cache.delete(cache_key)

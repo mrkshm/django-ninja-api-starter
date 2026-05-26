@@ -218,23 +218,20 @@ The API supports secure, stateful password resets with asynchronous email delive
 
 See [docs/api-setup.md](docs/api-setup.md#password-reset-api-endpoints) for details.
 
-## Redis Caching for Organization Permissions
+## Cached Organization Access Policy
 
-This project implements Redis caching for organization membership and permission checks:
+Organization authorization is centralized in `organizations/access.py`:
 
-- **Cached permission checks:** Functions like `is_member`, `is_admin`, and `is_owner` use Redis to cache results for 1 hour, reducing database load and speeding up API responses.
-- **Automatic cache invalidation:** When a user's organization membership changes (added or removed), Django signals clear the relevant cache keys so permission checks always reflect the latest state.
+- **Central access helpers:** Use `assert_org_view`, `assert_org_write`, and `assert_org_admin` in endpoints instead of ad-hoc membership queries.
+- **Compatibility helpers:** Existing `is_member`, `is_admin`, and `is_owner` imports remain available through `organizations/permissions.py`.
+- **Cached membership role:** The user's membership role for an organization is cached for 1 hour as a single role value instead of separate boolean keys.
+- **Automatic cache invalidation:** When a user's organization membership changes, Django signals clear the cached role so permission checks reflect the latest saved membership state.
 
 **Example:**
 
 ```python
-# organizations/permissions.py
-cache_key = f'is_member_{user.id}_{org.id}'
-result = cache.get(cache_key)
-if result is None:
-    result = Membership.objects.filter(user=user, organization=org).exists()
-    cache.set(cache_key, result, timeout=3600)
-return result
+# organizations/access.py
+assert_org_write(request.auth, contact.organization)
 ```
 
 See [docs/celery-and-redis.md](docs/celery-and-redis.md) for a detailed breakdown and code/test examples.
@@ -248,8 +245,8 @@ By default, this API uses a **loose org permission model**:
 
 ### How to Tighten Permissions
 
-- To restrict an action to admins/owners, simply swap the `is_member` check for `is_admin` or `is_owner` in the relevant endpoint.
-- You can add more granular permission logic as needed, leveraging the existing helpers.
+- To restrict an action to admins/owners, use `assert_org_admin(user, org)`.
+- You can add more granular permission logic as needed, leveraging the centralized access helpers.
 
 ---
 

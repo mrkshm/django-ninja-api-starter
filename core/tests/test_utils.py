@@ -107,28 +107,6 @@ def test_require_authenticated_user_true():
     # Should not raise
     require_authenticated_user(user)
 
-@pytest.mark.django_db
-def test_check_contact_member_allows_member(monkeypatch):
-    user = object()
-    org = object()
-    monkeypatch.setattr("core.utils.auth_utils.is_member", lambda u, o: True)
-    from core.utils.auth_utils import check_contact_member
-    # Should not raise
-    check_contact_member(user, org)
-
-@pytest.mark.django_db
-def test_check_contact_member_denies_non_member(monkeypatch):
-    user = object()
-    org = object()
-    monkeypatch.setattr("core.utils.auth_utils.is_member", lambda u, o: False)
-    from core.utils.auth_utils import check_contact_member
-    import pytest
-    from ninja.errors import HttpError
-    with pytest.raises(HttpError) as exc:
-        check_contact_member(user, org)
-    assert exc.value.status_code == 403
-    assert "access" in str(exc.value).lower()
-
 import types
 import sys
 import builtins

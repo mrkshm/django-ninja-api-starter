@@ -1,4 +1,4 @@
-from ninja import Router
+from ninja import Router, Status
 from django.contrib.auth import get_user_model
 from ninja_jwt.controller import NinjaJWTDefaultController
 from ninja_jwt.tokens import RefreshToken
@@ -48,17 +48,23 @@ class CustomJWTController(NinjaJWTDefaultController):
         try:
             # Get the user by email for validation
             user = User.objects.get(email=data.email)
+            password = data.password
+            if hasattr(password, "get_secret_value"):
+                password = password.get_secret_value()
             
             # Check if the password is valid
-            if not user.check_password(data.password):
+            if not user.check_password(password):
                 raise HttpError(401, "Invalid credentials")
                 
             # Check if email is verified (configurable for tests)
             require_verification = getattr(settings, "REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN", True)
             if require_verification and not user.email_verified:
-                return 403, UnverifiedUserSchema(
-                    detail="Please verify your email address before logging in.",
-                    email_verified=False
+                return Status(
+                    403,
+                    UnverifiedUserSchema(
+                        detail="Please verify your email address before logging in.",
+                        email_verified=False
+                    ),
                 )
             
             # Email is verified, generate tokens

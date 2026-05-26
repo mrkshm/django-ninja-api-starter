@@ -1,16 +1,10 @@
 from ninja.errors import HttpError
-from organizations.permissions import is_member
 from organizations.models import Organization
 
 
 def require_authenticated_user(user):
     if user is None or not getattr(user, "is_authenticated", False):
         raise HttpError(401, "Authentication required")
-
-def check_contact_member(user, organization):
-    if not is_member(user, organization):
-        raise HttpError(403, "You do not have access to this organization.")
-
 
 def get_org_or_404(slug):
     try:

@@ -290,6 +290,26 @@ def test_update_contact_organization_and_fields(make_auth_headers):
     resp = client.put(f"/contacts/{contact.slug}/", json=payload, headers=headers)
     assert resp.status_code == 404
 
+
+@pytest.mark.django_db
+def test_update_contact_rejects_move_to_inaccessible_organization(make_auth_headers):
+    user = create_test_user(email="move@example.com", password="pw", username="moveuser", slug="moveuser")
+    org1 = Organization.objects.create(name="Move Org1", slug="move-org1", type="group", creator=user)
+    org2 = Organization.objects.create(name="Move Org2", slug="move-org2", type="group", creator=None)
+    Membership.objects.create(user=user, organization=org1, role="owner")
+    contact = Contact.objects.create(display_name="Move Me", slug="move-me", organization=org1, creator=user)
+    headers = make_auth_headers(client, user, password="pw")
+
+    resp = client.put(
+        f"/contacts/{contact.slug}/",
+        json={"display_name": "Move Me", "organization": org2.slug},
+        headers=headers,
+    )
+
+    assert resp.status_code == 403
+    contact.refresh_from_db()
+    assert contact.organization == org1
+
 @pytest.mark.django_db
 def test_upload_contact_avatar_error(monkeypatch, make_auth_headers):
     user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
@@ -335,3 +355,23 @@ def test_partial_update_contact_organization(make_auth_headers):
     payload = {"organization": "does-not-exist"}
     resp = client.patch(f"/contacts/{contact.slug}/", json=payload, headers=headers)
     assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_partial_update_contact_rejects_move_to_inaccessible_organization(make_auth_headers):
+    user = create_test_user(email="patchmove@example.com", password="pw", username="patchmove", slug="patchmove")
+    org1 = Organization.objects.create(name="Patch Move Org1", slug="patch-move-org1", type="group", creator=user)
+    org2 = Organization.objects.create(name="Patch Move Org2", slug="patch-move-org2", type="group", creator=None)
+    Membership.objects.create(user=user, organization=org1, role="owner")
+    contact = Contact.objects.create(display_name="Patch Move", slug="patch-move", organization=org1, creator=user)
+    headers = make_auth_headers(client, user, password="pw")
+
+    resp = client.patch(
+        f"/contacts/{contact.slug}/",
+        json={"organization": org2.slug},
+        headers=headers,
+    )
+
+    assert resp.status_code == 403
+    contact.refresh_from_db()
+    assert contact.organization == org1

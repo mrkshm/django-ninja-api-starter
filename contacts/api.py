@@ -7,11 +7,10 @@ from core.utils.utils import make_it_unique, generate_upload_filename
 from core.utils.storage import upload_to_storage
 from core.utils.image import resize_avatar_images
 from core.utils.avatar import delete_existing_avatar
-from core.utils.auth_utils import check_contact_member
 from .models import Contact
 from .schemas import ContactIn, ContactOut, ContactAvatarResponse, DetailResponse
 from organizations.models import Organization
-from organizations.permissions import is_member
+from organizations.access import assert_org_view, assert_org_write
 from ninja.pagination import paginate, LimitOffsetPagination, PaginationBase
 from ninja import File, UploadedFile
 from django.core.files.storage import default_storage
@@ -136,7 +135,7 @@ def list_contacts(
 @contacts_router.get("/{slug}/", response=ContactOut, auth=JWTAuth())
 def get_contact(request, slug: str):
     contact = get_object_or_404(Contact.objects.select_related("organization", "creator").prefetch_related("tagged_items__tag"), slug=slug)
-    check_contact_member(getattr(request, "auth", request.user), contact.organization)
+    assert_org_view(getattr(request, "auth", request.user), contact.organization)
     return contact
 
 @contacts_router.post("/", response=ContactOut, auth=JWTAuth())
@@ -147,7 +146,7 @@ def create_contact(request, data: ContactIn):
     if data.organization:
         org_slug = data.organization
         organization = get_object_or_404(Organization, slug=org_slug)
-        check_contact_member(user, organization)
+        assert_org_write(user, organization)
     else:
         # Use the user's primary organization
         user_orgs = user.memberships.select_related("organization").all()
@@ -182,11 +181,13 @@ def create_contact(request, data: ContactIn):
 
 @contacts_router.put("/{slug}/", response=ContactOut, auth=JWTAuth())
 def update_contact(request, slug: str, data: ContactIn):
+    user = getattr(request, "auth", request.user)
     contact = get_object_or_404(Contact, slug=slug)
-    check_contact_member(getattr(request, "auth", request.user), contact.organization)
+    assert_org_write(user, contact.organization)
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "organization":
             org = get_object_or_404(Organization, slug=value)
+            assert_org_write(user, org)
             setattr(contact, "organization", org)
         else:
             setattr(contact, field, value)
@@ -195,11 +196,13 @@ def update_contact(request, slug: str, data: ContactIn):
 
 @contacts_router.patch("/{slug}/", response=ContactOut, auth=JWTAuth())
 def partial_update_contact(request, slug: str, data: ContactUpdate):
+    user = getattr(request, "auth", request.user)
     contact = get_object_or_404(Contact, slug=slug)
-    check_contact_member(request.user, contact.organization)
+    assert_org_write(user, contact.organization)
     update_fields = data.model_dump(exclude_unset=True)
     if "organization" in update_fields:
         org = get_object_or_404(Organization, slug=update_fields.pop("organization"))
+        assert_org_write(user, org)
         contact.organization = org
     for field, value in update_fields.items():
         setattr(contact, field, value)
@@ -218,7 +221,7 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
     print('DATA:', request.POST)
     print('FILE ARG:', file)
     contact = get_object_or_404(Contact, slug=slug)
-    check_contact_member(request.user, contact.organization)
+    assert_org_write(getattr(request, "auth", request.user), contact.organization)
     # File validation: max size 10MB
     MAX_SIZE = 10 * 1024 * 1024
     if file.size > MAX_SIZE:
@@ -258,7 +261,7 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
 @contacts_router.delete("/{slug}/avatar/", auth=JWTAuth(), response={200: DetailResponse, 404: DetailResponse})
 def delete_contact_avatar(request, slug: str):
     contact = get_object_or_404(Contact, slug=slug)
-    check_contact_member(request.user, contact.organization)
+    assert_org_write(getattr(request, "auth", request.user), contact.organization)
     if not contact.avatar_path:
         return 404, DetailResponse(detail="No avatar to delete.")
     delete_existing_avatar(contact)
@@ -269,7 +272,7 @@ def delete_contact_avatar(request, slug: str):
 @contacts_router.delete("/{slug}/", auth=JWTAuth())
 def delete_contact(request, slug: str):
     contact = get_object_or_404(Contact, slug=slug)
-    check_contact_member(request.user, contact.organization)
+    assert_org_write(getattr(request, "auth", request.user), contact.organization)
     contact.delete()
     return {"detail": "Contact deleted."}
 

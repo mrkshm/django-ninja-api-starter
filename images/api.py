@@ -4,9 +4,6 @@ from ninja import Router, File, UploadedFile, Schema
 from ninja.errors import HttpError, ValidationError as NinjaValidationError
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
-from django.apps import apps
-from django.contrib.contenttypes.models import ContentType
-from organizations.models import Organization
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, PolymorphicImageRelationOut, ImageVariants, BulkAttachOut, BulkDetachOut, ImagePatchIn, SetCoverIn
 from ninja.pagination import LimitOffsetPagination, paginate
@@ -22,7 +19,7 @@ from django.core.files.base import ContentFile
 import os
 from datetime import datetime
 from django.http import JsonResponse
-from core.utils.auth_utils import get_org_or_404, check_object_belongs_to_org, check_contact_member
+from core.utils.polymorphic import resolve_org_for_request, resolve_org_scoped_content_object
 from django.conf import settings
 
 """
@@ -93,10 +90,7 @@ logger = logging.getLogger("audit")
 
 # Helper function to check org membership using the new permission helper
 def get_org_for_request(request, org_slug):
-    user = getattr(request, "auth", request.user)
-    org = get_org_or_404(org_slug)
-    check_contact_member(user, org)
-    return org
+    return resolve_org_for_request(request, org_slug)
 
 def _build_relative_urls(file_name: str) -> tuple[str, ImageVariants]:
     base, ext = os.path.splitext(file_name)
@@ -169,11 +163,8 @@ def list_images_for_org(request, org_slug: str, ordering: str | None = None):
 @router.get("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
 def list_images_for_object(request, org_slug: str, app_label: str, model: str, obj_id: int, ordering: str | None = None):
-    org = get_org_for_request(request, org_slug)
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    ct = resolved.content_type
     # Support ordering by relation order (default), then fallback to image fields
     ordering_map = {
         None: "order",
@@ -220,12 +211,10 @@ def list_images_for_object(request, org_slug: str, app_label: str, model: str, o
 # Attach images to an object
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
 def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ImageIdsIn):
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    ct = resolved.content_type
     user = request.user
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
     out = []
     # Determine current ordering and primary for this object
     rel_qs = PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj_id)
@@ -289,11 +278,11 @@ def bulk_attach_images(
         status, data = cached
         return (status, data) if status != 200 else data
 
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    obj = resolved.obj
+    ct = resolved.content_type
     user = request.user
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
     requested_ids = set(data.image_ids)
     images = Image.objects.filter(id__in=requested_ids, organization=org)
     found_ids = set(images.values_list("id", flat=True))
@@ -303,7 +292,6 @@ def bulk_attach_images(
         raise HttpError(403, "One or more images do not belong to this organization")
     attached = []
     with transaction.atomic():
-        ct = ContentType.objects.get_for_model(obj)
         rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(content_type=ct, object_id=obj.pk)
         has_primary = rel_qs.filter(is_cover=True).exists()
         existing_orders = rel_qs.exclude(order__isnull=True).values_list("order", flat=True)
@@ -335,12 +323,11 @@ def bulk_attach_images(
 # Reorder images for an object and set primary to the first
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", auth=JWTAuth())
 def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ReorderIn):
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    obj = resolved.obj
+    ct = resolved.content_type
     user = request.user
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
-    ct = ContentType.objects.get_for_model(obj)
 
     rels = list(
         PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj.pk).select_related("image")
@@ -390,12 +377,11 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
 # Set an image as cover for an object (does not modify order)
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", auth=JWTAuth())
 def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn):
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    obj = resolved.obj
+    ct = resolved.content_type
     user = request.user
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
-    ct = ContentType.objects.get_for_model(obj)
 
     # Ensure the image exists and belongs to the organization
     image = get_object_or_404(Image, id=data.image_id, organization=org)
@@ -422,12 +408,11 @@ def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: 
 # Unset any cover image for an object (does not modify order)
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", auth=JWTAuth())
 def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int):
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    obj = resolved.obj
+    ct = resolved.content_type
     user = request.user
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
-    ct = ContentType.objects.get_for_model(obj)
 
     with transaction.atomic():
         qs = (
@@ -458,18 +443,18 @@ def bulk_detach_images(
         status, data = cached
         return (status, data) if status != 200 else data
 
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    obj = resolved.obj
+    ct = resolved.content_type
     user = request.user
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
     images = Image.objects.filter(id__in=data.image_ids, organization=org)
     detached = []
     with transaction.atomic():
         for image in images:
             deleted, _ = PolymorphicImageRelation.objects.filter(
                 image=image,
-                content_type=ContentType.objects.get_for_model(obj),
+                content_type=ct,
                 object_id=obj.pk,
             ).delete()
             if deleted:
@@ -486,12 +471,10 @@ def bulk_detach_images(
 # Remove an image from an object
 @router.delete("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/{image_id}/", auth=JWTAuth(), response={204: None})
 def remove_image_from_object(request, org_slug: str, app_label: str, model: str, obj_id: int, image_id: int):
-    org = get_org_for_request(request, org_slug)
+    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    org = resolved.organization
+    ct = resolved.content_type
     user = request.user
-    ct = get_object_or_404(ContentType, app_label=app_label, model=model)
-    Model = apps.get_model(app_label, model)
-    obj = get_object_or_404(Model, pk=obj_id)
-    check_object_belongs_to_org(obj, org)
     rel = get_object_or_404(PolymorphicImageRelation, image_id=image_id, content_type=ct, object_id=obj_id)
     rel.delete()
     logger.info(

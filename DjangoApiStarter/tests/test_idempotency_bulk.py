@@ -12,7 +12,7 @@ from images.api import (
 )
 from images.api import BulkImageIdsIn
 from images.models import Image
-from organizations.models import Organization
+from organizations.models import Membership, Organization
 from contacts.models import Contact
 
 
@@ -26,6 +26,7 @@ class TestIdempotencyBulk(TestCase):
         User = get_user_model()
         self.user = User.objects.create_user(email="u@example.com", password="pass12345")
         self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.user)
+        Membership.objects.create(user=self.user, organization=self.org, role="owner")
         self.contact = Contact.objects.create(display_name="John", slug="john", organization=self.org, creator=self.user)
 
     def _req(self, method: str, path: str, idem_key: str):
@@ -94,11 +95,10 @@ class TestIdempotencyBulk(TestCase):
         path = f"/api/v1/images/orgs/{self.org.slug}/images/contacts/contact/{self.contact.id}/bulk_attach/"
         req1 = self._req("POST", path, "key-2")
         req2 = self._req("POST", path, "key-2")
-        with patch("images.api.get_org_for_request", return_value=self.org):
-            first = bulk_attach_images(req1, self.org.slug, "contacts", "contact", self.contact.id, data)
-            second = bulk_attach_images(req2, self.org.slug, "contacts", "contact", self.contact.id, data)
-            self.assertEqual(first, second)
-            self.assertCountEqual(first["attached"], [img1.id, img2.id])
+        first = bulk_attach_images(req1, self.org.slug, "contacts", "contact", self.contact.id, data)
+        second = bulk_attach_images(req2, self.org.slug, "contacts", "contact", self.contact.id, data)
+        self.assertEqual(first, second)
+        self.assertCountEqual(first["attached"], [img1.id, img2.id])
 
     def test_bulk_detach_idempotent_same_key(self):
         # Attach first
@@ -106,17 +106,15 @@ class TestIdempotencyBulk(TestCase):
         img2 = Image.objects.create(file="i/2.jpg", organization=self.org, creator=self.user)
         attach_path = f"/api/v1/images/orgs/{self.org.slug}/images/contacts/contact/{self.contact.id}/bulk_attach/"
         req_attach = self._req("POST", attach_path, "key-3a")
-        with patch("images.api.get_org_for_request", return_value=self.org):
-            bulk_attach_images(req_attach, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
+        bulk_attach_images(req_attach, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
         # Now detach twice with same key
         detach_path = f"/api/v1/images/orgs/{self.org.slug}/images/contacts/contact/{self.contact.id}/bulk_detach/"
         req1 = self._req("POST", detach_path, "key-3b")
         req2 = self._req("POST", detach_path, "key-3b")
-        with patch("images.api.get_org_for_request", return_value=self.org):
-            first = bulk_detach_images(req1, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
-            second = bulk_detach_images(req2, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
-            self.assertEqual(first, second)
-            self.assertCountEqual(first["detached"], [img1.id, img2.id])
+        first = bulk_detach_images(req1, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
+        second = bulk_detach_images(req2, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
+        self.assertEqual(first, second)
+        self.assertCountEqual(first["detached"], [img1.id, img2.id])
 
     def test_bulk_delete_idempotent_same_key(self):
         img1 = Image.objects.create(file="i/1.jpg", organization=self.org, creator=self.user)

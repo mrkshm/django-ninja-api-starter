@@ -12,9 +12,13 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 import warnings
 import environ
-from django.utils.deprecation import RemovedInDjango60Warning
+try:
+    from django.utils.deprecation import RemovedInDjango60Warning as DjangoRemovedWarning
+except ImportError:
+    DjangoRemovedWarning = DeprecationWarning
 
 PROJECT_NAME = os.getenv("PROJECT_NAME", "DjangoApiStarter")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -28,7 +32,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # Silence deprecation warning from django-ninja re-registering 'uuid' converter (safe to ignore)
 warnings.filterwarnings(
     "ignore",
-    category=RemovedInDjango60Warning,
+    category=DjangoRemovedWarning,
     message=r"Converter 'uuid' is already registered\.",
 )
 
@@ -90,9 +94,6 @@ INSTALLED_APPS = [
     "storages",
     "django_filters",
     "health_check",
-    "health_check.db",
-    "health_check.cache",
-    "health_check.storage",
     "ninja_extra",
     "csp",
     "corsheaders",
@@ -151,16 +152,29 @@ WSGI_APPLICATION = "DjangoApiStarter.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': env('POSTGRES_DB', default='django_db'),
-        'USER': env('POSTGRES_USER', default='django_user'),
-        'PASSWORD': env('POSTGRES_PASSWORD', default='django_pass'),
-        'HOST': env('POSTGRES_HOST', default='db'),
-        'PORT': env('POSTGRES_PORT', default='5432'),
+if "pytest" in sys.modules:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
+            'NAME': env('POSTGRES_DB', default='django_db'),
+            'USER': env('POSTGRES_USER', default='django_user'),
+            'PASSWORD': env('POSTGRES_PASSWORD', default='django_pass'),
+            'HOST': env('POSTGRES_HOST', default='db'),
+            'PORT': env('POSTGRES_PORT', default='5432'),
+        }
+    }
+
+def env_for_tests(name, test_default):
+    if "pytest" in sys.modules:
+        return env(name, default=test_default)
+    return env(name)
 
 # Redis Cache Configuration
 CACHES = {
@@ -205,10 +219,10 @@ STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
-            "access_key": env('R2_ACCESS_KEY_ID'),
-            "secret_key": env('R2_SECRET_ACCESS_KEY'),
-            "bucket_name": env('R2_BUCKET_NAME'),
-            "endpoint_url": env('R2_ENDPOINT_URL'),
+            "access_key": env_for_tests('R2_ACCESS_KEY_ID', 'test-access-key'),
+            "secret_key": env_for_tests('R2_SECRET_ACCESS_KEY', 'test-secret-key'),
+            "bucket_name": env_for_tests('R2_BUCKET_NAME', 'test-bucket'),
+            "endpoint_url": env_for_tests('R2_ENDPOINT_URL', 'http://localhost:9000'),
             "region_name": "auto",
             "addressing_style": "virtual",
             "signature_version": "s3v4",
