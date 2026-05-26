@@ -20,15 +20,20 @@ Remaining consideration:
 
 ## 2. Image API Size And Boundaries
 
-Current state:
+Resolved state:
 
-- `images/api.py` is still large.
-- Image response serialization lives in `images/serializers.py`, but the route module still owns listing, relation mutation, ordering, cover selection, metadata updates, upload, delete, bulk behavior, and throttles.
+- The images API is now an `images/api/` package split by behavior.
+- Route-local schemas live in `images/api_schemas.py`.
+- Throttle setup lives in `images/throttles.py`.
+- `images/api/__init__.py` preserves direct imports such as `from images.api import upload_image`.
+
+Why it matters:
+
+- The image API no longer has one large route module mixing listing, relation, upload, metadata, delete, and throttle concerns.
 
 Future option:
 
-- Split `images/api.py` only if a specific behavior area becomes hard to change safely.
-- Preserve compatibility for direct imports from `images.api` while migrating tests and callers.
+- Move tests/callers to explicit submodule imports if the compatibility re-exports become unnecessary.
 
 ## 3. Image Variant URL Storage Checks
 
@@ -38,12 +43,20 @@ Resolved state:
 - It no longer calls `default_storage.exists()` while serializing image responses.
 - Missing variants now return 404 at the media endpoint instead of falling back to the original URL.
 
+Why it matters:
+
+- List serialization no longer performs per-image storage network calls on remote storage backends.
+
 ## 4. Media Proxy Access Model
 
 Resolved state:
 
 - `images.views.media_serve()` serves `/media/<key>` without object-level auth checks.
 - This is documented as an intentional public bearer-style URL policy.
+
+Why it matters:
+
+- If generated projects make uploaded images private organization data, stable unauthenticated media URLs would become a data exposure risk.
 
 Future option:
 
@@ -56,6 +69,18 @@ Resolved state:
 - The pinned Django Ninja version uses `UserRateThrottle.allow_request(self, request)`.
 - `LoggingUserRateThrottle.allow_request()` now calls that signature directly and no longer catches `TypeError`.
 - The global test monkeypatch has been simplified to the same signature.
+
+Why it matters:
+
+- Real throttle errors are no longer hidden as signature compatibility failures.
+
+## Priority
+
+Remaining order:
+
+1. Revisit signed/authenticated media URLs if generated projects need private organization media.
+2. Revisit the `ninja-jwt` custom controller only if the dependency exposes a cleaner extension point.
+3. Move image tests/callers to explicit submodule imports only if the compatibility layer becomes noise.
 
 ## Not Applicable From `ll_back`
 

@@ -12,50 +12,31 @@ Use a single `api.py` while an app has a small, coherent route surface. Move to 
 
 - `contacts/api.py`: keep. The file is cohesive around contact CRUD and avatar handling.
 - `tags/api.py`: keep. Polymorphic object resolution is centralized, so the remaining file is straightforward.
-- `images/api.py`: keep for now, but it is the next candidate for a package split.
+- `images/api/`: keep. This is justified by the number of independent image behaviors.
 
 ## Images Review
 
-After extracting image response serialization, `images/api.py` is smaller and easier to scan, but it still combines several concerns:
+The images API has been split into `images/api/` modules by behavior:
 
-- listing organization images
-- listing/attaching/detaching object relations
-- relation order and cover selection
-- image metadata updates
-- single and bulk upload
-- single and bulk delete
-- rate-limit configuration
-- validation error override
+- `listing.py`: organization and object image listing
+- `relations.py`: attach/detach and bulk attach/detach
+- `ordering.py`: reorder and cover selection
+- `metadata.py`: image metadata patch
+- `uploads.py`: single and bulk upload
+- `deletion.py`: single and bulk delete
+- `common.py`: shared router, logger, and org lookup
+- `__init__.py`: router assembly and public compatibility re-exports
 
-That is enough to justify a future split, but not immediately. The media URL policy is now settled as public bearer-style URLs with deterministic variant paths, so future image cleanup should focus on behavior boundaries rather than storage URL checks.
+Supporting pieces:
 
-- tighten bulk delete/upload error semantics
-- split only if a specific behavior area becomes hard to change safely
+- `images/api_schemas.py`: route-local request/response schemas
+- `images/throttles.py`: image throttle setup
 
-Splitting before a concrete behavior problem appears would likely move stable code between files and create extra import churn.
-
-## Future Split Shape
-
-If `images/api.py` keeps growing, split it by behavior:
-
-```text
-images/api/
-  __init__.py      # router assembly and public re-exports for compatibility
-  routes.py        # shared router/throttle setup, if needed
-  listing.py       # org and object list routes
-  relations.py     # attach/detach/reorder/cover routes
-  uploads.py       # upload and bulk upload
-  metadata.py      # image metadata patch
-  deletion.py      # delete and bulk delete
-```
-
-Keep existing import compatibility during the migration:
+Existing import compatibility is preserved:
 
 ```python
 from images.api import router, upload_image, bulk_upload_images
 ```
-
-Tests and callers currently import route callables directly from `images.api`, so `__init__.py` should re-export those names until tests and any external code are migrated.
 
 ## Review Criteria For Future Splits
 
