@@ -65,7 +65,20 @@ def test_patch_username_empty():
     access = response.json()["access"]
     response = client.patch("/users/username", json={"username": "   "}, headers={"Authorization": f"Bearer {access}"})
     assert response.status_code == 400
-    assert "Username cannot be empty" in response.json()["detail"]
+    assert "1-50" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_patch_username_rejects_invalid_characters():
+    user = create_test_user(email="invalidname@example.com", password="testpass", username="oldname")
+    Organization.objects.filter(memberships__user=user, type="personal").delete()
+    org = Organization.objects.create(name="oldname", slug="oldname-invalid", type="personal")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    response = client.post("/token/pair", json={"email": "invalidname@example.com", "password": "testpass"})
+    access = response.json()["access"]
+    response = client.patch("/users/username", json={"username": "bad name!"}, headers={"Authorization": f"Bearer {access}"})
+    assert response.status_code == 400
+    assert "letters, numbers, dots, and underscores" in response.json()["detail"]
 
 @pytest.mark.django_db
 def test_patch_username_org_missing():

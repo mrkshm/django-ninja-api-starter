@@ -1,4 +1,4 @@
-from core.utils import upload_to_storage, delete_existing_avatar
+from core.utils import delete_existing_avatar, generate_presigned_storage_url, upload_to_storage
 from unittest.mock import patch, MagicMock
 import types
 
@@ -41,3 +41,44 @@ def test_delete_existing_avatar_no_avatar():
     with patch("django.core.files.storage.default_storage.delete") as mock_delete:
         delete_existing_avatar(user)
         mock_delete.assert_not_called()
+
+
+def test_generate_presigned_storage_url_builds_s3_request(monkeypatch):
+    called = {}
+
+    class DummyClient:
+        def generate_presigned_url(self, operation, Params, ExpiresIn):
+            called["operation"] = operation
+            called["params"] = Params
+            called["expires_in"] = ExpiresIn
+            return "https://signed.example/avatar.webp"
+
+    def fake_client(service, **kwargs):
+        called["service"] = service
+        called["kwargs"] = kwargs
+        return DummyClient()
+
+    monkeypatch.setattr("core.utils.storage.boto3.client", fake_client)
+    generate_presigned_storage_url(
+        "avatars/avatar.webp",
+        expires_in=120,
+        content_type="image/webp",
+        cache_control="public, max-age=120",
+        storage_options={
+            "endpoint_url": "https://r2.example",
+            "access_key": "access",
+            "secret_key": "secret",
+            "region_name": "auto",
+            "bucket_name": "bucket",
+        },
+    )
+
+    assert called["service"] == "s3"
+    assert called["kwargs"]["endpoint_url"] == "https://r2.example"
+    assert called["params"] == {
+        "Bucket": "bucket",
+        "Key": "avatars/avatar.webp",
+        "ResponseContentType": "image/webp",
+        "ResponseCacheControl": "public, max-age=120",
+    }
+    assert called["expires_in"] == 120

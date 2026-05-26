@@ -8,6 +8,7 @@ from core.utils import make_it_unique
 from core.utils.auth_utils import require_authenticated_user
 from django.utils.text import slugify
 from .schemas import UserProfileOut
+from .username_validation import validate_username_value
 
 class UsernameUpdateSchema(Schema):
     username: str
@@ -21,8 +22,9 @@ def update_username(request, data: UsernameUpdateSchema):
     user = request.auth
     require_authenticated_user(user)
     new_username = data.username.strip()
-    if not new_username:
-        raise HttpError(400, "Username cannot be empty")
+    is_valid, reason = validate_username_value(new_username)
+    if not is_valid:
+        raise HttpError(400, reason)
     # Case-insensitive uniqueness check
     if User.objects.filter(username__iexact=new_username).exclude(id=user.id).exists():
         raise HttpError(400, "Username already taken")

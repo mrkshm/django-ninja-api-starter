@@ -115,3 +115,10 @@ def test_check_username_length_and_uniqueness():
     print("[TEST LOG] Available username response:", response.status_code, response.json())
     assert response.status_code == 200
     assert response.json()["available"] is True
+
+    # Invalid characters
+    response = client.get("/users/check_username?username=bad%20name!")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["available"] is False
+    assert "letters, numbers, dots, and underscores" in data["reason"]

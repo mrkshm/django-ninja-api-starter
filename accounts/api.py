@@ -1,4 +1,3 @@
-import os
 import secrets
 
 from django.conf import settings
@@ -27,6 +26,7 @@ from accounts.schemas import (
     UnverifiedUserSchema,
 )
 from accounts.services import authenticate_for_token, issue_token_pair
+from core.email_utils import render_email_template
 from core.tasks import send_email_task
 from core.utils.auth_utils import require_authenticated_user
 
@@ -56,22 +56,18 @@ User = get_user_model()
 
 def send_verification_email(user, token):
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
-    
-    with open(os.path.join(settings.BASE_DIR, "core/email_templates/registration_verification.txt")) as f:
-        template = f.read()
-        
     verification_link = f"{settings.FRONTEND_URL}/api/v1/auth/verify-registration?token={token}"
-    
-    body = template.replace("{{ project_name }}", settings.PROJECT_NAME)
-    body = body.replace("{{ user_display_name }}", display_name)
-    body = body.replace("{{ verification_link }}", verification_link)
-    
-    # Email subject is first line
-    subject, body_text = body.split("\n", 1)
-    subject = subject.replace("Subject: ", "").strip()
+    subject, body_text = render_email_template(
+        "registration_verification.txt",
+        {
+            "project_name": settings.PROJECT_NAME,
+            "user_display_name": display_name,
+            "verification_link": verification_link,
+        },
+    )
     
     try:
-        send_email_task.delay(subject, body_text.strip(), [user.email])
+        send_email_task.delay(subject, body_text, [user.email])
     except Exception as e:
         raise HttpError(500, f"Failed to send verification email: {str(e)}")
 
@@ -203,20 +199,19 @@ def request_email_change(request, data: EmailUpdateSchema):
     token = secrets.token_urlsafe(32)
     expires_at = timezone.now() + timezone.timedelta(hours=EMAIL_CHANGE_TOKEN_EXPIRY_HOURS)
     PendingEmailChange.objects.create(user=user, new_email=new_email, token=token, expires_at=expires_at)
-    # Prepare and send email
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
-    with open(os.path.join(settings.BASE_DIR, "core/email_templates/email_change_verification.txt")) as f:
-        template = f.read()
     verification_link = f"{settings.FRONTEND_URL}/verify-email-change?token={token}"
-    body = template.replace("{{ project_name }}", settings.PROJECT_NAME)
-    body = body.replace("{{ user_display_name }}", display_name)
-    body = body.replace("{{ new_email }}", new_email)
-    body = body.replace("{{ verification_link }}", verification_link)
-    # Email subject is first line
-    subject, body_text = body.split("\n", 1)
-    subject = subject.replace("Subject: ", "").strip()
+    subject, body_text = render_email_template(
+        "email_change_verification.txt",
+        {
+            "project_name": settings.PROJECT_NAME,
+            "user_display_name": display_name,
+            "new_email": new_email,
+            "verification_link": verification_link,
+        },
+    )
     try:
-        send_email_task.delay(subject, body_text.strip(), [new_email])
+        send_email_task.delay(subject, body_text, [new_email])
     except Exception as e:
         raise HttpError(500, f"Failed to send verification email: {str(e)}")
     return {"detail": "Verification email sent. Please check your new address."}
@@ -262,16 +257,17 @@ def request_password_reset(request, data: PasswordResetRequestSchema):
     expires_at = timezone.now() + timezone.timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS)
     PendingPasswordReset.objects.create(user=user, token=token, expires_at=expires_at)
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
-    with open(os.path.join(settings.BASE_DIR, "core/email_templates/password_reset.txt")) as f:
-        template = f.read()
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-    body = template.replace("{{ project_name }}", settings.PROJECT_NAME)
-    body = body.replace("{{ user_display_name }}", display_name)
-    body = body.replace("{{ reset_link }}", reset_link)
-    subject, body_text = body.split("\n", 1)
-    subject = subject.replace("Subject: ", "").strip()
+    subject, body_text = render_email_template(
+        "password_reset.txt",
+        {
+            "project_name": settings.PROJECT_NAME,
+            "user_display_name": display_name,
+            "reset_link": reset_link,
+        },
+    )
     try:
-        send_email_task.delay(subject, body_text.strip(), [user.email])
+        send_email_task.delay(subject, body_text, [user.email])
     except Exception:
         pass  # Don't leak info
     return {"detail": "If the email exists, a password reset link has been sent."}

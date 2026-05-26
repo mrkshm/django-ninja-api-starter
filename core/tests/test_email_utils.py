@@ -1,6 +1,24 @@
 import pytest
 from django.conf import settings
-from core.email_utils import send_email
+from core.email_utils import render_email_template, send_email
+
+
+def test_render_email_template_returns_subject_and_body(settings):
+    settings.PROJECT_NAME = "Django API Starter"
+
+    subject, body = render_email_template(
+        "registration_verification.txt",
+        {
+            "project_name": settings.PROJECT_NAME,
+            "user_display_name": "Ada",
+            "verification_link": "https://example.test/verify",
+        },
+    )
+
+    assert subject
+    assert "Subject:" not in subject
+    assert "Ada" in body
+    assert "https://example.test/verify" in body
 
 def test_send_email_uses_default_from_email_and_connection(monkeypatch):
     settings.DEFAULT_FROM_EMAIL = 'sender@example.com'
