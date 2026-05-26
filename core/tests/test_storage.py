@@ -1,4 +1,10 @@
-from core.utils import delete_existing_avatar, generate_presigned_storage_url, upload_to_storage
+from core.utils import (
+    delete_existing_avatar,
+    generate_presigned_storage_url,
+    public_storage_url,
+    upload_to_public_storage,
+    upload_to_storage,
+)
 from unittest.mock import patch, MagicMock
 import types
 
@@ -44,6 +50,9 @@ def test_delete_existing_avatar_no_avatar():
 
 
 def test_generate_presigned_storage_url_builds_s3_request(monkeypatch):
+    from core.utils.storage import _s3_client
+
+    _s3_client.cache_clear()
     called = {}
 
     class DummyClient:
@@ -82,3 +91,52 @@ def test_generate_presigned_storage_url_builds_s3_request(monkeypatch):
         "ResponseCacheControl": "public, max-age=120",
     }
     assert called["expires_in"] == 120
+
+
+def test_public_storage_url_quotes_key(settings):
+    settings.IMAGE_PUBLIC_BASE_URL = "https://media.example.com/assets/"
+
+    assert public_storage_url("public/images/example image.jpg") == (
+        "https://media.example.com/assets/public/images/example%20image.jpg"
+    )
+
+
+def test_upload_to_public_storage_writes_public_bucket(monkeypatch, settings):
+    from core.utils.storage import _s3_client
+
+    _s3_client.cache_clear()
+    settings.IMAGE_PUBLIC_BASE_URL = "https://media.example.com"
+    called = {}
+
+    class DummyClient:
+        def put_object(self, **kwargs):
+            called["put_object"] = kwargs
+
+    def fake_client(service, **kwargs):
+        called["service"] = service
+        called["kwargs"] = kwargs
+        return DummyClient()
+
+    monkeypatch.setattr("core.utils.storage.boto3.client", fake_client)
+
+    url = upload_to_public_storage(
+        "public/example.webp",
+        b"image-bytes",
+        content_type="image/webp",
+        storage_options={
+            "endpoint_url": "https://r2.example",
+            "access_key": "access",
+            "secret_key": "secret",
+            "region_name": "auto",
+            "bucket_name": "public-bucket",
+        },
+    )
+
+    assert url == "https://media.example.com/public/example.webp"
+    assert called["service"] == "s3"
+    assert called["put_object"] == {
+        "Bucket": "public-bucket",
+        "Key": "public/example.webp",
+        "Body": b"image-bytes",
+        "ContentType": "image/webp",
+    }

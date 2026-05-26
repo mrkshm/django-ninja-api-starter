@@ -10,7 +10,7 @@ from organizations.models import Organization
 
 
 @pytest.mark.django_db
-def test_serialize_image_adds_stable_media_urls(monkeypatch):
+def test_serialize_image_adds_variant_keys_without_storage_checks(monkeypatch):
     def fail_exists(_name):
         raise AssertionError("serialize_image must not perform storage existence checks")
 
@@ -32,15 +32,41 @@ def test_serialize_image_adds_stable_media_urls(monkeypatch):
 
     assert out.id == image.id
     assert out.file == "images/example.jpg"
-    assert out.url == "/media/images/example.jpg"
-    assert out.variants.original == out.url
-    assert out.variants.thumb == "/media/images/example_thumb.webp"
-    assert out.variants.sm == "/media/images/example_sm.webp"
-    assert out.variants.md == "/media/images/example_md.webp"
-    assert out.variants.lg == "/media/images/example_lg.webp"
+    assert out.visibility == "private"
+    assert out.url is None
+    assert out.public_url is None
+    assert out.variant_keys.original == "images/example.jpg"
+    assert out.variant_keys.thumb == "images/example_thumb.webp"
+    assert out.variant_keys.sm == "images/example_sm.webp"
+    assert out.variant_keys.md == "images/example_md.webp"
+    assert out.variant_keys.lg == "images/example_lg.webp"
     assert out.title == "Example"
     assert out.organization == org.id
     assert out.creator == user.id
+
+
+@pytest.mark.django_db
+def test_serialize_public_image_adds_public_urls(settings):
+    settings.IMAGE_PUBLIC_BASE_URL = "https://media.example.com/assets/"
+
+    User = get_user_model()
+    user = User.objects.create_user(email="public-image@example.com", password="pw")
+    org = Organization.objects.create(name="Public Images", slug="public-images", type="group")
+    image = Image.objects.create(
+        file="public/images/example image.jpg",
+        organization=org,
+        creator=user,
+        visibility=Image.Visibility.PUBLIC,
+    )
+
+    out = serialize_image(image)
+
+    assert out.visibility == "public"
+    assert out.url is None
+    assert out.public_url == "https://media.example.com/assets/public/images/example%20image.jpg"
+    assert out.public_variant_urls.original == out.public_url
+    assert out.public_variant_urls.thumb == "https://media.example.com/assets/public/images/example%20image_thumb.webp"
+    assert out.variant_keys.thumb == "public/images/example image_thumb.webp"
 
 
 @pytest.mark.django_db

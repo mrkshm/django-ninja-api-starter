@@ -215,15 +215,25 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 # Storage Configuration
+R2_ACCESS_KEY_ID = env_for_tests("R2_ACCESS_KEY_ID", "test-access-key")
+R2_SECRET_ACCESS_KEY = env_for_tests("R2_SECRET_ACCESS_KEY", "test-secret-key")
+R2_ENDPOINT_URL = env_for_tests("R2_ENDPOINT_URL", "http://localhost:9000")
+R2_REGION_NAME = env("R2_REGION_NAME", default="auto")
+R2_PRIVATE_BUCKET_NAME = env_for_tests(
+    "R2_PRIVATE_BUCKET_NAME",
+    env_for_tests("R2_BUCKET_NAME", "test-private-bucket"),
+)
+R2_PUBLIC_BUCKET_NAME = env_for_tests("R2_PUBLIC_BUCKET_NAME", "test-public-bucket")
+
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
-            "access_key": env_for_tests('R2_ACCESS_KEY_ID', 'test-access-key'),
-            "secret_key": env_for_tests('R2_SECRET_ACCESS_KEY', 'test-secret-key'),
-            "bucket_name": env_for_tests('R2_BUCKET_NAME', 'test-bucket'),
-            "endpoint_url": env_for_tests('R2_ENDPOINT_URL', 'http://localhost:9000'),
-            "region_name": "auto",
+            "access_key": R2_ACCESS_KEY_ID,
+            "secret_key": R2_SECRET_ACCESS_KEY,
+            "bucket_name": R2_PRIVATE_BUCKET_NAME,
+            "endpoint_url": R2_ENDPOINT_URL,
+            "region_name": R2_REGION_NAME,
             "addressing_style": "virtual",
             "signature_version": "s3v4",
         },
@@ -232,6 +242,10 @@ STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+
+IMAGE_PUBLIC_BASE_URL = env("IMAGE_PUBLIC_BASE_URL", default=None)
+IMAGE_SIGNED_URL_TTL_SECONDS = env.int("IMAGE_SIGNED_URL_TTL_SECONDS", default=15 * 60)
+IMAGE_SHARE_LINK_DEFAULT_TTL_SECONDS = env.int("IMAGE_SHARE_LINK_DEFAULT_TTL_SECONDS", default=7 * 24 * 60 * 60)
 
 # Email Configuration
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

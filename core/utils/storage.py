@@ -2,6 +2,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.conf import settings
 from functools import lru_cache
+from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
@@ -24,6 +25,18 @@ def _default_storage_options():
     return settings.STORAGES["default"].get("OPTIONS", {})
 
 
+def private_storage_options():
+    return _default_storage_options()
+
+
+def public_storage_options():
+    private_options = private_storage_options()
+    return {
+        **private_options,
+        "bucket_name": getattr(settings, "R2_PUBLIC_BUCKET_NAME", None),
+    }
+
+
 @lru_cache(maxsize=16)
 def _s3_client(endpoint_url, access_key, secret_key, region_name):
     return boto3.client(
@@ -43,6 +56,7 @@ def generate_presigned_storage_url(
     content_type=None,
     cache_control=None,
     storage_options=None,
+    bucket_name=None,
 ):
     options = storage_options or _default_storage_options()
     client = _s3_client(
@@ -51,7 +65,7 @@ def generate_presigned_storage_url(
         options["secret_key"],
         options["region_name"],
     )
-    params = {"Bucket": options["bucket_name"], "Key": key}
+    params = {"Bucket": bucket_name or options["bucket_name"], "Key": key}
     if content_type:
         params["ResponseContentType"] = content_type
     if cache_control:
@@ -61,3 +75,39 @@ def generate_presigned_storage_url(
         Params=params,
         ExpiresIn=expires_in,
     )
+
+
+def generate_private_presigned_storage_url(key, **kwargs):
+    return generate_presigned_storage_url(
+        key,
+        storage_options=private_storage_options(),
+        **kwargs,
+    )
+
+
+def public_storage_url(key):
+    base_url = getattr(settings, "IMAGE_PUBLIC_BASE_URL", None)
+    if not base_url:
+        return None
+    return f"{base_url.rstrip('/')}/{quote(key, safe='/')}"
+
+
+def upload_to_public_storage(filename, content, content_type="image/webp", storage_options=None):
+    options = storage_options or public_storage_options()
+    bucket_name = options.get("bucket_name")
+    if not bucket_name:
+        raise RuntimeError("No public R2 bucket configured. Set R2_PUBLIC_BUCKET_NAME.")
+
+    client = _s3_client(
+        options["endpoint_url"],
+        options["access_key"],
+        options["secret_key"],
+        options["region_name"],
+    )
+    client.put_object(
+        Bucket=bucket_name,
+        Key=filename,
+        Body=content,
+        ContentType=content_type,
+    )
+    return public_storage_url(filename)

@@ -1,14 +1,15 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Image, PolymorphicImageRelation
+from .models import Image, ImageShareLink, PolymorphicImageRelation
 
 # Register your models here.
 @admin.register(Image)
 class ImageAdmin(admin.ModelAdmin):
     readonly_fields = ("file", "thumbnail",)
-    list_display = ("id", "thumbnail", "title", "organization", "creator", "created_at")
+    list_display = ("id", "thumbnail", "title", "visibility", "organization", "creator", "created_at")
     search_fields = ("title", "description", "alt_text")
-    list_filter = ("organization", "creator")
+    list_filter = ("visibility", "organization", "creator")
+    fields = ("file", "thumbnail", "title", "visibility", "description", "alt_text", "organization", "creator")
 
     def thumbnail(self, obj):
         if obj.file:
@@ -31,3 +32,11 @@ class ImageAdmin(admin.ModelAdmin):
 @admin.register(PolymorphicImageRelation)
 class PolymorphicImageRelationAdmin(admin.ModelAdmin):
     pass
+
+
+@admin.register(ImageShareLink)
+class ImageShareLinkAdmin(admin.ModelAdmin):
+    readonly_fields = ("token", "created_at")
+    list_display = ("id", "image", "created_by", "created_at", "expires_at", "revoked_at")
+    search_fields = ("token", "image__title", "image__file")
+    list_filter = ("revoked_at", "expires_at")

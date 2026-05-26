@@ -28,22 +28,22 @@ class TestImageSuccessAndDeletion(TestCase):
         req = self._req()
         f = SimpleUploadedFile("cat.png", b"\x89PNG\r\n\x1a\n" + b"x" * 100, content_type="image/png")
         with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.upload_to_storage") as mock_upload, \
-             patch("images.api.default_storage.url", side_effect=lambda p: f"/media/{p}"):
+             patch("images.api.upload_to_storage") as mock_upload:
             resp = upload_image(req, self.org.slug, f)
             # Response is ImageOut model; assert it has id and file
             self.assertTrue(hasattr(resp, "id"))
             self.assertTrue(resp.id)
             self.assertTrue(Image.objects.filter(id=resp.id, organization=self.org).exists())
+            self.assertEqual(resp.visibility, "private")
             mock_upload.assert_called()  # ensure storage called
-            # Variant URLs assertions
-            self.assertTrue(resp.url.startswith("/media/"))
+            # Private-media responses expose storage keys, not public URLs.
+            self.assertIsNone(resp.url)
             base = os.path.splitext(resp.file)[0]
-            self.assertEqual(resp.variants.original, resp.url)
-            self.assertEqual(resp.variants.thumb, f"/media/{base}_thumb.webp")
-            self.assertEqual(resp.variants.sm, f"/media/{base}_sm.webp")
-            self.assertEqual(resp.variants.md, f"/media/{base}_md.webp")
-            self.assertEqual(resp.variants.lg, f"/media/{base}_lg.webp")
+            self.assertEqual(resp.variant_keys.original, resp.file)
+            self.assertEqual(resp.variant_keys.thumb, f"{base}_thumb.webp")
+            self.assertEqual(resp.variant_keys.sm, f"{base}_sm.webp")
+            self.assertEqual(resp.variant_keys.md, f"{base}_md.webp")
+            self.assertEqual(resp.variant_keys.lg, f"{base}_lg.webp")
 
     @override_settings(UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024, UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",))
     def test_bulk_upload_success(self):
@@ -53,8 +53,7 @@ class TestImageSuccessAndDeletion(TestCase):
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
         with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.upload_to_storage") as mock_upload, \
-             patch("images.api.default_storage.url", side_effect=lambda p: f"/media/{p}"):
+             patch("images.api.upload_to_storage") as mock_upload:
             resp_list = bulk_upload_images(req, self.org.slug)
             self.assertEqual(len(resp_list), 2)
             self.assertTrue(all(r.status == "success" for r in resp_list))
@@ -69,14 +68,14 @@ class TestImageSuccessAndDeletion(TestCase):
             out_by_id = {img.id: img for img in images_out}
             for img_id in ids:
                 img = out_by_id[img_id]
-                assert img.url.startswith("/media/")
-                variants = img.variants
-                assert variants.original == img.url
+                assert img.url is None
+                variants = img.variant_keys
+                assert variants.original == img.file
                 base = os.path.splitext(img.file)[0]
-                assert variants.thumb == f"/media/{base}_thumb.webp"
-                assert variants.sm == f"/media/{base}_sm.webp"
-                assert variants.md == f"/media/{base}_md.webp"
-                assert variants.lg == f"/media/{base}_lg.webp"
+                assert variants.thumb == f"{base}_thumb.webp"
+                assert variants.sm == f"{base}_sm.webp"
+                assert variants.md == f"{base}_md.webp"
+                assert variants.lg == f"{base}_lg.webp"
 
     def test_delete_removes_original_and_variants(self):
         # Create image with a known file name

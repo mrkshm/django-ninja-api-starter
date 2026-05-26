@@ -1,34 +1,49 @@
 import os
 
+from core.utils.storage import public_storage_url
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, ImageVariants, PolymorphicImageRelationOut
 
 
-def build_relative_urls(file_name: str) -> tuple[str, ImageVariants]:
+def build_variant_keys(file_name: str) -> ImageVariants:
     base, _ext = os.path.splitext(file_name)
-
-    def rel(key: str) -> str:
-        return f"/media/{key}"
-
-    variants = ImageVariants(
-        original=rel(file_name),
-        thumb=rel(f"{base}_thumb.webp"),
-        sm=rel(f"{base}_sm.webp"),
-        md=rel(f"{base}_md.webp"),
-        lg=rel(f"{base}_lg.webp"),
+    return ImageVariants(
+        original=file_name,
+        thumb=f"{base}_thumb.webp",
+        sm=f"{base}_sm.webp",
+        md=f"{base}_md.webp",
+        lg=f"{base}_lg.webp",
     )
-    return variants.original, variants
+
+
+def build_public_url(key: str) -> str | None:
+    return public_storage_url(key)
+
+
+def build_public_variant_urls(variant_keys: ImageVariants) -> ImageVariants | None:
+    urls = {
+        variant: build_public_url(key)
+        for variant, key in variant_keys.model_dump().items()
+        if key
+    }
+    if not any(urls.values()):
+        return None
+    return ImageVariants(**urls)
 
 
 def serialize_image(image: Image) -> ImageOut:
     file_name = image.file.name if hasattr(image.file, "name") else str(image.file)
-    url, variants = build_relative_urls(file_name)
+    variant_keys = build_variant_keys(file_name)
+    public_variant_urls = build_public_variant_urls(variant_keys) if image.is_public else None
     return ImageOut.model_validate(
         {
             "id": image.id,
             "file": file_name,
-            "url": url,
-            "variants": variants.model_dump(),
+            "visibility": image.visibility,
+            "url": None,
+            "public_url": public_variant_urls.original if public_variant_urls else None,
+            "variant_keys": variant_keys.model_dump(),
+            "public_variant_urls": public_variant_urls.model_dump() if public_variant_urls else None,
             "description": image.description,
             "alt_text": image.alt_text,
             "title": image.title,

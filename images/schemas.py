@@ -29,11 +29,28 @@ class ImageVariants(BaseModel):
     lg: Optional[str] = None
 
 
+class ImageSignedUrls(BaseModel):
+    original: str
+    thumb: str
+    sm: str
+    md: str
+    lg: str
+
+
+class ImageSignedUrlsOut(BaseModel):
+    image_id: int
+    expires_at: str
+    urls: ImageSignedUrls
+
+
 class ImageOut(BaseModel):
     id: int
     file: str
+    visibility: str
     url: Optional[str] = None
-    variants: Optional[ImageVariants] = None
+    public_url: Optional[str] = None
+    variant_keys: Optional[ImageVariants] = None
+    public_variant_urls: Optional[ImageVariants] = None
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
@@ -84,3 +101,16 @@ class DetailResponse(BaseModel):
 
 class SetCoverIn(BaseModel):
     image_id: int
+
+
+class CreateImageShareIn(BaseModel):
+    expires_in_seconds: Optional[int] = Field(None, ge=60, le=60 * 60 * 24 * 30)
+
+
+class ImageShareOut(BaseModel):
+    id: int
+    token: str
+    image_id: int
+    created_at: str
+    expires_at: Optional[str] = None
+    revoked_at: Optional[str] = None

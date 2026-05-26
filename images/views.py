@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import StreamingHttpResponse, Http404
 from django.core.files.storage import default_storage
 import mimetypes
@@ -8,12 +9,14 @@ CHUNK_SIZE = 64 * 1024
 
 def media_serve(request, key: str):
     """
-    Stream a file from the configured storage by key using a stable URL.
-    Example: /media/img_abc123_thumb.webp
+    Optional local/dev storage proxy.
 
-    This avoids exposing short-lived presigned URLs to the client.
+    Private production images should be fetched through signed URL endpoints,
+    not by stable unauthenticated storage keys.
     """
-    # Optional: add authz checks here if needed (e.g., org membership)
+    if not getattr(settings, "ALLOW_UNAUTHENTICATED_MEDIA_SERVE", False):
+        raise Http404()
+
     try:
         f = default_storage.open(key, mode="rb")
     except Exception:
@@ -35,6 +38,5 @@ def media_serve(request, key: str):
                 pass
 
     resp = StreamingHttpResponse(file_iterator(), content_type=content_type)
-    # Long-lived immutable cache since variant keys are content-addressed by name
-    resp["Cache-Control"] = "public, max-age=31536000, immutable"
+    resp["Cache-Control"] = "private, max-age=300"
     return resp

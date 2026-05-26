@@ -41,28 +41,32 @@ Future option:
 
 Resolved state:
 
-- `images/serializers.py` builds deterministic stable `/media/<key>` URLs.
+- `images/serializers.py` builds deterministic object keys in `variant_keys`.
 - It no longer calls `default_storage.exists()` while serializing image responses.
-- Missing variants now return 404 at the media endpoint instead of falling back to the original URL.
+- Missing variants now fail when their signed R2 URL is fetched instead of falling back to the original image.
 
 Why it matters:
 
 - List serialization no longer performs per-image storage network calls on remote storage backends.
 
-## 4. Media Proxy Access Model
+## 4. Private Media Access Model
 
 Resolved state:
 
-- `images.views.media_serve()` serves `/media/<key>` without object-level auth checks.
-- This is documented as an intentional public bearer-style URL policy.
+- Image metadata exposes storage keys through `variant_keys`, not public `/media/<key>` URLs.
+- Public/admin-managed images are explicit through `Image.visibility=public` and `public_url`/`public_variant_urls`.
+- Private storage uses `R2_PRIVATE_BUCKET_NAME`; public storage helpers use `R2_PUBLIC_BUCKET_NAME`.
+- `GET /api/v1/images/orgs/{org_slug}/images/{image_id}/urls` returns short-lived signed R2 URLs after org access checks.
+- `ImageShareLink` provides explicit outside-org sharing with revocation and expiry.
+- `images.views.media_serve()` is disabled by default and only available when `ALLOW_UNAUTHENTICATED_MEDIA_SERVE=True`.
 
 Why it matters:
 
-- If generated projects make uploaded images private organization data, stable unauthenticated media URLs would become a data exposure risk.
+- Uploaded images are private organization data, so stable unauthenticated media URLs would be a data exposure risk.
 
 Future option:
 
-- Replace public media URLs with signed URLs or an authenticated media proxy if generated projects need private organization media.
+- Revisit signed URL TTLs and cache headers once app image caching behavior is measured.
 
 ## 5. Image Throttle Compatibility Wrapper
 
@@ -80,7 +84,7 @@ Why it matters:
 
 Remaining order:
 
-1. Revisit signed/authenticated media URLs if generated projects need private organization media.
+1. Revisit signed URL TTLs and cache headers once app image caching behavior is measured.
 2. Move image tests/callers to explicit submodule imports only if the compatibility layer becomes noise.
 
 ## Not Applicable From `ll_back`
