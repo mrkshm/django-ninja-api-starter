@@ -1,14 +1,28 @@
-from typing import List, Optional
+from typing import List
 import logging
-from ninja import Router, File, UploadedFile, Schema, Status
+from ninja import Router, File, UploadedFile, Status
 from ninja.errors import HttpError, ValidationError as NinjaValidationError
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
 from images.models import Image, PolymorphicImageRelation
+from images.api_schemas import (
+    BulkDeleteResponse,
+    BulkImageIdsIn,
+    BulkUploadResponse,
+    ImageIdsIn,
+    ReorderIn,
+)
 from images.schemas import DetailResponse, ImageOut, PolymorphicImageRelationOut, BulkAttachOut, BulkDetachOut, ImagePatchIn, SetCoverIn
 from images.serializers import serialize_image, serialize_image_relation
 from ninja.pagination import LimitOffsetPagination, paginate
-from ninja.throttling import UserRateThrottle
+from images.throttles import (
+    LoggingUserRateThrottle,
+    bulk_attach_throttle,
+    bulk_delete_throttle,
+    bulk_detach_throttle,
+    bulk_upload_throttle,
+    upload_throttle,
+)
 from django.db import transaction
 from core.utils.idempotency import read_cached_response, store_cached_response, HEADER_NAME
 from django.core.files.storage import default_storage
@@ -22,65 +36,6 @@ from datetime import datetime
 from django.http import JsonResponse
 from core.utils.polymorphic import resolve_org_for_request, resolve_org_scoped_content_object
 from django.conf import settings
-
-"""
-Per-user throttles (configurable via settings):
-Defaults are conservative and can be overridden in Django settings, e.g.:
-
-IMAGES_RATE_LIMIT_BULK_UPLOAD = "30/h"
-IMAGES_RATE_LIMIT_BULK_DELETE = "30/h"
-IMAGES_RATE_LIMIT_BULK_ATTACH = "60/h"
-IMAGES_RATE_LIMIT_BULK_DETACH = "60/h"
-"""
-
-class LoggingUserRateThrottle(UserRateThrottle):
-    """User rate throttle that logs when a request is throttled (429)."""
-    def allow_request(self, request, view=None):
-        allowed = super().allow_request(request)
-        if not allowed:
-            user_id = getattr(getattr(request, "user", None), "id", None)
-            org = None
-            # Best-effort org extraction from path like /orgs/{org_slug}/...
-            try:
-                parts = (request.path or "").split("/")
-                if "orgs" in parts:
-                    idx = parts.index("orgs")
-                    org = parts[idx + 1] if len(parts) > idx + 1 else None
-            except Exception:
-                pass
-            rate = getattr(self, "rate", None)
-            remote = request.META.get("REMOTE_ADDR") if hasattr(request, "META") else None
-            logger.warning(
-                "audit:rate_limited user=%s org=%s path=%s rate=%s ip=%s",
-                user_id, org, getattr(request, "path", None), rate, remote,
-            )
-        return allowed
-
-upload_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_UPLOAD", "60/h"))
-bulk_upload_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_UPLOAD", "30/h"))
-bulk_delete_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_DELETE", "30/h"))
-bulk_attach_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_ATTACH", "60/h"))
-bulk_detach_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_DETACH", "60/h"))
-
-class BulkDeleteResponse(Schema):
-    id: int = None
-    status: str
-    error: str = None
-
-class BulkUploadResponse(Schema):
-    id: int = None
-    file: str = None
-    status: str
-    error: Optional[str] = None
-
-class BulkImageIdsIn(Schema):
-    image_ids: List[int]
-
-class ImageIdsIn(Schema):
-    image_ids: list[int]
-
-class ReorderIn(Schema):
-    image_ids: list[int]
 
 router = Router(tags=["images"])
 logger = logging.getLogger("audit")
