@@ -25,6 +25,7 @@ class TestJWT(TestCase):
         data = response.json()
         self.assertIn("access", data)
         self.assertIn("refresh", data)
+        self.assertEqual(data["email"], email)
 
     def test_token_pair_invalid_credentials(self):
         from accounts.models import User

@@ -14,6 +14,11 @@ class CustomTokenOutputSchema(Schema):
     email: str
 
 
+class TokenPairInputSchema(Schema):
+    email: str
+    password: str
+
+
 class RegisterSchema(Schema):
     email: str
     password: str

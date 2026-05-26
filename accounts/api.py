@@ -8,11 +8,9 @@ from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
 from ninja.throttling import UserRateThrottle
-from ninja_extra import api_controller, route
 from ninja_jwt.authentication import JWTAuth
-from ninja_jwt.controller import NinjaJWTDefaultController
+from ninja_jwt.schema import TokenRefreshInputSchema, TokenVerifyInputSchema
 from ninja_jwt.tokens import RefreshToken
-from ninja_jwt.schema import TokenObtainPairInputSchema
 
 from accounts.models import PendingEmailChange, PendingPasswordReset, PendingRegistration
 from accounts.schemas import (
@@ -23,6 +21,7 @@ from accounts.schemas import (
     PasswordResetRequestSchema,
     PasswordResetSchema,
     RegisterSchema,
+    TokenPairInputSchema,
     UnverifiedUserSchema,
 )
 from accounts.services import authenticate_for_token, issue_token_pair
@@ -34,25 +33,35 @@ EMAIL_VERIFICATION_EXPIRY_HOURS = 12
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 2
 
-@api_controller('/token', tags=['Auth'])
-class CustomJWTController(NinjaJWTDefaultController):
-    @route.post("/pair", response={200: CustomTokenOutputSchema, 403: UnverifiedUserSchema}, url_name="token_obtain_pair")
-    def obtain_token(self, request, data: TokenObtainPairInputSchema):
-        user, is_verified = authenticate_for_token(data.email, data.password)
-        if not is_verified:
-            return Status(
-                403,
-                UnverifiedUserSchema(
-                    detail="Please verify your email address before logging in.",
-                    email_verified=False,
-                ),
-            )
-
-        access, refresh = issue_token_pair(user)
-        return CustomTokenOutputSchema(access=access, refresh=refresh, email=user.email)
-
+token_router = Router(tags=["token"])
 auth_router = Router()
 User = get_user_model()
+
+
+@token_router.post("/pair", response={200: CustomTokenOutputSchema, 403: UnverifiedUserSchema})
+def obtain_token_pair(request, data: TokenPairInputSchema):
+    user, is_verified = authenticate_for_token(data.email, data.password)
+    if not is_verified:
+        return Status(
+            403,
+            UnverifiedUserSchema(
+                detail="Please verify your email address before logging in.",
+                email_verified=False,
+            ),
+        )
+
+    access, refresh = issue_token_pair(user)
+    return CustomTokenOutputSchema(access=access, refresh=refresh, email=user.email)
+
+
+@token_router.post("/refresh", response={200: TokenRefreshInputSchema.get_response_schema()})
+def refresh_token(request, data: TokenRefreshInputSchema):
+    return data.to_response_schema()
+
+
+@token_router.post("/verify", response={200: TokenVerifyInputSchema.get_response_schema()})
+def verify_token(request, data: TokenVerifyInputSchema):
+    return data.to_response_schema()
 
 def send_verification_email(user, token):
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email

@@ -10,12 +10,14 @@ Resolved state:
 
 - Auth request/response schemas live in `accounts/schemas.py`.
 - `CustomTokenOutputSchema.email` is an explicit required response field.
+- Token pair input lives in `accounts/schemas.py`.
 - Credential checking and token issuing live in `accounts/services.py`.
-- `CustomJWTController` still subclasses `NinjaJWTDefaultController`, but the controller body now only coordinates the API response.
+- The custom `NinjaJWTDefaultController` subclass has been removed.
+- `accounts/api.py` exposes explicit `/token/pair`, `/token/refresh`, and `/token/verify` routes through `token_router`.
 
 Remaining consideration:
 
-- Keep the custom controller only if `ninja-jwt` does not provide a cleaner extension point.
+- The explicit `/token/pair` endpoint preserves the product-specific verified-email login response.
 - Existing route tests cover invalid credentials, unverified login, and token response shape.
 
 ## 2. Image API Size And Boundaries
@@ -79,8 +81,7 @@ Why it matters:
 Remaining order:
 
 1. Revisit signed/authenticated media URLs if generated projects need private organization media.
-2. Revisit the `ninja-jwt` custom controller only if the dependency exposes a cleaner extension point.
-3. Move image tests/callers to explicit submodule imports only if the compatibility layer becomes noise.
+2. Move image tests/callers to explicit submodule imports only if the compatibility layer becomes noise.
 
 ## Not Applicable From `ll_back`
 

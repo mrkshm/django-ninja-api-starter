@@ -1,9 +1,7 @@
 import orjson
-from ninja import NinjaAPI
 from ninja.renderers import BaseRenderer
 from ninja_extra import NinjaExtraAPI
-from ninja_jwt.controller import NinjaJWTDefaultController
-from accounts.api import auth_router
+from accounts.api import auth_router, token_router
 from accounts.users_api import users_router
 from contacts.api import contacts_router
 from tags.api import get_tags_router
@@ -28,15 +26,12 @@ api = NinjaExtraAPI(
     description="A modern Django API with JWT authentication"
 )
 
-# Register custom JWT controller with email verification check
-from accounts.api import CustomJWTController
-api.register_controllers(CustomJWTController)
-
 # Add health check to main API instance
 @api.get("/health/")
 def health_check(request):
     return {"status": "ok"}
 
+api.add_router("/token", token_router, tags=["token"])
 api.add_router("/auth/", auth_router, tags=["auth"])
 api.add_router("/users/", users_router, tags=["users"])
 api.add_router("/contacts/", contacts_router, tags=["contacts"])
