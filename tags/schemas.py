@@ -20,3 +20,11 @@ class TaggedItemOut(BaseModel):
     object_id: int
     content_type: str  # e.g. "contacts.contact"
     model_config = ConfigDict(from_attributes=True)
+
+
+class DetailResponse(BaseModel):
+    detail: str
+
+
+class RemovedCountResponse(BaseModel):
+    removed_count: int

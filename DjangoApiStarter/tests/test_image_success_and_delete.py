@@ -63,17 +63,17 @@ class TestImageSuccessAndDeletion(TestCase):
             list_req = self._req()
             # Call undecorated function to bypass @paginate wrapper
             images_out = list_images_for_org.__wrapped__(list_req, self.org.slug, None)
-            out_by_id = {img["id"]: img for img in images_out}
+            out_by_id = {img.id: img for img in images_out}
             for img_id in ids:
                 img = out_by_id[img_id]
-                assert img["url"].startswith("/media/")
-                variants = img["variants"]
+                assert img.url.startswith("/media/")
+                variants = img.variants
                 # Fallback to original is expected in test environment (no variants written)
-                assert variants["original"] == img["url"]
-                assert variants["thumb"] == img["url"]
-                assert variants["sm"] == img["url"]
-                assert variants["md"] == img["url"]
-                assert variants["lg"] == img["url"]
+                assert variants.original == img.url
+                assert variants.thumb == img.url
+                assert variants.sm == img.url
+                assert variants.md == img.url
+                assert variants.lg == img.url
 
     def test_delete_removes_original_and_variants(self):
         # Create image with a known file name

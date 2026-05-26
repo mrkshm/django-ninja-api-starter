@@ -269,12 +269,12 @@ def delete_contact_avatar(request, slug: str):
     contact.save(update_fields=["avatar_path"])
     return DetailResponse(detail="Avatar deleted.")
 
-@contacts_router.delete("/{slug}/", auth=JWTAuth())
+@contacts_router.delete("/{slug}/", response=DetailResponse, auth=JWTAuth())
 def delete_contact(request, slug: str):
     contact = get_object_or_404(Contact, slug=slug)
     assert_org_write(getattr(request, "auth", request.user), contact.organization)
     contact.delete()
-    return {"detail": "Contact deleted."}
+    return DetailResponse(detail="Contact deleted.")
 
 @contacts_router.get("/avatars/{path:path}", auth=JWTAuth())
 def get_contact_avatar_url(request, path: str):

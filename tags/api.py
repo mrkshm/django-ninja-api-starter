@@ -2,7 +2,7 @@ from ninja import Router
 import logging
 from django.shortcuts import get_object_or_404
 from tags.models import Tag, TaggedItem
-from tags.schemas import TagCreate, TagOut, TagUpdate
+from tags.schemas import DetailResponse, RemovedCountResponse, TagCreate, TagOut, TagUpdate
 from django.utils.text import slugify
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth
@@ -137,7 +137,7 @@ def update_tag(request, org_slug: str, tag_id: int, data: TagUpdate):
         "organization_id": tag.organization_id,
     })
 
-@router.delete("/orgs/{org_slug}/tags/{tag_id}/", auth=JWTAuth())
+@router.delete("/orgs/{org_slug}/tags/{tag_id}/", response=DetailResponse, auth=JWTAuth())
 def delete_tag(request, org_slug: str, tag_id: int):
     org = get_org_for_request(request, org_slug)
     tag = get_object_or_404(Tag, id=tag_id, organization=org)
@@ -146,9 +146,9 @@ def delete_tag(request, org_slug: str, tag_id: int):
         "audit:tag_delete org=%s user=%s tag_id=%s",
         org.id, getattr(request.user, "id", None), tag_id,
     )
-    return {"detail": "deleted"}
+    return DetailResponse(detail="deleted")
 
-@router.delete("/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/", auth=JWTAuth())
+@router.delete("/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/", response=RemovedCountResponse, auth=JWTAuth())
 def unassign_tags(request, org_slug: str, app_label: str, model: str, obj_id: int, tag_ids: list[int]):
     """Bulk unassign tags from an object.
 
@@ -171,9 +171,9 @@ def unassign_tags(request, org_slug: str, app_label: str, model: str, obj_id: in
             "audit:tag_bulk_unassign org=%s user=%s app=%s model=%s obj=%s tags=%s",
             org.id, getattr(request.user, "id", None), app_label, model, obj_id, tag_ids,
         )
-    return {"removed_count": deleted}
+    return RemovedCountResponse(removed_count=deleted)
 
-@router.delete("/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/", auth=JWTAuth())
+@router.delete("/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/", response=DetailResponse, auth=JWTAuth())
 def unassign_tag_by_slug(request, org_slug: str, app_label: str, model: str, obj_id: int, slug: str):
     """Unassign a single tag from an object by tag slug."""
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
@@ -184,14 +184,14 @@ def unassign_tag_by_slug(request, org_slug: str, app_label: str, model: str, obj
         tag = Tag.objects.get(organization=org, slug=slug)
     except Tag.DoesNotExist:
         # If tag doesn't exist in org, treat as already unassigned
-        return {"detail": "removed"}
+        return DetailResponse(detail="removed")
     deleted, _ = TaggedItem.objects.filter(tag=tag, content_type=ct, object_id=obj_id).delete()
     if deleted:
         logger.info(
             "audit:tag_unassign org=%s user=%s app=%s model=%s obj=%s tag_id=%s",
             org.id, getattr(request.user, "id", None), app_label, model, obj_id, tag.id,
         )
-    return {"detail": "removed"}
+    return DetailResponse(detail="removed")
 
 # Back-compat factory and exports
 def get_tags_router():

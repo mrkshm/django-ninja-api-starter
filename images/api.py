@@ -5,7 +5,8 @@ from ninja.errors import HttpError, ValidationError as NinjaValidationError
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
 from images.models import Image, PolymorphicImageRelation
-from images.schemas import ImageOut, PolymorphicImageRelationOut, ImageVariants, BulkAttachOut, BulkDetachOut, ImagePatchIn, SetCoverIn
+from images.schemas import DetailResponse, ImageOut, PolymorphicImageRelationOut, BulkAttachOut, BulkDetachOut, ImagePatchIn, SetCoverIn
+from images.serializers import serialize_image, serialize_image_relation
 from ninja.pagination import LimitOffsetPagination, paginate
 from ninja.throttling import UserRateThrottle
 from django.db import transaction
@@ -92,39 +93,6 @@ logger = logging.getLogger("audit")
 def get_org_for_request(request, org_slug):
     return resolve_org_for_request(request, org_slug)
 
-def _build_relative_urls(file_name: str) -> tuple[str, ImageVariants]:
-    base, ext = os.path.splitext(file_name)
-    # Use stable proxy route under /media/<key>
-    def rel(key: str) -> str:
-        return f"/media/{key}"
-
-    def exists(key: str) -> bool:
-        try:
-            return default_storage.exists(key)
-        except Exception:
-            return False
-
-    # Original
-    original_key = file_name
-    original_url = rel(original_key) if exists(original_key) else None
-
-    # Variants (only include if actually present in storage)
-    thumb_key = f"{base}_thumb.webp"
-    sm_key = f"{base}_sm.webp"
-    md_key = f"{base}_md.webp"
-    lg_key = f"{base}_lg.webp"
-
-    # Always provide strings for variants; fall back to original URL when a variant is missing
-    original_or_fallback = (original_url or rel(original_key))
-    variants = ImageVariants(
-        original=original_or_fallback,
-        thumb=(rel(thumb_key) if exists(thumb_key) else original_or_fallback),
-        sm=(rel(sm_key) if exists(sm_key) else original_or_fallback),
-        md=(rel(md_key) if exists(md_key) else original_or_fallback),
-        lg=(rel(lg_key) if exists(lg_key) else original_or_fallback),
-    )
-    return original_or_fallback, variants
-
 # List all images for an organization
 @router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
@@ -139,25 +107,10 @@ def list_images_for_org(request, org_slug: str, ordering: str | None = None):
     }
     if ordering not in ordering_map:
         raise HttpError(400, "Invalid ordering. Allowed: created_at, -created_at, title, -title")
-    images = Image.objects.filter(organization=org).order_by(ordering_map[ordering])
-    out: list[dict] = []
-    for img in images:
-        file_name = img.file.name if hasattr(img.file, 'name') else str(img.file)
-        url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
-        out.append({
-            "id": img.id,
-            "file": file_name,
-            "url": url,
-            "variants": variants.model_dump(),
-            "description": img.description,
-            "alt_text": img.alt_text,
-            "title": img.title,
-            "organization_id": img.organization_id,
-            "creator_id": img.creator_id,
-            "created_at": img.created_at.isoformat() if img.created_at else None,
-            "updated_at": img.updated_at.isoformat() if img.updated_at else None,
-        })
-    return out
+    return [
+        serialize_image(image)
+        for image in Image.objects.filter(organization=org).order_by(ordering_map[ordering])
+    ]
 
 # List all images for an object
 @router.get("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
@@ -183,30 +136,7 @@ def list_images_for_object(request, org_slug: str, app_label: str, model: str, o
         .select_related("image")
         .order_by(ordering_map[ordering], "pk")
     )
-    result = []
-    for rel in relations:
-        file_name = rel.image.file.name if hasattr(rel.image.file, 'name') else str(rel.image.file)
-        url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
-        result.append({
-            "id": rel.id,
-            "image": {
-                "id": rel.image.id,
-                "file": file_name,
-                "url": url,
-                "variants": variants.model_dump(),
-                "created_at": rel.image.created_at.isoformat() if rel.image.created_at else None,
-                "updated_at": rel.image.updated_at.isoformat() if rel.image.updated_at else None,
-                "title": rel.image.title,
-                "description": rel.image.description,
-                "alt_text": rel.image.alt_text,
-                "organization_id": rel.image.organization_id,
-                "creator_id": rel.image.creator_id,
-            },
-            "content_type": rel.content_type.model,
-            "object_id": rel.object_id,
-            "is_cover": getattr(rel, "is_cover", False),
-        })
-    return result
+    return [serialize_image_relation(relation) for relation in relations]
 
 # Attach images to an object
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
@@ -239,27 +169,7 @@ def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: in
                 "audit:image_attach org=%s user=%s app=%s model=%s obj=%s image=%s rel=%s",
                 org.id, getattr(user, "id", None), app_label, model, obj_id, image.id, rel.id,
             )
-        file_name = image.file.name if hasattr(image.file, 'name') else str(image.file)
-        url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
-        out.append({
-            "id": rel.id,
-            "image": {
-                "id": image.id,
-                "file": file_name,
-                "url": url,
-                "variants": variants.model_dump(),
-                "created_at": image.created_at.isoformat() if image.created_at else None,
-                "updated_at": image.updated_at.isoformat() if image.updated_at else None,
-                "title": image.title,
-                "description": image.description,
-                "alt_text": image.alt_text,
-                "organization_id": image.organization_id,
-                "creator_id": image.creator_id,
-            },
-            "content_type": rel.content_type.model,
-            "object_id": rel.object_id,
-            "is_cover": getattr(rel, "is_cover", False),
-        })
+        out.append(serialize_image_relation(rel))
     return out
 
 # Bulk attach images to an object
@@ -321,7 +231,7 @@ def bulk_attach_images(
     return resp
 
 # Reorder images for an object and set primary to the first
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", auth=JWTAuth())
+@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", response=DetailResponse, auth=JWTAuth())
 def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ReorderIn):
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
     org = resolved.organization
@@ -333,7 +243,7 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
         PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj.pk).select_related("image")
     )
     if not rels:
-        return {"detail": "ok"}
+        return DetailResponse(detail="ok")
 
     rel_by_image = {r.image_id: r for r in rels}
 
@@ -372,10 +282,10 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
             "audit:image_reorder org=%s user=%s app=%s model=%s obj=%s images=%s",
             org.id, getattr(user, "id", None), app_label, model, obj_id, provided,
         )
-    return {"detail": "ok"}
+    return DetailResponse(detail="ok")
 
 # Set an image as cover for an object (does not modify order)
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", auth=JWTAuth())
+@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", response=DetailResponse, auth=JWTAuth())
 def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn):
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
     org = resolved.organization
@@ -403,10 +313,10 @@ def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: 
         "audit:image_set_cover org=%s user=%s app=%s model=%s obj=%s image=%s",
         org.id, getattr(user, "id", None), app_label, model, obj_id, data.image_id,
     )
-    return {"detail": "ok"}
+    return DetailResponse(detail="ok")
 
 # Unset any cover image for an object (does not modify order)
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", auth=JWTAuth())
+@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", response=DetailResponse, auth=JWTAuth())
 def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int):
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
     org = resolved.organization
@@ -426,7 +336,7 @@ def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id
         "audit:image_unset_cover org=%s user=%s app=%s model=%s obj=%s",
         org.id, getattr(user, "id", None), app_label, model, obj_id,
     )
-    return {"detail": "ok"}
+    return DetailResponse(detail="ok")
 
 # Bulk detach images from an object
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/", response=BulkDetachOut, auth=JWTAuth(), throttle=[bulk_detach_throttle])
@@ -494,24 +404,7 @@ def edit_image_metadata(request, org_slug: str, image_id: int, data: ImagePatchI
         if field in payload:
             setattr(image, field, payload[field])
     image.save()
-    # Build response with variants
-    file_name = image.file.name if hasattr(image.file, 'name') else str(image.file)
-    base, ext = os.path.splitext(file_name)
-    url, variants = _build_relative_urls(file_name) if file_name else (None, ImageVariants(original=None, thumb=None, sm=None, md=None, lg=None))
-    out = {
-        "id": image.id,
-        "file": file_name,
-        "url": url,
-        "variants": variants.model_dump(),
-        "description": image.description,
-        "alt_text": image.alt_text,
-        "title": image.title,
-        "organization_id": image.organization_id,
-        "creator_id": image.creator_id,
-        "created_at": image.created_at.isoformat() if image.created_at else None,
-        "updated_at": image.updated_at.isoformat() if image.updated_at else None,
-    }
-    return ImageOut.model_validate(out)
+    return serialize_image(image)
 
 # Upload a new image (with resizing, storing only the base filename)
 @router.post("/orgs/{org_slug}/images/", response={200: ImageOut, 400: dict}, auth=JWTAuth(), throttle=[upload_throttle])
@@ -546,25 +439,7 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
         description="",
         alt_text=""
     )
-    # Convert model to dictionary with proper types for validation
-    file_name = str(img.file)
-    base, ext = os.path.splitext(file_name)
-    url, variants = _build_relative_urls(file_name)
-    img_dict = {
-        "id": img.id,
-        "file": file_name,
-        "url": url,
-        "variants": variants.model_dump(),
-        "description": img.description,
-        "alt_text": img.alt_text,
-        "title": img.title,
-        "organization_id": img.organization_id,
-        "creator_id": img.creator_id,
-        "created_at": img.created_at.isoformat() if img.created_at else None,
-        "updated_at": img.updated_at.isoformat() if img.updated_at else None
-    }
-    # Return serialized output with correct types
-    return ImageOut.model_validate(img_dict)
+    return serialize_image(img)
 
 # Bulk upload images
 @router.post("/orgs/{org_slug}/bulk-upload/", response=List[BulkUploadResponse], auth=JWTAuth(), throttle=[bulk_upload_throttle])

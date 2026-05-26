@@ -78,5 +78,9 @@ class BulkDetachOut(BaseModel):
     detached: List[int]
 
 
+class DetailResponse(BaseModel):
+    detail: str
+
+
 class SetCoverIn(BaseModel):
     image_id: int
