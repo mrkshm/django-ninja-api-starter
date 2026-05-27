@@ -27,8 +27,8 @@ class TestImageSuccessAndDeletion(TestCase):
     def test_single_upload_success_creates_image(self):
         req = self._req()
         f = SimpleUploadedFile("cat.png", b"\x89PNG\r\n\x1a\n" + b"x" * 100, content_type="image/png")
-        with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.upload_to_storage") as mock_upload:
+        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+             patch("images.services.upload_to_storage") as mock_upload:
             resp = upload_image(req, self.org.slug, f)
             # Response is ImageOut model; assert it has id and file
             self.assertTrue(hasattr(resp, "id"))
@@ -52,8 +52,8 @@ class TestImageSuccessAndDeletion(TestCase):
         files = [f1, f2]
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.upload_to_storage") as mock_upload:
+        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+             patch("images.services.upload_to_storage") as mock_upload:
             resp_list = bulk_upload_images(req, self.org.slug)
             self.assertEqual(len(resp_list), 2)
             self.assertTrue(all(r.status == "success" for r in resp_list))
@@ -64,7 +64,8 @@ class TestImageSuccessAndDeletion(TestCase):
             # Verify variant URLs through list endpoint
             list_req = self._req()
             # Call undecorated function to bypass @paginate wrapper
-            images_out = list_images_for_org.__wrapped__(list_req, self.org.slug, None)
+            with patch("images.api.listing.get_org_for_request", return_value=self.org):
+                images_out = list_images_for_org.__wrapped__(list_req, self.org.slug, None)
             out_by_id = {img.id: img for img in images_out}
             for img_id in ids:
                 img = out_by_id[img_id]
@@ -81,8 +82,8 @@ class TestImageSuccessAndDeletion(TestCase):
         # Create image with a known file name
         img = Image.objects.create(file="images/xyz.jpg", organization=self.org)
         req = self._req()
-        with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.default_storage.delete") as mock_delete:
+        with patch("images.api.deletion.get_org_for_request", return_value=self.org), \
+             patch("images.api.deletion.default_storage.delete") as mock_delete:
             status, _ = unwrap_status(delete_image(req, self.org.slug, img.id))
             self.assertEqual(status, 204)
             # Original + 4 variants

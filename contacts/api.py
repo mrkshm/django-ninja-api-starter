@@ -1,61 +1,25 @@
-from ninja import Router, Schema, Status
+from ninja import Router, Status
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
+import os
 from core.utils.utils import make_it_unique, generate_upload_filename
-from core.utils.storage import upload_to_storage
+from core.utils.storage import generate_presigned_storage_url, upload_to_storage
 from core.utils.image import resize_avatar_images
 from core.utils.avatar import delete_existing_avatar
 from .models import Contact
-from .schemas import ContactIn, ContactOut, ContactAvatarResponse, DetailResponse
+from .schemas import ContactIn, ContactOut, ContactAvatarResponse, ContactUpdate, DetailResponse
 from organizations.models import Organization
 from organizations.access import assert_org_view, assert_org_write
-from ninja.pagination import paginate, LimitOffsetPagination, PaginationBase
+from ninja.pagination import paginate, LimitOffsetPagination
 from ninja import File, UploadedFile
 from django.core.files.storage import default_storage
 from django.db.models import Q, Case, When, Value, IntegerField
-from typing import Any, List, Optional, Dict
-from django.http import HttpRequest
+from botocore.exceptions import ClientError
+from typing import List
 
 contacts_router = Router()
-
-# Custom pagination class with next/prev page info
-class EnhancedLimitOffsetPagination(LimitOffsetPagination):
-    def get_paginated_response(self, request: HttpRequest, data: List, count: int, limit: int, offset: int) -> Dict[str, Any]:
-        # Calculate next and previous offsets
-        next_offset = offset + limit if offset + limit < count else None
-        prev_offset = offset - limit if offset - limit >= 0 else None
-        
-        # Build the response with pagination info
-        response = {
-            "items": data,
-            "count": count,
-            "pagination": {
-                "limit": limit,
-                "offset": offset,
-                "hasNext": next_offset is not None,
-                "hasPrevious": prev_offset is not None,
-            }
-        }
-        
-        # Add next and previous page URLs if they exist
-        if next_offset is not None:
-            response["pagination"]["next"] = f"?limit={limit}&offset={next_offset}"
-        
-        if prev_offset is not None:
-            response["pagination"]["previous"] = f"?limit={limit}&offset={prev_offset}"
-        
-        return response
-
-class ContactUpdate(Schema):
-    display_name: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
-    organization: str | None = None
-    email: str | None = None
-    phone: str | None = None
-    address: str | None = None
 
 # Define allowed sort fields and their corresponding model fields
 ALLOWED_SORT_FIELDS = {
@@ -217,9 +181,6 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
     """
     Upload and set avatar for a contact. Stores small and large sizes, updates avatar_path.
     """
-    print('FILES:', request.FILES)
-    print('DATA:', request.POST)
-    print('FILE ARG:', file)
     contact = get_object_or_404(Contact, slug=slug)
     assert_org_write(getattr(request, "auth", request.user), contact.organization)
     # File validation: max size 10MB
@@ -240,8 +201,6 @@ def upload_contact_avatar(request, slug: str, file: UploadedFile = File(...)):
         upload_to_storage(large_filename, large_bytes)
         # Store only the filename (object key) in the DB
         avatar_path = filename
-        print("avatar_path:", avatar_path, "length:", len(avatar_path))
-        print("large_avatar_path:", large_filename, "length:", len(large_filename))
         # Enforce single avatar: delete old after successful upload
         if contact.avatar_path:
             delete_existing_avatar(contact)
@@ -284,12 +243,6 @@ def get_contact_avatar_url(request, path: str):
     Example: /api/v1/contacts/avatars/avatar-user123-20240529.webp
              /api/v1/contacts/avatars/avatar-user123-20240529_lg.webp
     """
-    import os
-    from urllib.parse import urlparse
-    import boto3
-    from django.conf import settings
-    from ninja.errors import HttpError
-
     # Validate path to prevent directory traversal
     if '..' in path or path.startswith('/'):
         raise HttpError(400, "Invalid path")
@@ -306,26 +259,18 @@ def get_contact_avatar_url(request, path: str):
     if not (base.startswith('ct_') and ext.lower() == '.webp'):
         raise HttpError(400, "Invalid avatar filename format")
     
-    # Construct the S3 key - use the path directly as it's already the full key
-    s3_key = path
-    
-    # Generate presigned URL
-    s3_client = boto3.client(
-        's3',
-        endpoint_url=settings.STORAGES['default']['OPTIONS']['endpoint_url'],
-        aws_access_key_id=settings.STORAGES['default']['OPTIONS']['access_key'],
-        aws_secret_access_key=settings.STORAGES['default']['OPTIONS']['secret_key'],
-        region_name=settings.STORAGES['default']['OPTIONS']['region_name'],
-        config=boto3.session.Config(signature_version='s3v4')
-    )
-    
     try:
-        # Generate presigned URL for the object
-        url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': settings.STORAGES['default']['OPTIONS']['bucket_name'], 'Key': s3_key},
-            ExpiresIn=3600  # URL expires in 1 hour
+        url = generate_presigned_storage_url(
+            path,
+            expires_in=3600,
+            content_type="image/webp",
+            cache_control="public, max-age=3600",
         )
         return {"url": url}
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        if error_code == "NoSuchKey":
+            raise HttpError(404, "Avatar not found")
+        raise HttpError(500, f"S3 error: {error_code} - {str(e)}")
     except Exception as e:
-        return HttpError(500, f"Failed to generate presigned URL: {str(e)}")
+        raise HttpError(500, f"Error generating URL: {str(e)}")

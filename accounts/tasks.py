@@ -14,4 +14,8 @@ def cleanup_expired_tokens():
     email_count = expired_email.count()
     expired_pw.delete()
     expired_email.delete()
-    logger.info(f"Deleted {pw_count} expired password reset tokens and {email_count} expired email change tokens.")
+    logger.info(
+        "Deleted %s expired password reset tokens and %s expired email change tokens.",
+        pw_count,
+        email_count,
+    )

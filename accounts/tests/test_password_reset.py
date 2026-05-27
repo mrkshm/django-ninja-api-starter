@@ -22,7 +22,7 @@ def test_password_reset_request_valid_email(settings, client):
     user = create_test_user(email="user@example.com", password="pass1234")
     url = "/auth/password-reset/request"
     data = {"email": "user@example.com"}
-    with patch("accounts.api.send_email_task.delay") as mock_send_email:
+    with patch("accounts.services.send_email_task.delay") as mock_send_email:
         response = client.post(url, json=data)
         assert response.status_code == 200
         assert "detail" in response.json()
@@ -55,7 +55,7 @@ def test_password_reset_request_deletes_previous(settings, client):
     PendingPasswordReset.objects.create(user=user, token="oldtoken", expires_at=expires_at)
     url = "/auth/password-reset/request"
     data = {"email": "user2@example.com"}
-    with patch("accounts.api.send_email_task.delay"):
+    with patch("accounts.services.send_email_task.delay"):
         response = client.post(url, json=data)
     assert response.status_code == 200
     # Only one PendingPasswordReset should exist now

@@ -21,6 +21,17 @@ class ContactIn(BaseModel):
             raise ValueError("At least one of display_name, first_name, or last_name must be provided.")
         return self
 
+
+class ContactUpdate(BaseModel):
+    display_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    organization: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+
 class ContactOut(BaseModel):
     id: int
     display_name: str

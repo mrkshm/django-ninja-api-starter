@@ -207,6 +207,35 @@ def test_delete_contact_avatar_no_avatar(make_auth_headers):
     assert del_resp.status_code == 404
     assert del_resp.json()["detail"] == "No avatar to delete."
 
+
+@pytest.mark.django_db
+def test_get_contact_avatar_url_uses_storage_presign_helper(make_auth_headers, monkeypatch):
+    user = create_test_user(email="avatar-url@example.com", password="pw", username="avatarurl", slug="avatarurl")
+    headers = make_auth_headers(client, user, password="pw")
+    calls = []
+
+    def fake_generate_presigned_storage_url(key, **kwargs):
+        calls.append((key, kwargs))
+        return f"https://storage.example/{key}"
+
+    monkeypatch.setattr("contacts.api.generate_presigned_storage_url", fake_generate_presigned_storage_url)
+
+    resp = client.get("/contacts/avatars/ct_avatar-20240529.webp", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"url": "https://storage.example/ct_avatar-20240529.webp"}
+    assert calls == [
+        (
+            "ct_avatar-20240529.webp",
+            {
+                "expires_in": 3600,
+                "content_type": "image/webp",
+                "cache_control": "public, max-age=3600",
+            },
+        )
+    ]
+
+
 @pytest.mark.django_db
 def test_upload_contact_avatar_too_large(make_auth_headers):
     user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")

@@ -21,7 +21,7 @@ class TestImageUploadValidations(TestCase):
         tiny_limit = 5
         content = b"x" * (tiny_limit + 1)
         f = SimpleUploadedFile("test.png", content, content_type="image/png")
-        with patch("images.api.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
+        with patch("images.api.uploads.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
             status, body = unwrap_status(upload_image(req, "acme", f))
             self.assertEqual(status, 400)
             self.assertIn("File too large", body["detail"]) 
@@ -30,7 +30,7 @@ class TestImageUploadValidations(TestCase):
     def test_single_upload_rejects_bad_mime(self):
         req = self._req()
         f = SimpleUploadedFile("doc.pdf", b"%PDF-1.4", content_type="application/pdf")
-        with patch("images.api.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
+        with patch("images.api.uploads.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
             status, body = unwrap_status(upload_image(req, "acme", f))
             self.assertEqual(status, 400)
             self.assertIn("Invalid file type", body["detail"]) 
@@ -43,7 +43,7 @@ class TestImageUploadValidations(TestCase):
         files = [oversize, bad_mime]
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
+        with patch("images.api.uploads.get_org_for_request", return_value=SimpleNamespace(slug="acme")):
             # Expect responses array with error entries, no exceptions
             resp_list = bulk_upload_images(req, "acme")
             self.assertEqual(len(resp_list), 2)

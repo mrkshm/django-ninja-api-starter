@@ -24,7 +24,7 @@ def cleanup_orphaned_images():
                 default_storage.delete(versioned_filename)
         image.delete()
         deleted_count += 1
-    logger.info(f"Deleted {deleted_count} orphaned images and their variants.")
+    logger.info("Deleted %s orphaned images and their variants.", deleted_count)
 
 @shared_task
 def cleanup_orphaned_images_task():

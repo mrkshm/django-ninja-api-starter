@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from django.conf import settings
@@ -24,9 +25,7 @@ from accounts.schemas import (
     TokenPairInputSchema,
     UnverifiedUserSchema,
 )
-from accounts.services import authenticate_for_token, issue_token_pair
-from core.email_utils import render_email_template
-from core.tasks import send_email_task
+from accounts.services import authenticate_for_token, issue_token_pair, send_templated_email
 from core.utils.auth_utils import require_authenticated_user
 
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
@@ -36,6 +35,7 @@ PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 2
 token_router = Router(tags=["token"])
 auth_router = Router()
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 @token_router.post("/pair", response={200: CustomTokenOutputSchema, 403: UnverifiedUserSchema})
@@ -66,19 +66,19 @@ def verify_token(request, data: TokenVerifyInputSchema):
 def send_verification_email(user, token):
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
     verification_link = f"{settings.FRONTEND_URL}/api/v1/auth/verify-registration?token={token}"
-    subject, body_text = render_email_template(
-        "registration_verification.txt",
-        {
-            "project_name": settings.PROJECT_NAME,
-            "user_display_name": display_name,
-            "verification_link": verification_link,
-        },
-    )
-    
     try:
-        send_email_task.delay(subject, body_text, [user.email])
-    except Exception as e:
-        raise HttpError(500, f"Failed to send verification email: {str(e)}")
+        send_templated_email(
+            "registration_verification.txt",
+            {
+                "project_name": settings.PROJECT_NAME,
+                "user_display_name": display_name,
+                "verification_link": verification_link,
+            },
+            [user.email],
+        )
+    except Exception as exc:
+        logger.warning("accounts:verification_email_failed user=%s", getattr(user, "id", None))
+        raise HttpError(500, "Failed to send verification email.") from exc
 
 email_change_throttle = UserRateThrottle('3/h')
 password_reset_throttle = UserRateThrottle('3/h')
@@ -210,19 +210,20 @@ def request_email_change(request, data: EmailUpdateSchema):
     PendingEmailChange.objects.create(user=user, new_email=new_email, token=token, expires_at=expires_at)
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
     verification_link = f"{settings.FRONTEND_URL}/verify-email-change?token={token}"
-    subject, body_text = render_email_template(
-        "email_change_verification.txt",
-        {
-            "project_name": settings.PROJECT_NAME,
-            "user_display_name": display_name,
-            "new_email": new_email,
-            "verification_link": verification_link,
-        },
-    )
     try:
-        send_email_task.delay(subject, body_text, [new_email])
-    except Exception as e:
-        raise HttpError(500, f"Failed to send verification email: {str(e)}")
+        send_templated_email(
+            "email_change_verification.txt",
+            {
+                "project_name": settings.PROJECT_NAME,
+                "user_display_name": display_name,
+                "new_email": new_email,
+                "verification_link": verification_link,
+            },
+            [new_email],
+        )
+    except Exception as exc:
+        logger.warning("accounts:email_change_verification_failed user=%s", getattr(user, "id", None))
+        raise HttpError(500, "Failed to send verification email.") from exc
     return {"detail": "Verification email sent. Please check your new address."}
 
 @auth_router.get("/email/verify")
@@ -267,16 +268,16 @@ def request_password_reset(request, data: PasswordResetRequestSchema):
     PendingPasswordReset.objects.create(user=user, token=token, expires_at=expires_at)
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-    subject, body_text = render_email_template(
-        "password_reset.txt",
-        {
-            "project_name": settings.PROJECT_NAME,
-            "user_display_name": display_name,
-            "reset_link": reset_link,
-        },
-    )
     try:
-        send_email_task.delay(subject, body_text, [user.email])
+        send_templated_email(
+            "password_reset.txt",
+            {
+                "project_name": settings.PROJECT_NAME,
+                "user_display_name": display_name,
+                "reset_link": reset_link,
+            },
+            [user.email],
+        )
     except Exception:
         pass  # Don't leak info
     return {"detail": "If the email exists, a password reset link has been sent."}

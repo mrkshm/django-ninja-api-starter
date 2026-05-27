@@ -56,9 +56,8 @@ class TestIdempotencyBulk(TestCase):
         req1.FILES = SimpleNamespace(getlist=lambda name: files)
         req2 = self._req("POST", path, "key-1")
         req2.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.upload_to_storage") as mock_upload, \
-             patch("images.api.default_storage.url", side_effect=lambda p: f"/media/{p}"):
+        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+             patch("images.services.upload_to_storage") as mock_upload:
             first = bulk_upload_images(req1, self.org.slug)
             second = bulk_upload_images(req2, self.org.slug)
             # First call returns list of schema objects; second returns cached list of dicts
@@ -79,9 +78,8 @@ class TestIdempotencyBulk(TestCase):
         req1.FILES = SimpleNamespace(getlist=lambda name: files)
         req2 = self._req("POST", path, "key-B")
         req2.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.get_org_for_request", return_value=self.org), \
-             patch("images.api.upload_to_storage") as mock_upload, \
-             patch("images.api.default_storage.url", side_effect=lambda p: f"/media/{p}"):
+        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+             patch("images.services.upload_to_storage") as mock_upload:
             first = bulk_upload_images(req1, self.org.slug)
             second = bulk_upload_images(req2, self.org.slug)
             # Different keys should not hit cache, so storage called twice per file set
@@ -131,7 +129,7 @@ class TestIdempotencyBulk(TestCase):
         req1.body = body
         req2 = self._req("POST", path, "key-4")
         req2.body = body
-        with patch("images.api.get_org_for_request", return_value=self.org):
+        with patch("images.api.deletion.get_org_for_request", return_value=self.org):
             status1, _ = unwrap_status(bulk_delete_images(req1, self.org.slug))
             status2, _ = unwrap_status(bulk_delete_images(req2, self.org.slug))
             self.assertEqual(status1, 204)

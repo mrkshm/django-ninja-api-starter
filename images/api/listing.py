@@ -1,8 +1,7 @@
 from typing import List
 
-import images.api as image_api
 from core.utils.polymorphic import resolve_org_scoped_content_object
-from images.api.common import router
+from images.api.common import get_org_for_request, router
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, PolymorphicImageRelationOut
 from images.serializers import serialize_image, serialize_image_relation
@@ -14,7 +13,7 @@ from ninja_jwt.authentication import JWTAuth
 @router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
 def list_images_for_org(request, org_slug: str, ordering: str | None = None):
-    org = image_api.get_org_for_request(request, org_slug)
+    org = get_org_for_request(request, org_slug)
     ordering_map = {
         None: "-created_at",
         "created_at": "created_at",

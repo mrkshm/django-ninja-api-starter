@@ -55,7 +55,7 @@ class TestContactPermissions(TestCase):
     def test_non_member_cannot_partial_update_contact(self):
         req = self._req(self.nonmember, method="PATCH")
         # Use ContactUpdate shape via partial schema dict
-        from contacts.api import ContactUpdate
+        from contacts.schemas import ContactUpdate
         patch = ContactUpdate(display_name="Johnny 2")
         with self.assertRaises(HttpError) as ctx:
             partial_update_contact(req, self.contact.slug, patch)
