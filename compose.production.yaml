@@ -57,8 +57,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - beat_schedule:/var/run/celery
 
   db:
     image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
@@ -120,4 +118,3 @@ volumes:
   redis_data:
   caddy_data:
   caddy_config:
-  beat_schedule:

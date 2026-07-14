@@ -21,30 +21,15 @@ def test_render_email_template_returns_subject_and_body(settings):
     assert "https://example.test/verify" in body
 
 
-def test_send_email_uses_default_from_email_and_connection(monkeypatch):
+def test_send_email_uses_configured_backend(monkeypatch):
     settings.DEFAULT_FROM_EMAIL = "sender@example.com"
-    settings.EMAIL_HOST = "smtp.example.com"
-    settings.EMAIL_PORT = 587
-    settings.EMAIL_HOST_USER = "user"
-    settings.EMAIL_HOST_PASSWORD = "pw"
-    settings.EMAIL_USE_TLS = True
-    settings.EMAIL_USE_SSL = False
     called = {}
 
-    def fake_get_connection(**kwargs):
-        called["connection"] = kwargs
-
-        class DummyConn:
-            pass
-
-        return DummyConn()
-
-    def fake_email_multi(subject, body_text, from_email, to_list, connection=None):
+    def fake_email_multi(subject, body_text, from_email, to_list):
         called["subject"] = subject
         called["body_text"] = body_text
         called["from_email"] = from_email
         called["to_list"] = to_list
-        called["connection"] = connection
 
         class DummyMsg:
             def attach_alternative(self, html, mimetype):
@@ -55,7 +40,6 @@ def test_send_email_uses_default_from_email_and_connection(monkeypatch):
 
         return DummyMsg()
 
-    monkeypatch.setattr("core.email_utils.get_connection", fake_get_connection)
     monkeypatch.setattr("core.email_utils.EmailMultiAlternatives", fake_email_multi)
     # Plain text only
     send_email("Sub", "to@example.com", "bodytext")

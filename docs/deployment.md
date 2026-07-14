@@ -1,57 +1,71 @@
-# Deployment with Kamal
+# Production deployment
 
-This project uses [Kamal](https://kamal-deploy.com/) for deployment.
+The supported example is a single Linux server running Docker Compose. Caddy is
+the only internet-facing service and terminates TLS. Django, PostgreSQL, and
+password-protected Redis share a private Compose network. Web, worker, and beat
+run as a non-root user with read-only root filesystems.
 
-## Prerequisites
+This is a sound default for a small product when the server, backups, upgrades,
+and monitoring have a named operator. Move to a managed database or an
+orchestrator when availability requirements exceed what one host can provide.
 
-- Ruby must be installed on your system.
-- Kamal must be installed. See the [Kamal installation guide](https://kamal-deploy.com/docs/installation/) for instructions.
-- If you don't want to install Ruby, other good options for deployment are [Dokku](https://dokku.com/) and [Dokploy](https://dokploy.com/).
+## Prepare
 
-## Single-Server Deployment
+1. Install Docker Engine with the Compose plugin.
+2. Point the API DNS name at the host and allow inbound TCP 80/443 and UDP 443.
+3. Create private and public S3-compatible buckets. Public access must apply
+   only to the avatar bucket. Enable versioning where supported.
+4. Copy `env.production.example` to a root-readable location outside the Git
+   checkout, replace every placeholder, and set `APP_ENV_FILE` to that path.
+5. Set `APP_IMAGE` to an immutable registry tag or digest and `DOMAIN` to the
+   public hostname in the Compose interpolation environment.
 
-The default `config/deploy.yml` deploys the web server, Celery worker, Postgres, and Redis to a single server.
+Validate without starting services:
 
-## How to Deploy
+```sh
+docker compose --env-file /etc/myapp/compose.env -f compose.production.yaml config --quiet
+```
 
-1. Edit `config/deploy.yml`:
+## Release procedure
 
-   - Set your server IP, Docker image, and update the `clear:` section with your environment values or keep the examples.
-   - Non-sensitive config is set directly under `clear:`.
-   - Secrets are listed under `secret:` and must be set in `.kamal/secrets`.
+Build and scan the exact commit in CI, publish it under an immutable tag, then:
 
-2. Edit `.kamal/secrets`:
+```sh
+docker compose --env-file /etc/myapp/compose.env -f compose.production.yaml pull
+docker compose --env-file /etc/myapp/compose.env -f compose.production.yaml up -d db redis
+docker compose --env-file /etc/myapp/compose.env -f compose.production.yaml run --rm web python manage.py migrate --noinput
+docker compose --env-file /etc/myapp/compose.env -f compose.production.yaml up -d web worker beat caddy
+curl --fail https://api.example.com/health/live/
+curl --fail https://api.example.com/health/ready/
+```
 
-   - Add values for each secret variable listed in the `secret:` section of your `deploy.yml`.
-   - Example:
-     ```env
-     SECRET_KEY=your-production-secret-key
-     POSTGRES_PASSWORD=your-db-password
-     R2_ACCESS_KEY_ID=your-access-key
-     R2_SECRET_ACCESS_KEY=your-secret-access-key
-     EMAIL_HOST_PASSWORD=your-email-password
-     ```
-   - Do not commit real secrets to version control.
+Migrations are a controlled, one-off release step. Web containers never migrate
+on startup. Workers start only after the migration command succeeds.
 
-3. Deploy:
-   - Run:
-     ```sh
-     kamal deploy
-     ```
+Before every release, take an encrypted database backup and confirm enough free
+disk space. For schema changes, use forward-compatible expand/migrate/contract
+releases. Roll back application images only while the deployed schema remains
+compatible; otherwise deploy a forward fix. Never reverse a destructive
+migration without a tested restore.
 
-## Environment Variable Management
+## Configuration and TLS
 
-- All required environment variables are defined in `config/deploy.yml`.
-- Non-sensitive variables are set in `clear:`. Edit these as needed.
-- Sensitive variables are referenced in `secret:` and set in `.kamal/secrets`.
+Production settings fail immediately when hosts, database, Redis, SMTP, signing,
+or storage values are absent. `SECRET_KEY` and `JWT_SIGNING_KEY` must be long,
+random, and independent. Caddy replaces forwarded scheme headers before proxying
+to Django, which is the only reason `SECURE_PROXY_SSL_HEADER` is enabled.
 
-## Notes
+Caddy limits request bodies to 20 MiB; image decoding applies stricter byte,
+pixel, and dimension limits. HSTS is enabled for one year. Do not enable preload
+until every subdomain is permanently HTTPS.
 
-- For more information or multi-server setups, see the [Kamal documentation](https://kamal-deploy.com/).
-- [Dokku](https://dokku.com/) and [Dokploy](https://dokploy.com/) are also good alternatives for deploying Django projects.
+## Shutdown and sizing
 
-## References
+`WEB_CONCURRENCY` defaults to two bounded Gunicorn workers rather than deriving
+workers from host CPU count. Tune it from measured memory/latency under the
+container's resource limits. Compose allows 45 seconds for graceful shutdown;
+Celery tasks also have hard and soft time limits. Drain long export jobs before
+host maintenance where possible.
 
-- [Kamal Docs](https://kamal-deploy.com/docs/)
-- [Django Deployment Checklist](https://docs.djangoproject.com/en/stable/howto/deployment/checklist/)
-- [Celery Deployment Guide](https://docs.celeryq.dev/en/stable/django/first-steps-with-django.html)
+See [operations.md](operations.md) for backups, monitoring, release validation,
+and incident recovery.
