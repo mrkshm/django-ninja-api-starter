@@ -74,8 +74,7 @@ class ImageOut(BaseModel):
             return v.isoformat()
         return str(v) if v else None
 
-    class Config:
-        model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True)
 
 class PolymorphicImageRelationOut(BaseModel):
     id: int

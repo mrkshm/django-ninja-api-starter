@@ -1,0 +1,49 @@
+[project]
+name = "django-ninja-api-starter"
+version = "0.1.0"
+description = "Production-oriented Django Ninja API starter"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "boto3==1.43.14",
+    "celery==5.6.3",
+    "django==6.0.5",
+    "django-celery-beat==2.9.0",
+    "django-cors-headers==4.9.0",
+    "django-csp==4.0",
+    "django-environ==0.13.0",
+    "django-ninja==1.6.2",
+    "django-ninja-extra==0.31.4",
+    "django-ninja-jwt==5.4.4",
+    "django-redis==6.0.0",
+    "django-storages==1.14.6",
+    "gunicorn==26.0.0",
+    "orjson==3.11.9",
+    "pillow==12.2.0",
+    "psycopg2-binary==2.9.12",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.1",
+    "python-multipart==0.0.29",
+    "redis==7.4.0",
+    "whitenoise==6.12.0",
+]
+
+[dependency-groups]
+dev = [
+    "black==26.5.1",
+    "django-extensions==4.1",
+    "django-stubs==6.0.5",
+    "factory-boy==3.3.3",
+    "flake8==7.3.0",
+    "flower==2.0.1",
+    "isort==8.0.1",
+    "model-bakery==1.23.4",
+    "mypy==1.19.1",
+    "pre-commit==4.6.0",
+    "pytest==9.0.3",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "pytest-django==4.12.0",
+]
+
+[tool.uv]
+package = false

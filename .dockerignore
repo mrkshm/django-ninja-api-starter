@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.mypy_cache
+.pytest_cache
+.test_media
+.venv
+__pycache__
+*.py[cod]
+*.sqlite3
+.coverage
+.env
+.env.*
+staticfiles
