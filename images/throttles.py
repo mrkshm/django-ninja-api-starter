@@ -1,8 +1,7 @@
 import logging
 
 from django.conf import settings
-from ninja.throttling import UserRateThrottle
-
+from ninja.throttling import AnonRateThrottle, UserRateThrottle
 
 logger = logging.getLogger("audit")
 
@@ -23,7 +22,9 @@ class LoggingUserRateThrottle(UserRateThrottle):
             except Exception:
                 pass
             rate = getattr(self, "rate", None)
-            remote = request.META.get("REMOTE_ADDR") if hasattr(request, "META") else None
+            remote = (
+                request.META.get("REMOTE_ADDR") if hasattr(request, "META") else None
+            )
             logger.warning(
                 "audit:rate_limited user=%s org=%s path=%s rate=%s ip=%s",
                 user_id,
@@ -35,8 +36,21 @@ class LoggingUserRateThrottle(UserRateThrottle):
         return allowed
 
 
-upload_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_UPLOAD", "60/h"))
-bulk_upload_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_UPLOAD", "30/h"))
-bulk_delete_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_DELETE", "30/h"))
-bulk_attach_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_ATTACH", "60/h"))
-bulk_detach_throttle = LoggingUserRateThrottle(getattr(settings, "IMAGES_RATE_LIMIT_BULK_DETACH", "60/h"))
+upload_throttle = LoggingUserRateThrottle(
+    getattr(settings, "IMAGES_RATE_LIMIT_UPLOAD", "60/h")
+)
+bulk_upload_throttle = LoggingUserRateThrottle(
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_UPLOAD", "30/h")
+)
+bulk_delete_throttle = LoggingUserRateThrottle(
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_DELETE", "30/h")
+)
+bulk_attach_throttle = LoggingUserRateThrottle(
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_ATTACH", "60/h")
+)
+bulk_detach_throttle = LoggingUserRateThrottle(
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_DETACH", "60/h")
+)
+share_link_throttle = AnonRateThrottle(
+    getattr(settings, "IMAGES_RATE_LIMIT_SHARE_RESOLVE", "120/h")
+)

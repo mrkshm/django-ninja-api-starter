@@ -3,6 +3,7 @@ from PIL import Image
 from io import BytesIO
 from core.utils.image import resize_images
 
+
 def test_resize_avatar_images_basic():
     # Create a red 1000x1000 image in memory
     img = Image.new("RGB", (1000, 1000), color="red")
@@ -27,6 +28,7 @@ def test_resize_avatar_images_basic():
 
     # Check that the small image is smaller in bytes than the large one
     assert len(small) < len(large)
+
 
 def test_resize_avatar_images_non_square():
     # Create a 1200x600 blue image (non-square, landscape)
@@ -57,6 +59,7 @@ def test_resize_avatar_images_non_square():
     assert abs(small_ratio - orig_ratio) < 0.01
     assert abs(large_ratio - orig_ratio) < 0.01
 
+
 def test_resize_images_versions():
     # Create a blue 3000x2000 image in memory
     img = Image.new("RGB", (3000, 2000), color="blue")
@@ -68,7 +71,12 @@ def test_resize_images_versions():
     versions = resize_images(original_bytes)
     assert set(versions.keys()) == {"thumb", "sm", "md", "lg"}
 
-    sizes = {"thumb": (160, 160), "sm": (640, 640), "md": (1024, 1024), "lg": (2048, 1365)}
+    sizes = {
+        "thumb": (160, 160),
+        "sm": (640, 640),
+        "md": (1024, 1024),
+        "lg": (2048, 1365),
+    }
     # Note: for non-square images, .thumbnail keeps aspect ratio, so height may be less than max
 
     for key, expected_max_size in sizes.items():
@@ -79,8 +87,16 @@ def test_resize_images_versions():
         # Check that neither dimension exceeds expected
         assert out_img.size[0] <= expected_max_size[0]
         assert out_img.size[1] <= expected_max_size[1]
-        assert out_img.size[0] == expected_max_size[0] or out_img.size[1] == expected_max_size[1]
+        assert (
+            out_img.size[0] == expected_max_size[0]
+            or out_img.size[1] == expected_max_size[1]
+        )
         assert len(out_bytes) > 0
 
     # Check that file sizes increase with image size
-    assert len(versions["thumb"]) < len(versions["sm"]) < len(versions["md"]) < len(versions["lg"])
+    assert (
+        len(versions["thumb"])
+        < len(versions["sm"])
+        < len(versions["md"])
+        < len(versions["lg"])
+    )

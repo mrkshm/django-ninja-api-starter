@@ -6,7 +6,11 @@ from images.serializers import serialize_image
 from core.authentication import JWTAuth
 
 
-@router.patch("/orgs/{org_slug}/images/{image_id}/", response={200: ImageOut, 400: dict}, auth=JWTAuth())
+@router.patch(
+    "/orgs/{org_slug}/images/{image_id}/",
+    response={200: ImageOut, 400: dict},
+    auth=JWTAuth(),
+)
 def edit_image_metadata(request, org_slug: str, image_id: int, data: ImagePatchIn):
     scope = get_org_scope_for_request(request, org_slug).require_write()
     image = get_object_or_404(Image, id=image_id, organization=scope.org)

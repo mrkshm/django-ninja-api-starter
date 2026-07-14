@@ -1,161 +1,211 @@
-import io
 import json
+import logging
+import shutil
 import tempfile
 import zipfile
 from datetime import timedelta
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.core.files.base import ContentFile
-from django.core.files.storage import storages
-from django.utils import timezone
+
 from celery import shared_task
-from core.email_utils import send_email
-from organizations.models import Organization, Membership
+from django.conf import settings
+from django.core.files import File
+from django.core.files.storage import default_storage
+from django.db import transaction
+from django.utils import timezone
+
 from contacts.models import Contact
+from core.tasks import send_email_task
+from images.models import Image, PolymorphicImageRelation
+from organizations.models import ExportJob, Membership
 from tags.models import Tag, TaggedItem
-from images.models import Image
-from botocore.exceptions import ClientError
 
-User = get_user_model()
-
-EXPORT_RETENTION_DAYS = 7
-EXPORT_PREFIX = "exports/"
-
-def get_export_bucket():
-    # Use a custom export bucket if set, else the configured private media bucket.
-    if getattr(settings, "EXPORT_BUCKET", None):
-        return settings.EXPORT_BUCKET
-    if getattr(settings, "R2_PRIVATE_BUCKET_NAME", None):
-        return settings.R2_PRIVATE_BUCKET_NAME
-    options = settings.STORAGES.get("default", {}).get("OPTIONS", {})
-    return options.get("bucket_name") or getattr(settings, "AWS_STORAGE_BUCKET_NAME", None)
+logger = logging.getLogger(__name__)
+EXPORT_PREFIX = "private/exports/"
 
 
-def _get_s3_client():
-    storage = storages["default"]
-    try:
-        return storage.connection.meta.client
-    except AttributeError as exc:
-        raise RuntimeError("Default storage backend does not expose an S3 client.") from exc
+def export_retention_days() -> int:
+    return int(getattr(settings, "EXPORT_RETENTION_DAYS", 7))
 
-def _serialize_org_data(org):
-    # Users/Members
+
+def serialize_org_data(job: ExportJob) -> dict:
+    org = job.organization
     memberships = Membership.objects.filter(organization=org).select_related("user")
-    users = [
-        {
-            "email": m.user.email,
-            "username": m.user.username,
-            "first_name": m.user.first_name,
-            "last_name": m.user.last_name,
-            "role": m.role,
-            "preferred_language": getattr(m.user, "preferred_language", None),
-            "created_at": m.user.created_at.isoformat() if m.user.created_at else None,
-        }
-        for m in memberships
-    ]
-    # Contacts
-    contacts = list(Contact.objects.filter(organization=org))
-    contacts_data = [
-        {
-            "id": c.id,
-            "display_name": c.display_name,
-            "first_name": c.first_name,
-            "last_name": c.last_name,
-            "email": c.email,
-            "location": c.location,
-            "phone": c.phone,
-            "notes": c.notes,
-            "avatar_path": c.avatar_path,
-            "creator": c.creator_id,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-            # Contact.tags returns a Python list of Tag objects, not a queryset
-            "tags": [t.name for t in c.tags],
-        }
-        for c in contacts
-    ]
-    # Tags
-    tags = list(Tag.objects.filter(organization=org))
-    tags_data = [
-        {"id": t.id, "name": t.name, "slug": t.slug} for t in tags
-    ]
-    # Images
-    images = list(Image.objects.filter(organization=org))
-    images_data = [
-        {
-            "id": img.id,
-            "title": img.title,
-            "description": img.description,
-            "alt_text": img.alt_text,
-            "creator": img.creator_id,
-            "created_at": img.created_at.isoformat() if img.created_at else None,
-            "updated_at": img.updated_at.isoformat() if img.updated_at else None,
-            "file": img.file.name if img.file else None,
-        }
-        for img in images
-    ]
+    contacts = Contact.objects.filter(organization=org).prefetch_related(
+        "tagged_items__tag"
+    )
+    tags = Tag.objects.filter(organization=org)
+    images = Image.objects.filter(organization=org)
+    tagged_items = TaggedItem.objects.filter(tag__organization=org).select_related(
+        "tag", "content_type"
+    )
+    image_relations = PolymorphicImageRelation.objects.filter(
+        image__organization=org
+    ).select_related("image", "content_type")
     return {
+        "format": "django-ninja-api-starter-portability-export",
+        "version": 1,
+        "generated_at": timezone.now().isoformat(),
         "organization": {
             "id": org.id,
             "name": org.name,
             "slug": org.slug,
             "type": org.type,
-            "created_at": org.created_at.isoformat() if org.created_at else None,
-            "updated_at": org.updated_at.isoformat() if org.updated_at else None,
+            "created_at": org.created_at.isoformat(),
+            "updated_at": org.updated_at.isoformat(),
         },
-        "users": users,
-        "contacts": contacts_data,
-        "tags": tags_data,
-        "images": images_data,
+        "memberships": [
+            {
+                "user_id": membership.user_id,
+                "email": membership.user.email,
+                "username": membership.user.username,
+                "role": membership.role,
+            }
+            for membership in memberships
+        ],
+        "contacts": [
+            {
+                "id": contact.id,
+                "slug": contact.slug,
+                "display_name": contact.display_name,
+                "first_name": contact.first_name,
+                "last_name": contact.last_name,
+                "email": contact.email,
+                "location": contact.location,
+                "phone": contact.phone,
+                "notes": contact.notes,
+                "avatar_path": contact.avatar_path,
+                "creator_id": contact.creator_id,
+                "created_at": contact.created_at.isoformat(),
+                "updated_at": contact.updated_at.isoformat(),
+            }
+            for contact in contacts
+        ],
+        "tags": [{"id": tag.id, "name": tag.name, "slug": tag.slug} for tag in tags],
+        "tag_relations": [
+            {
+                "tag_id": item.tag_id,
+                "app_label": item.content_type.app_label,
+                "model": item.content_type.model,
+                "object_id": item.object_id,
+            }
+            for item in tagged_items
+        ],
+        "images": [
+            {
+                "id": image.id,
+                "object_key": image.file.name,
+                "title": image.title,
+                "description": image.description,
+                "alt_text": image.alt_text,
+                "creator_id": image.creator_id,
+                "created_at": image.created_at.isoformat(),
+                "updated_at": image.updated_at.isoformat(),
+            }
+            for image in images
+        ],
+        "image_relations": [
+            {
+                "image_id": relation.image_id,
+                "app_label": relation.content_type.app_label,
+                "model": relation.content_type.model,
+                "object_id": relation.object_id,
+                "is_cover": relation.is_cover,
+                "order": relation.order,
+            }
+            for relation in image_relations
+        ],
     }
 
-def _add_images_to_zip(zipf, images):
-    for img in images:
-        if img.file:
-            img.file.open("rb")
-            with img.file as f:
-                zipf.writestr(f"images/{img.file.name.split('/')[-1]}", f.read())
 
-def _upload_to_s3(file_bytes, s3_key):
-    s3 = _get_s3_client()
-    bucket = get_export_bucket()
-    if not bucket:
-        raise RuntimeError("No S3 bucket configured for exports. Set R2_PRIVATE_BUCKET_NAME, AWS_STORAGE_BUCKET_NAME, or EXPORT_BUCKET in settings.")
-    s3.upload_fileobj(io.BytesIO(file_bytes), bucket, s3_key)
-
-def _generate_presigned_url(s3_key, expires=3600):
-    s3 = _get_s3_client()
-    bucket = get_export_bucket()
-    if not bucket:
-        raise RuntimeError("No S3 bucket configured for exports. Set R2_PRIVATE_BUCKET_NAME, AWS_STORAGE_BUCKET_NAME, or EXPORT_BUCKET in settings.")
-    try:
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": s3_key},
-            ExpiresIn=expires,
+def build_export_archive(job: ExportJob, destination) -> None:
+    with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "data.json",
+            json.dumps(serialize_org_data(job), ensure_ascii=False, indent=2),
         )
-    except ClientError:
-        url = None
-    return url
+        for image in Image.objects.filter(organization=job.organization).iterator():
+            if not image.file:
+                continue
+            try:
+                image_name = image.file.name or str(image.file)
+                with (
+                    image.file.open("rb") as source,
+                    archive.open(
+                        f"media/{image.pk}/{image_name.rsplit('/', 1)[-1]}", "w"
+                    ) as target,
+                ):
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
+            except FileNotFoundError:
+                logger.warning(
+                    "exports:source_media_missing job=%s image=%s", job.pk, image.pk
+                )
 
-@shared_task
-def export_org_data_task(org_id, user_email):
-    org = Organization.objects.get(id=org_id)
-    data = _serialize_org_data(org)
-    images = list(Image.objects.filter(organization=org))
-    with tempfile.NamedTemporaryFile() as tmp:
-        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zipf:
-            # Add JSON data
-            zipf.writestr("data.json", json.dumps(data, indent=2))
-            # Add images
-            _add_images_to_zip(zipf, images)
-        tmp.seek(0)
-        now = timezone.now().strftime("%Y%m%dT%H%M%S")
-        s3_key = f"{EXPORT_PREFIX}org_{org.slug}_{now}.zip"
-        _upload_to_s3(tmp.read(), s3_key)
-    url = _generate_presigned_url(s3_key, expires=3600 * 24 * EXPORT_RETENTION_DAYS)
-    # Email user
-    subject = f"Your organization export for {org.name} is ready"
-    body = f"Your export is ready. Download it here (link expires in {EXPORT_RETENTION_DAYS} days):\n{url}"
-    send_email(subject, user_email, body)
-    return {"s3_key": s3_key, "url": url}
+
+@shared_task(bind=True, acks_late=True, reject_on_worker_lost=True)
+def export_org_data_task(self, job_id: str):
+    with transaction.atomic():
+        job = (
+            ExportJob.objects.select_for_update()
+            .select_related("organization", "requested_by")
+            .get(pk=job_id)
+        )
+        if job.status == ExportJob.Status.READY:
+            return str(job.pk)
+        job.status = ExportJob.Status.PROCESSING
+        job.started_at = timezone.now()
+        job.error_message = ""
+        job.save(update_fields=["status", "started_at", "error_message"])
+
+    object_key = f"{EXPORT_PREFIX}{job.organization_id}/{job.pk}.zip"
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".zip") as temporary:
+            build_export_archive(job, temporary)
+            temporary.seek(0)
+            saved_key = default_storage.save(object_key, File(temporary))
+        now = timezone.now()
+        ExportJob.objects.filter(pk=job.pk).update(
+            status=ExportJob.Status.READY,
+            object_key=saved_key,
+            completed_at=now,
+            expires_at=now + timedelta(days=export_retention_days()),
+            error_message="",
+        )
+    except Exception:
+        ExportJob.objects.filter(pk=job.pk).update(
+            status=ExportJob.Status.FAILED,
+            completed_at=timezone.now(),
+            error_message="Export generation failed.",
+        )
+        logger.exception("exports:generation_failed job=%s", job.pk)
+        raise
+
+    if job.requested_by is not None:
+        try:
+            send_email_task.delay(
+                f"Your export for {job.organization.name} is ready",
+                "Your export is ready. Open the app to download it before it expires.",
+                [job.requested_by.email],
+            )
+        except Exception:
+            logger.exception("exports:notification_publish_failed job=%s", job.pk)
+    return str(job.pk)
+
+
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def cleanup_expired_exports() -> int:
+    jobs = ExportJob.objects.filter(
+        status=ExportJob.Status.READY,
+        expires_at__lte=timezone.now(),
+    )
+    expired = 0
+    for job in jobs.iterator():
+        if job.object_key:
+            try:
+                default_storage.delete(job.object_key)
+            except Exception:
+                logger.exception("exports:retention_delete_failed job=%s", job.pk)
+                continue
+        job.status = ExportJob.Status.EXPIRED
+        job.object_key = ""
+        job.save(update_fields=["status", "object_key"])
+        expired += 1
+    return expired

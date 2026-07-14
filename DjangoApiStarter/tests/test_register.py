@@ -4,6 +4,7 @@ from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
 
+
 @pytest.mark.django_db
 class TestRegister:
     def setup_method(self):
@@ -12,7 +13,9 @@ class TestRegister:
 
     def test_register_missing_fields(self):
         # Missing password
-        response = self.client.post("/auth/register/", json={"email": "user@example.com"})
+        response = self.client.post(
+            "/auth/register/", json={"email": "user@example.com"}
+        )
         assert response.status_code in [400, 422]
         data = response.json()
         assert "detail" in data or "message" in data
@@ -31,10 +34,13 @@ class TestRegister:
 
     def test_register_existing_email(self):
         from accounts.models import User
+
         email = "existing@example.com"
         password = "testpass123"
         create_test_user(email=email, password=password)
-        response = self.client.post("/auth/register/", json={"email": email, "password": password})
+        response = self.client.post(
+            "/auth/register/", json={"email": email, "password": password}
+        )
         assert response.status_code in [400, 422]
         data = response.json()
         assert "detail" in data or "message" in data
@@ -43,7 +49,9 @@ class TestRegister:
         # Register a new user with valid data
         email = "newuser@example.com"
         password = "testpass123"
-        response = self.client.post("/auth/register/", json={"email": email, "password": password})
+        response = self.client.post(
+            "/auth/register/", json={"email": email, "password": password}
+        )
         assert response.status_code == 200
         data = response.json()
         # Registration should return a verification message, not tokens

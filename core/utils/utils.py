@@ -39,7 +39,9 @@ def make_it_unique(base_value, model, field_name, exclude_pk=None):
     return candidate
 
 
-def generate_upload_filename(prefix: str, original_name: str, ext: Optional[str] = None) -> str:
+def generate_upload_filename(
+    prefix: str, original_name: str, ext: Optional[str] = None
+) -> str:
     """
     Generate a unique filename for uploads.
     - prefix: string to prepend (e.g. 'avatar', 'doc', or '').
@@ -48,7 +50,7 @@ def generate_upload_filename(prefix: str, original_name: str, ext: Optional[str]
     """
     base, orig_ext = os.path.splitext(original_name)
     base = base[:12]  # Truncate base name
-    timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     rand = get_random_string(6)
     extension = ext if ext is not None else orig_ext
     parts = [p for p in [prefix, base, timestamp, rand] if p]

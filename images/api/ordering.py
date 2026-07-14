@@ -9,9 +9,17 @@ from ninja.errors import HttpError
 from core.authentication import JWTAuth
 
 
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", response=DetailResponse, auth=JWTAuth())
-def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ReorderIn):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+@router.post(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder",
+    response=DetailResponse,
+    auth=JWTAuth(),
+)
+def reorder_images(
+    request, org_slug: str, app_label: str, model: str, obj_id: int, data: ReorderIn
+):
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
@@ -19,7 +27,9 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
     user = resolved.scope.user
 
     rels = list(
-        PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj.pk).select_related("image")
+        PolymorphicImageRelation.objects.filter(
+            content_type=ct, object_id=obj.pk
+        ).select_related("image")
     )
     if not rels:
         return DetailResponse(detail="ok")
@@ -61,14 +71,27 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
             ).update(is_cover=True)
         logger.info(
             "audit:image_reorder org=%s user=%s app=%s model=%s obj=%s images=%s",
-            org.id, getattr(user, "id", None), app_label, model, obj_id, provided,
+            org.id,
+            getattr(user, "id", None),
+            app_label,
+            model,
+            obj_id,
+            provided,
         )
     return DetailResponse(detail="ok")
 
 
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", response=DetailResponse, auth=JWTAuth())
-def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+@router.post(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover",
+    response=DetailResponse,
+    auth=JWTAuth(),
+)
+def set_cover_image(
+    request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn
+):
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
@@ -76,27 +99,38 @@ def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: 
     user = resolved.scope.user
 
     image = get_object_or_404(Image, id=data.image_id, organization=org)
-    get_object_or_404(PolymorphicImageRelation, image=image, content_type=ct, object_id=obj.pk)
+    get_object_or_404(
+        PolymorphicImageRelation, image=image, content_type=ct, object_id=obj.pk
+    )
 
     with transaction.atomic():
-        qs = (
-            PolymorphicImageRelation.objects
-            .select_for_update()
-            .filter(content_type=ct, object_id=obj.pk)
+        qs = PolymorphicImageRelation.objects.select_for_update().filter(
+            content_type=ct, object_id=obj.pk
         )
         qs.filter(is_cover=True).update(is_cover=False)
         qs.filter(image_id=data.image_id).update(is_cover=True)
 
     logger.info(
         "audit:image_set_cover org=%s user=%s app=%s model=%s obj=%s image=%s",
-        org.id, getattr(user, "id", None), app_label, model, obj_id, data.image_id,
+        org.id,
+        getattr(user, "id", None),
+        app_label,
+        model,
+        obj_id,
+        data.image_id,
     )
     return DetailResponse(detail="ok")
 
 
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", response=DetailResponse, auth=JWTAuth())
+@router.post(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover",
+    response=DetailResponse,
+    auth=JWTAuth(),
+)
 def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
@@ -104,15 +138,17 @@ def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id
     user = resolved.scope.user
 
     with transaction.atomic():
-        qs = (
-            PolymorphicImageRelation.objects
-            .select_for_update()
-            .filter(content_type=ct, object_id=obj.pk)
+        qs = PolymorphicImageRelation.objects.select_for_update().filter(
+            content_type=ct, object_id=obj.pk
         )
         qs.filter(is_cover=True).update(is_cover=False)
 
     logger.info(
         "audit:image_unset_cover org=%s user=%s app=%s model=%s obj=%s",
-        org.id, getattr(user, "id", None), app_label, model, obj_id,
+        org.id,
+        getattr(user, "id", None),
+        app_label,
+        model,
+        obj_id,
     )
     return DetailResponse(detail="ok")

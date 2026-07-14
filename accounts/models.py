@@ -1,6 +1,10 @@
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import Lower
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.contrib.auth.models import (
+    AbstractBaseUser,
+    PermissionsMixin,
+    BaseUserManager,
+)
 from django.utils.text import slugify
 from django.utils import timezone
 from core.utils import make_it_unique
@@ -19,14 +23,15 @@ class PendingTokenMixin(models.Model):
             self.token = hash_token(self.token)
         super().save(*args, **kwargs)
 
+
 class UserManager(BaseUserManager):
     def _clean_username(self, username):
         # Allow only alphanumerics, dots, and underscores
-        allowed = set(string.ascii_letters + string.digits + '._')
-        return ''.join(c for c in username if c in allowed)
+        allowed = set(string.ascii_letters + string.digits + "._")
+        return "".join(c for c in username if c in allowed)
 
     def _generate_username(self, email):
-        base_username = self._clean_username(email.split('@')[0])
+        base_username = self._clean_username(email.split("@")[0])
         return make_it_unique(base_username, self.model, "username")
 
     def _generate_slug(self, username):
@@ -41,9 +46,13 @@ class UserManager(BaseUserManager):
             extra_fields["username"] = self._generate_username(email)
         if not extra_fields.get("slug"):
             extra_fields["slug"] = self._generate_slug(extra_fields["username"])
-        user = self.model(email=email, **extra_fields)
-        user.set_password(password)
-        user.save(using=self._db)
+        with transaction.atomic(using=self._db):
+            user = self.model(email=email, **extra_fields)
+            user.set_password(password)
+            user.save(using=self._db)
+            from organizations.services import create_personal_organization
+
+            create_personal_organization(user)
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
@@ -51,8 +60,9 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         return self.create_user(email, password, **extra_fields)
 
+
 class PendingEmailChange(PendingTokenMixin):
-    user = models.ForeignKey('User', on_delete=models.CASCADE)
+    user = models.ForeignKey("User", on_delete=models.CASCADE)
     new_email = models.EmailField()
     token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -64,8 +74,9 @@ class PendingEmailChange(PendingTokenMixin):
     def __str__(self):
         return f"PendingEmailChange(user={self.user_id}, new_email={self.new_email})"
 
+
 class PendingPasswordReset(PendingTokenMixin):
-    user = models.ForeignKey('User', on_delete=models.CASCADE)
+    user = models.ForeignKey("User", on_delete=models.CASCADE)
     token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
@@ -76,17 +87,19 @@ class PendingPasswordReset(PendingTokenMixin):
     def __str__(self):
         return f"PendingPasswordReset(user={self.user_id})"
 
+
 class PendingRegistration(PendingTokenMixin):
-    user = models.OneToOneField('User', on_delete=models.CASCADE)
+    user = models.OneToOneField("User", on_delete=models.CASCADE)
     token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
     def is_expired(self):
         return timezone.now() > self.expires_at
-        
+
     def __str__(self):
         return f"PendingRegistration(user={self.user_id})"
+
 
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
@@ -117,11 +130,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Meta:
         constraints = [
             models.UniqueConstraint(Lower("email"), name="accounts_user_email_ci_uniq"),
-            models.UniqueConstraint(Lower("username"), name="accounts_user_username_ci_uniq"),
+            models.UniqueConstraint(
+                Lower("username"), name="accounts_user_username_ci_uniq"
+            ),
         ]
 
     def get_user_permissions(self):
-        cache_key = f'user_permissions_{self.id}'
+        cache_key = f"user_permissions_{self.id}"
         permissions = cache.get(cache_key)
         if permissions is None:
             permissions = super().get_user_permissions()
@@ -134,7 +149,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class AuthSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="auth_sessions")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="auth_sessions"
+    )
     auth_version = models.PositiveBigIntegerField()
     device_name = models.CharField(max_length=120, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -144,7 +161,9 @@ class AuthSession(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "revoked_at"], name="auth_session_user_revoked_idx"),
+            models.Index(
+                fields=["user", "revoked_at"], name="auth_session_user_revoked_idx"
+            ),
             models.Index(fields=["expires_at"], name="auth_session_expires_idx"),
         ]
 

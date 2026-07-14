@@ -28,6 +28,7 @@ def test_password_reset_request_valid_email(settings, api_client):
         # Email should be sent
         assert mock_send_email.called
 
+
 @pytest.mark.django_db
 def test_password_reset_request_invalid_email_format(api_client):
     url = "/auth/password-reset/request"
@@ -35,6 +36,7 @@ def test_password_reset_request_invalid_email_format(api_client):
     response = api_client.post(url, json=data)
     assert response.status_code == 200
     assert "reset link has been sent" in response.json()["detail"]
+
 
 @pytest.mark.django_db
 def test_password_reset_request_nonexistent_email(api_client):
@@ -44,11 +46,14 @@ def test_password_reset_request_nonexistent_email(api_client):
     assert response.status_code == 200
     assert "reset link has been sent" in response.json()["detail"]
 
+
 @pytest.mark.django_db
 def test_password_reset_request_deletes_previous(settings, api_client):
     user = create_test_user(email="user2@example.com", password="pass1234")
     expires_at = timezone.now() + datetime.timedelta(hours=2)
-    PendingPasswordReset.objects.create(user=user, token="oldtoken", expires_at=expires_at)
+    PendingPasswordReset.objects.create(
+        user=user, token="oldtoken", expires_at=expires_at
+    )
     url = "/auth/password-reset/request"
     data = {"email": "user2@example.com"}
     with patch("accounts.services.send_email_task.delay"):
@@ -57,6 +62,7 @@ def test_password_reset_request_deletes_previous(settings, api_client):
     # Only one PendingPasswordReset should exist now
     assert PendingPasswordReset.objects.filter(user=user).count() == 1
 
+
 @pytest.mark.django_db
 def test_password_reset_request_email_send_failure(monkeypatch, api_client):
     user = create_test_user(email="failmail@example.com", password="pw")
@@ -64,13 +70,16 @@ def test_password_reset_request_email_send_failure(monkeypatch, api_client):
     data = {"email": "failmail@example.com"}
     # Patch send_email_task.delay to raise an exception
     from core import tasks as core_tasks
+
     def fail_send_email_task(*args, **kwargs):
         raise Exception("Simulated email failure")
+
     monkeypatch.setattr(core_tasks.send_email_task, "delay", fail_send_email_task)
     response = api_client.post(url, json=data)
     # Should still return 200 and generic message
     assert response.status_code == 200
     assert "reset link has been sent" in response.json()["detail"]
+
 
 @pytest.mark.django_db
 def test_password_reset_confirm_success(api_client):
@@ -82,10 +91,14 @@ def test_password_reset_confirm_success(api_client):
     # Create a valid PendingPasswordReset
     from django.utils import timezone
     import secrets
+
     token = secrets.token_urlsafe(32)
     expires_at = timezone.now() + timezone.timedelta(hours=2)
     from accounts.models import PendingPasswordReset
-    PendingPasswordReset.objects.create(user=user, token=hash_token(token), expires_at=expires_at)
+
+    PendingPasswordReset.objects.create(
+        user=user, token=hash_token(token), expires_at=expires_at
+    )
     url = "/auth/password-reset/confirm"
     data = {"token": token, "new_password": "newpass123"}
     response = api_client.post(url, json=data)
@@ -96,14 +109,18 @@ def test_password_reset_confirm_success(api_client):
     assert user.check_password("newpass123")
     # PendingPasswordReset should be deleted
     assert not PendingPasswordReset.objects.filter(token=hash_token(token)).exists()
-    assert api_client.post(
-        "/token/refresh",
-        json={"refresh": login["refresh"]},
-    ).status_code == 401
+    assert (
+        api_client.post(
+            "/token/refresh",
+            json={"refresh": login["refresh"]},
+        ).status_code
+        == 401
+    )
     assert api_client.get(
         "/users/me",
         headers={"Authorization": f"Bearer {login['access']}"},
     ).status_code in {401, 403}
+
 
 @pytest.mark.django_db
 def test_password_reset_confirm_invalid_token(api_client):
@@ -111,17 +128,25 @@ def test_password_reset_confirm_invalid_token(api_client):
     data = {"token": "invalidtoken", "new_password": "irrelevant"}
     response = api_client.post(url, json=data)
     assert response.status_code == 400
-    assert "invalid" in response.json()["detail"].lower() or "expired" in response.json()["detail"].lower()
+    assert (
+        "invalid" in response.json()["detail"].lower()
+        or "expired" in response.json()["detail"].lower()
+    )
+
 
 @pytest.mark.django_db
 def test_password_reset_confirm_expired_token(api_client):
     user = create_test_user(email="expired@example.com", password="oldpassword")
     from django.utils import timezone
     import secrets
+
     token = secrets.token_urlsafe(32)
     expires_at = timezone.now() - timezone.timedelta(hours=1)  # Already expired
     from accounts.models import PendingPasswordReset
-    PendingPasswordReset.objects.create(user=user, token=hash_token(token), expires_at=expires_at)
+
+    PendingPasswordReset.objects.create(
+        user=user, token=hash_token(token), expires_at=expires_at
+    )
     url = "/auth/password-reset/confirm"
     data = {"token": token, "new_password": "newpass123"}
     response = api_client.post(url, json=data)

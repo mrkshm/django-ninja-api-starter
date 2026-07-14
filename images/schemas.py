@@ -4,8 +4,11 @@ from datetime import datetime
 
 from core.schemas import DetailResponse
 
+
 class ImageCreate(BaseModel):
-    file: Optional[str] = None  # Accepts file path or URL; actual upload handled separately
+    file: Optional[str] = (
+        None  # Accepts file path or URL; actual upload handled separately
+    )
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
@@ -18,11 +21,13 @@ class ImagePatchIn(BaseModel):
     alt_text: Optional[str] = None
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
+
 class ImageUpdate(BaseModel):
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
     model_config = ConfigDict(extra="forbid")
+
 
 class ImageVariants(BaseModel):
     original: Optional[str] = None
@@ -76,6 +81,7 @@ class ImageOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class PolymorphicImageRelationOut(BaseModel):
     id: int
     image: ImageOut
@@ -104,6 +110,11 @@ class SetCoverIn(BaseModel):
 
 class CreateImageShareIn(BaseModel):
     expires_in_seconds: Optional[int] = Field(None, ge=60, le=60 * 60 * 24 * 30)
+    model_config = ConfigDict(extra="forbid")
+
+
+class ResolveImageShareIn(BaseModel):
+    token: str = Field(min_length=20, max_length=128)
     model_config = ConfigDict(extra="forbid")
 
 

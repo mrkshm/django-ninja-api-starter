@@ -12,6 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 @shared_task
 def cleanup_expired_tokens():
     now = timezone.now()

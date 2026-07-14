@@ -17,7 +17,6 @@ from accounts.models import AuthSession
 from core.email_utils import render_email_template
 from core.tasks import send_email_task
 
-
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,9 @@ def authenticate_for_token(email: str, password: str):
     if user is None or not user.is_active:
         raise HttpError(401, "Invalid credentials")
 
-    require_verification = getattr(settings, "REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN", True)
+    require_verification = getattr(
+        settings, "REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN", True
+    )
     return user, not (require_verification and not user.email_verified)
 
 
@@ -83,7 +84,7 @@ def rotate_token_pair(raw_refresh: str) -> tuple[str, str]:
                     id=replayed_session_id,
                     revoked_at__isnull=True,
                 ).update(revoked_at=timezone.now())
-        except (TokenError, ValueError):
+        except TokenError, ValueError:
             pass
         raise HttpError(401, "Invalid or expired refresh token") from exc
 
@@ -135,12 +136,24 @@ def revoke_session_from_refresh(raw_refresh: str) -> None:
 
 def revoke_all_sessions(user) -> None:
     now = timezone.now()
-    AuthSession.objects.filter(user=user, revoked_at__isnull=True).update(revoked_at=now)
+    AuthSession.objects.filter(user=user, revoked_at__isnull=True).update(
+        revoked_at=now
+    )
     User.objects.filter(pk=user.pk).update(auth_version=F("auth_version") + 1)
     user.refresh_from_db(fields=["auth_version"])
 
 
-def send_templated_email(template_name: str, context: dict, recipients: list[str]) -> None:
+@transaction.atomic
+def delete_user_account(user) -> None:
+    from organizations.models import Organization
+
+    Organization.objects.filter(type="personal", creator=user).delete()
+    user.delete()
+
+
+def send_templated_email(
+    template_name: str, context: dict, recipients: list[str]
+) -> None:
     subject, body_text = render_email_template(template_name, context)
     try:
         send_email_task.delay(subject, body_text, recipients)

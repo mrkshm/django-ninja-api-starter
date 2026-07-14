@@ -17,7 +17,13 @@ from contacts.schemas import ContactIn, ContactUpdate
 from contacts.schemas import DetailResponse as ContactDetailResponse
 from core.schemas import DetailResponse
 from images.api_schemas import BulkImageIdsIn, ImageIdsIn, ReorderIn
-from images.schemas import CreateImageShareIn, ImageCreate, ImagePatchIn, ImageUpdate, SetCoverIn
+from images.schemas import (
+    CreateImageShareIn,
+    ImageCreate,
+    ImagePatchIn,
+    ImageUpdate,
+    SetCoverIn,
+)
 from images.schemas import DetailResponse as ImageDetailResponse
 from tags.schemas import TagCreate, TagUpdate
 from tags.schemas import DetailResponse as TagDetailResponse

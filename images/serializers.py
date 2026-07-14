@@ -32,9 +32,15 @@ def build_public_variant_urls(variant_keys: ImageVariants) -> ImageVariants | No
 
 
 def serialize_image(image: Image) -> ImageOut:
-    file_name = image.file.name or str(image.file) if hasattr(image.file, "name") else str(image.file)
+    file_name = (
+        image.file.name or str(image.file)
+        if hasattr(image.file, "name")
+        else str(image.file)
+    )
     variant_keys = build_variant_keys(file_name)
-    public_variant_urls = build_public_variant_urls(variant_keys) if image.is_public else None
+    public_variant_urls = (
+        build_public_variant_urls(variant_keys) if image.is_public else None
+    )
     return ImageOut.model_validate(
         {
             "id": image.id,
@@ -43,7 +49,9 @@ def serialize_image(image: Image) -> ImageOut:
             "url": None,
             "public_url": public_variant_urls.original if public_variant_urls else None,
             "variant_keys": variant_keys.model_dump(),
-            "public_variant_urls": public_variant_urls.model_dump() if public_variant_urls else None,
+            "public_variant_urls": (
+                public_variant_urls.model_dump() if public_variant_urls else None
+            ),
             "description": image.description,
             "alt_text": image.alt_text,
             "title": image.title,
@@ -55,7 +63,9 @@ def serialize_image(image: Image) -> ImageOut:
     )
 
 
-def serialize_image_relation(relation: PolymorphicImageRelation) -> PolymorphicImageRelationOut:
+def serialize_image_relation(
+    relation: PolymorphicImageRelation,
+) -> PolymorphicImageRelationOut:
     return PolymorphicImageRelationOut.model_validate(
         {
             "id": relation.id,

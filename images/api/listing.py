@@ -22,17 +22,34 @@ def list_images_for_org(request, org_slug: str, ordering: str | None = None):
         "-title": "-title",
     }
     if ordering not in ordering_map:
-        raise HttpError(400, "Invalid ordering. Allowed: created_at, -created_at, title, -title")
+        raise HttpError(
+            400, "Invalid ordering. Allowed: created_at, -created_at, title, -title"
+        )
     return [
         serialize_image(image)
-        for image in Image.objects.filter(organization=scope.org).order_by(ordering_map[ordering])
+        for image in Image.objects.filter(organization=scope.org).order_by(
+            ordering_map[ordering]
+        )
     ]
 
 
-@router.get("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
+@router.get(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/",
+    response=List[PolymorphicImageRelationOut],
+    auth=JWTAuth(),
+)
 @paginate(LimitOffsetPagination)
-def list_images_for_object(request, org_slug: str, app_label: str, model: str, obj_id: int, ordering: str | None = None):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+def list_images_for_object(
+    request,
+    org_slug: str,
+    app_label: str,
+    model: str,
+    obj_id: int,
+    ordering: str | None = None,
+):
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     ct = resolved.content_type
     ordering_map = {
         None: "order",
@@ -44,10 +61,11 @@ def list_images_for_object(request, org_slug: str, app_label: str, model: str, o
         "-title": "-image__title",
     }
     if ordering not in ordering_map:
-        raise HttpError(400, "Invalid ordering. Allowed: created_at, -created_at, title, -title")
+        raise HttpError(
+            400, "Invalid ordering. Allowed: created_at, -created_at, title, -title"
+        )
     relations = (
-        PolymorphicImageRelation.objects
-        .filter(content_type=ct, object_id=obj_id)
+        PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj_id)
         .select_related("image")
         .order_by(ordering_map[ordering], "pk")
     )

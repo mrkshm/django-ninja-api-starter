@@ -27,7 +27,9 @@ NINJA_JWT = {**NINJA_JWT, "SIGNING_KEY": JWT_SIGNING_KEY}  # noqa: F405
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")  # noqa: F405
 FRONTEND_URL = required("FRONTEND_URL")
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL])  # noqa: F405
+CORS_ALLOWED_ORIGINS = env.list(
+    "CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL]
+)  # noqa: F405
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])  # noqa: F405
 
 DATABASES["default"].update(  # noqa: F405
@@ -48,6 +50,8 @@ R2_ACCESS_KEY_ID = required("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = required("R2_SECRET_ACCESS_KEY")
 R2_ENDPOINT_URL = required("R2_ENDPOINT_URL")
 R2_PRIVATE_BUCKET_NAME = required("R2_PRIVATE_BUCKET_NAME")
+R2_PUBLIC_BUCKET_NAME = required("R2_PUBLIC_BUCKET_NAME")
+IMAGE_PUBLIC_BASE_URL = required("IMAGE_PUBLIC_BASE_URL")
 cast(dict[str, Any], STORAGES["default"])["OPTIONS"].update(  # noqa: F405
     {
         "access_key": R2_ACCESS_KEY_ID,
@@ -66,7 +70,9 @@ EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)  # noqa: F405
 EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)  # noqa: F405
 DEFAULT_FROM_EMAIL = required("DEFAULT_FROM_EMAIL")
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
-    raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.")
+    raise ImproperlyConfigured(
+        "EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled."
+    )
 
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)  # noqa: F405
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from core.schemas import DetailResponse
 
+
 class TagCreate(BaseModel):
     name: str
     model_config = ConfigDict(
@@ -11,6 +12,7 @@ class TagCreate(BaseModel):
         json_schema_extra={"examples": [{"name": "vip"}]},
     )
 
+
 class TagUpdate(BaseModel):
     name: str | None = None
     model_config = ConfigDict(
@@ -18,12 +20,14 @@ class TagUpdate(BaseModel):
         json_schema_extra={"examples": [{"name": "priority"}]},
     )
 
+
 class TagOut(BaseModel):
     id: int
     name: str
     slug: str
     organization: int = Field(..., alias="organization_id")
     model_config = ConfigDict(from_attributes=True)
+
 
 class TaggedItemOut(BaseModel):
     tag: TagOut

@@ -4,7 +4,6 @@ from ninja import Router
 
 from organizations.scope import resolve_org_scope
 
-
 router = Router(tags=["images"])
 logger = logging.getLogger("audit")
 

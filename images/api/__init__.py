@@ -1,7 +1,5 @@
 from importlib import import_module
 
-from django.http import JsonResponse
-
 from images.api.common import get_org_for_request, logger, router
 from images.api_schemas import (
     BulkDeleteResponse,
@@ -47,10 +45,6 @@ revoke_image_share = _access.revoke_image_share
 get_shared_image_signed_urls = _access.get_shared_image_signed_urls
 
 
-def custom_validation_error(request, exc):
-    return JsonResponse({"detail": str(exc)}, status=400)
-
-
 __all__ = [
     "BulkDeleteResponse",
     "BulkImageIdsIn",
@@ -67,7 +61,6 @@ __all__ = [
     "bulk_detach_throttle",
     "bulk_upload_images",
     "bulk_upload_throttle",
-    "custom_validation_error",
     "create_image_share",
     "delete_image",
     "edit_image_metadata",

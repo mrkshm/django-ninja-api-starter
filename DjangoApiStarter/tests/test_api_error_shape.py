@@ -9,31 +9,41 @@ from ..api import api
 class TestApiErrorShape:
     def setup_method(self):
         User = get_user_model()
-        self.member = User.objects.create_user(email="member@example.com", password="pass12345")
-        self.nonmember = User.objects.create_user(email="nonmember@example.com", password="pass12345")
-        self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.member)
+        self.member = User.objects.create_user(
+            email="member@example.com", password="pass12345"
+        )
+        self.nonmember = User.objects.create_user(
+            email="nonmember@example.com", password="pass12345"
+        )
+        self.org = Organization.objects.create(
+            name="Acme", slug="acme", creator=self.member
+        )
         Membership.objects.create(user=self.member, organization=self.org, role="owner")
         self.client = TestClient(api)
 
     def _get_auth_headers(self, user):
         # Get a valid JWT token for the user
-        resp = self.client.post("/token/pair", json={"email": user.email, "password": "pass12345"})
+        resp = self.client.post(
+            "/token/pair", json={"email": user.email, "password": "pass12345"}
+        )
         access = resp.json()["access"]
         return {"Authorization": f"Bearer {access}"}
 
     def test_invalid_ordering_returns_normalized_400_detail(self):
         headers = self._get_auth_headers(self.member)
         # Note: Ninja TestClient paths are relative to the API root, not the full URL
-        resp = self.client.get(f"/tags/orgs/{self.org.slug}/tags/?ordering=bogus", headers=headers)
+        resp = self.client.get(
+            f"/orgs/{self.org.slug}/tags/?ordering=bogus", headers=headers
+        )
         assert resp.status_code == 400
         assert isinstance(resp.json(), dict)
         assert "detail" in resp.json()
-        assert "Invalid ordering" in resp.json()["detail"] 
+        assert "Invalid ordering" in resp.json()["detail"]
 
     def test_nonmember_access_returns_normalized_403_detail(self):
         headers = self._get_auth_headers(self.nonmember)
         # Note: Ninja TestClient paths are relative to the API root, not the full URL
-        resp = self.client.get(f"/tags/orgs/{self.org.slug}/tags/", headers=headers)
+        resp = self.client.get(f"/orgs/{self.org.slug}/tags/", headers=headers)
         assert resp.status_code == 403
         assert isinstance(resp.json(), dict)
         assert "detail" in resp.json()

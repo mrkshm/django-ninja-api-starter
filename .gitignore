@@ -11,9 +11,6 @@ venv/
 # Ignore logs
 logs/
 
-# Ignore migrations
-migrations/
-
 # Ignore pycache
 __pycache__/
 

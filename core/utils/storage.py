@@ -6,6 +6,8 @@ from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
+
 
 def upload_to_storage(filename, content, content_type="image/webp", storage=None):
     """
@@ -17,8 +19,15 @@ def upload_to_storage(filename, content, content_type="image/webp", storage=None
     """
     storage = storage or default_storage
     file = ContentFile(content)
-    storage.save(filename, file)
-    return storage.url(filename)
+    saved_name = storage.save(filename, file)
+    return storage.url(saved_name)
+
+
+def delete_storage_keys(keys, *, storage=None):
+    storage = storage or default_storage
+    for key in keys:
+        if key:
+            storage.delete(key)
 
 
 def _default_storage_options():
@@ -88,15 +97,18 @@ def generate_private_presigned_storage_url(key, **kwargs):
 def public_storage_url(key):
     base_url = getattr(settings, "IMAGE_PUBLIC_BASE_URL", None)
     if not base_url:
-        return None
+        return default_storage.url(key)
     return f"{base_url.rstrip('/')}/{quote(key, safe='/')}"
 
 
-def upload_to_public_storage(filename, content, content_type="image/webp", storage_options=None):
+def upload_to_public_storage(
+    filename, content, content_type="image/webp", storage_options=None
+):
     options = storage_options or public_storage_options()
     bucket_name = options.get("bucket_name")
     if not bucket_name:
-        raise RuntimeError("No public R2 bucket configured. Set R2_PUBLIC_BUCKET_NAME.")
+        upload_to_storage(filename, content, content_type=content_type)
+        return public_storage_url(filename)
 
     client = _s3_client(
         options["endpoint_url"],
@@ -111,3 +123,42 @@ def upload_to_public_storage(filename, content, content_type="image/webp", stora
         ContentType=content_type,
     )
     return public_storage_url(filename)
+
+
+def delete_from_public_storage(filename, storage_options=None):
+    options = storage_options or public_storage_options()
+    bucket_name = options.get("bucket_name")
+    if not bucket_name:
+        default_storage.delete(filename)
+        return
+    client = _s3_client(
+        options["endpoint_url"],
+        options["access_key"],
+        options["secret_key"],
+        options["region_name"],
+    )
+    client.delete_object(Bucket=bucket_name, Key=filename)
+
+
+def public_storage_exists(filename, storage_options=None) -> bool:
+    options = storage_options or public_storage_options()
+    bucket_name = options.get("bucket_name")
+    if not bucket_name:
+        return default_storage.exists(filename)
+    client = _s3_client(
+        options["endpoint_url"],
+        options["access_key"],
+        options["secret_key"],
+        options["region_name"],
+    )
+    try:
+        client.head_object(Bucket=bucket_name, Key=filename)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {
+            "404",
+            "NoSuchKey",
+            "NotFound",
+        }:
+            return False
+        raise
+    return True

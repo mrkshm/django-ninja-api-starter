@@ -3,7 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parents[1].parent
 
 
@@ -17,6 +16,7 @@ def _import_settings_with_env(extra_env):
             "R2_BUCKET_NAME": "test-private-bucket",
             "R2_PRIVATE_BUCKET_NAME": "test-private-bucket",
             "R2_PUBLIC_BUCKET_NAME": "test-public-bucket",
+            "IMAGE_PUBLIC_BASE_URL": "https://media.example.com",
             "FRONTEND_URL": "https://app.example.com",
             "DJANGO_ALLOWED_HOSTS": "api.example.com",
             "POSTGRES_DB": "app",

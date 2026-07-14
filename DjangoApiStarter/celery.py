@@ -8,11 +8,11 @@ os.environ.setdefault(
 )
 
 # Create the Celery app
-app = Celery('DjangoApiStarter')
+app = Celery("DjangoApiStarter")
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.
-app.config_from_object('django.conf:settings', namespace='CELERY')
+app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # Load task modules from all registered Django app configs.
 app.autodiscover_tasks()

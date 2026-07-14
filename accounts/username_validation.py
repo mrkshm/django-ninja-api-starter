@@ -1,6 +1,5 @@
 import string
 
-
 USERNAME_MAX_LENGTH = 50
 USERNAME_ALLOWED_CHARS = set(string.ascii_letters + string.digits + "._")
 USERNAME_ALLOWED_DESCRIPTION = "letters, numbers, dots, and underscores"

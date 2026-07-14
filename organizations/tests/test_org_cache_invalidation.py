@@ -1,10 +1,16 @@
 import pytest
 from django.contrib.auth import get_user_model
-from organizations.access import is_org_admin, is_org_member, is_org_owner, membership_role_cache_key
+from organizations.access import (
+    is_org_admin,
+    is_org_member,
+    is_org_owner,
+    membership_role_cache_key,
+)
 from organizations.models import Organization, Membership
 from django.core.cache import cache
 
 User = get_user_model()
+
 
 @pytest.mark.django_db
 def test_membership_cache_invalidation():

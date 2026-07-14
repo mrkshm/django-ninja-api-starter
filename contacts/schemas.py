@@ -5,6 +5,7 @@ from datetime import datetime
 from core.schemas import DetailResponse
 from tags.schemas import TagOut
 
+
 class ContactIn(BaseModel):
     display_name: Optional[str] = None
     first_name: Optional[str] = None
@@ -13,14 +14,14 @@ class ContactIn(BaseModel):
     location: Optional[str] = None
     phone: Optional[str] = None
     notes: Optional[str] = None
-    avatar_path: Optional[str] = None
-    organization: Optional[str] = None  # Optional organization slug
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def at_least_one_name(self):
         if not (self.display_name or self.first_name or self.last_name):
-            raise ValueError("At least one of display_name, first_name, or last_name must be provided.")
+            raise ValueError(
+                "At least one of display_name, first_name, or last_name must be provided."
+            )
         return self
 
 
@@ -28,7 +29,6 @@ class ContactUpdate(BaseModel):
     display_name: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    organization: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     model_config = ConfigDict(extra="forbid")
@@ -53,6 +53,7 @@ class ContactOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class ContactAvatarResponse(BaseModel):
     avatar_path: Optional[str] = None

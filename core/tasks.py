@@ -2,7 +2,10 @@ from celery import shared_task
 from django.core.mail import send_mail
 from django.conf import settings
 
-def _send_email_task(subject, message, recipient_list, from_email=None, html_message=None):
+
+def _send_email_task(
+    subject, message, recipient_list, from_email=None, html_message=None
+):
     """
     Helper function to send an email using Django's email backend.
     Args:
@@ -13,7 +16,7 @@ def _send_email_task(subject, message, recipient_list, from_email=None, html_mes
         html_message (str, optional): HTML message body
     """
     if from_email is None:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'webmaster@localhost')
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "webmaster@localhost")
     send_mail(
         subject,
         message,
@@ -23,8 +26,11 @@ def _send_email_task(subject, message, recipient_list, from_email=None, html_mes
         html_message=html_message,
     )
 
+
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def send_email_task(self, subject, message, recipient_list, from_email=None, html_message=None):
+def send_email_task(
+    self, subject, message, recipient_list, from_email=None, html_message=None
+):
     """
     Celery task to send an email asynchronously using Django's email backend.
     Usage:

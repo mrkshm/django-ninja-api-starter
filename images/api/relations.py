@@ -15,9 +15,17 @@ from ninja.errors import HttpError
 from core.authentication import JWTAuth
 
 
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())
-def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ImageIdsIn):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+@router.post(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/",
+    response=List[PolymorphicImageRelationOut],
+    auth=JWTAuth(),
+)
+def attach_images(
+    request, org_slug: str, app_label: str, model: str, obj_id: int, data: ImageIdsIn
+):
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
@@ -26,9 +34,17 @@ def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: in
     out = []
     with transaction.atomic():
         obj.__class__.objects.select_for_update().only("pk").get(pk=obj.pk)
-        rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(content_type=ct, object_id=obj.pk)
+        rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(
+            content_type=ct, object_id=obj.pk
+        )
         has_primary = rel_qs.filter(is_cover=True).exists()
-        existing_orders = [order for order in rel_qs.exclude(order__isnull=True).values_list("order", flat=True) if order is not None]
+        existing_orders = [
+            order
+            for order in rel_qs.exclude(order__isnull=True).values_list(
+                "order", flat=True
+            )
+            if order is not None
+        ]
         next_order = (max(existing_orders) + 1) if existing_orders else 0
         for image_id in data.image_ids:
             image = get_object_or_404(Image, id=image_id, organization=org)
@@ -47,13 +63,24 @@ def attach_images(request, org_slug: str, app_label: str, model: str, obj_id: in
                 rel.save(update_fields=["order", "is_cover"])
                 logger.info(
                     "audit:image_attach org=%s user=%s app=%s model=%s obj=%s image=%s rel=%s",
-                    org.id, getattr(user, "id", None), app_label, model, obj_id, image.id, rel.id,
+                    org.id,
+                    getattr(user, "id", None),
+                    app_label,
+                    model,
+                    obj_id,
+                    image.id,
+                    rel.id,
                 )
             out.append(serialize_image_relation(rel))
     return out
 
 
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/", response=BulkAttachOut, auth=JWTAuth(), throttle=[bulk_attach_throttle])
+@router.post(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_attach/",
+    response=BulkAttachOut,
+    auth=JWTAuth(),
+    throttle=[bulk_attach_throttle],
+)
 def bulk_attach_images(
     request,
     org_slug: str,
@@ -67,7 +94,9 @@ def bulk_attach_images(
         status, data = cached
         return Status(status, data) if status != 200 else data
 
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
@@ -82,9 +111,17 @@ def bulk_attach_images(
     attached = []
     with transaction.atomic():
         obj.__class__.objects.select_for_update().only("pk").get(pk=obj.pk)
-        rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(content_type=ct, object_id=obj.pk)
+        rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(
+            content_type=ct, object_id=obj.pk
+        )
         has_primary = rel_qs.filter(is_cover=True).exists()
-        existing_orders = [order for order in rel_qs.exclude(order__isnull=True).values_list("order", flat=True) if order is not None]
+        existing_orders = [
+            order
+            for order in rel_qs.exclude(order__isnull=True).values_list(
+                "order", flat=True
+            )
+            if order is not None
+        ]
         next_order = (max(existing_orders) + 1) if existing_orders else 0
         for image in images:
             rel, created = PolymorphicImageRelation.objects.get_or_create(
@@ -104,14 +141,24 @@ def bulk_attach_images(
     if attached:
         logger.info(
             "audit:image_bulk_attach org=%s user=%s app=%s model=%s obj=%s attached=%s",
-            org.id, getattr(user, "id", None), app_label, model, obj_id, attached,
+            org.id,
+            getattr(user, "id", None),
+            app_label,
+            model,
+            obj_id,
+            attached,
         )
     resp = {"attached": attached}
     store_cached_response(request, 200, resp)
     return resp
 
 
-@router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/", response=BulkDetachOut, auth=JWTAuth(), throttle=[bulk_detach_throttle])
+@router.post(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/bulk_detach/",
+    response=BulkDetachOut,
+    auth=JWTAuth(),
+    throttle=[bulk_detach_throttle],
+)
 def bulk_detach_images(
     request,
     org_slug: str,
@@ -125,7 +172,9 @@ def bulk_detach_images(
         status, data = cached
         return Status(status, data) if status != 200 else data
 
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
@@ -145,24 +194,44 @@ def bulk_detach_images(
     if detached:
         logger.info(
             "audit:image_bulk_detach org=%s user=%s app=%s model=%s obj=%s detached=%s",
-            org.id, getattr(user, "id", None), app_label, model, obj_id, detached,
+            org.id,
+            getattr(user, "id", None),
+            app_label,
+            model,
+            obj_id,
+            detached,
         )
     resp = {"detached": detached}
     store_cached_response(request, 200, resp)
     return resp
 
 
-@router.delete("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/{image_id}/", auth=JWTAuth(), response={204: None})
-def remove_image_from_object(request, org_slug: str, app_label: str, model: str, obj_id: int, image_id: int):
-    resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+@router.delete(
+    "/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/{image_id}/",
+    auth=JWTAuth(),
+    response={204: None},
+)
+def remove_image_from_object(
+    request, org_slug: str, app_label: str, model: str, obj_id: int, image_id: int
+):
+    resolved = resolve_org_scoped_content_object(
+        request, org_slug, app_label, model, obj_id
+    )
     resolved.scope.require_write()
     org = resolved.organization
     ct = resolved.content_type
     user = resolved.scope.user
-    rel = get_object_or_404(PolymorphicImageRelation, image_id=image_id, content_type=ct, object_id=obj_id)
+    rel = get_object_or_404(
+        PolymorphicImageRelation, image_id=image_id, content_type=ct, object_id=obj_id
+    )
     rel.delete()
     logger.info(
         "audit:image_detach org=%s user=%s app=%s model=%s obj=%s image=%s",
-        org.id, getattr(user, "id", None), app_label, model, obj_id, image_id,
+        org.id,
+        getattr(user, "id", None),
+        app_label,
+        model,
+        obj_id,
+        image_id,
     )
     return Status(204, None)

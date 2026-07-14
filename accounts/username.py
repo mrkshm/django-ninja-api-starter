@@ -11,12 +11,15 @@ from django.utils.text import slugify
 from .schemas import UserProfileOut
 from .username_validation import validate_username_value
 
+
 class UsernameUpdateSchema(Schema):
     username: str
     model_config = ConfigDict(extra="forbid")
 
+
 router = Router()
 User = get_user_model()
+
 
 @router.patch("/username", response=UserProfileOut, auth=JWTAuth())
 @transaction.atomic
@@ -38,13 +41,10 @@ def update_username(request, data: UsernameUpdateSchema):
     user.save()
     # Update user's personal organization (via Membership with role='owner', type='personal')
     org = (
-        Organization.objects
-        .filter(
-            memberships__user=user,
-            memberships__role="owner",
-            type="personal"
+        Organization.objects.filter(
+            memberships__user=user, memberships__role="owner", type="personal"
         )
-        .order_by('id')
+        .order_by("id")
         .first()
     )
     if not org:
@@ -52,7 +52,7 @@ def update_username(request, data: UsernameUpdateSchema):
     org.name = new_username
     org.slug = user.slug
     org.save()
-    
+
     # Add org info to user object for response
     user.org_name = org.name
     user.org_slug = org.slug

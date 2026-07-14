@@ -1,5 +1,6 @@
 import os
-from django.core.files.storage import default_storage
+from core.utils.storage import delete_from_public_storage
+
 
 def delete_existing_avatar(obj):
     """
@@ -10,7 +11,12 @@ def delete_existing_avatar(obj):
     if not avatar_filename:
         return
 
+    delete_avatar_files(avatar_filename)
+
+
+def delete_avatar_files(avatar_filename: str) -> None:
+
     base, ext = os.path.splitext(avatar_filename)
     large_filename = f"{base}_lg{ext}"
-    default_storage.delete(avatar_filename)
-    default_storage.delete(large_filename)
+    delete_from_public_storage(avatar_filename)
+    delete_from_public_storage(large_filename)

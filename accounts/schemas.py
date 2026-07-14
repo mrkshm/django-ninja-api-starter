@@ -64,6 +64,11 @@ class EmailSchema(Schema):
     model_config = ConfigDict(extra="forbid")
 
 
+class TokenInputSchema(Schema):
+    token: str = Field(min_length=8, max_length=128)
+    model_config = ConfigDict(extra="forbid")
+
+
 class PasswordResetRequestSchema(Schema):
     email: str
     model_config = ConfigDict(extra="forbid")
@@ -94,6 +99,7 @@ class UserProfileOut(Schema):
     email_verified: bool
     created_at: Optional[datetime]
 
+
 class UserProfileUpdate(Schema):
     first_name: Optional[str] = Field(None, max_length=50)
     last_name: Optional[str] = Field(None, max_length=50)
@@ -102,6 +108,7 @@ class UserProfileUpdate(Schema):
     preferred_theme: Optional[str] = None
     preferred_language: Optional[str] = None
     model_config = ConfigDict(extra="forbid")
+
 
 class UsernameCheckResponse(Schema):
     available: bool

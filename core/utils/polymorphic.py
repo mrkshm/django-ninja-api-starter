@@ -10,6 +10,13 @@ from ninja.errors import HttpError
 from core.utils.auth_utils import check_object_belongs_to_org
 from organizations.scope import OrgScope, resolve_org_scope
 
+ATTACHABLE_MODELS = frozenset(
+    {
+        ("contacts", "contact"),
+        ("organizations", "organization"),
+    }
+)
+
 
 @dataclass(frozen=True)
 class OrgScopedContentObject:
@@ -25,6 +32,8 @@ def resolve_org_for_request(request, org_slug: str):
 
 
 def resolve_content_type(app_label: str, model: str) -> ContentType:
+    if (app_label.lower(), model.lower()) not in ATTACHABLE_MODELS:
+        raise HttpError(404, "Object type not found")
     try:
         model_class = apps.get_model(app_label, model)
     except LookupError as exc:

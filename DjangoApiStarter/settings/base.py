@@ -3,7 +3,6 @@ from datetime import timedelta
 
 import environ
 
-
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 env = environ.Env()
@@ -63,7 +62,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "DjangoApiStarter.middleware.HealthCheckMiddleware",
+    "DjangoApiStarter.middleware.RequestContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -128,15 +127,24 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=25 * 60)
 CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=30 * 60)
 CELERY_RESULT_EXPIRES = env.int("CELERY_RESULT_EXPIRES", default=60 * 60)
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_ROUTES = {
+    "core.tasks.send_email_task": {"queue": "email"},
+    "organizations.export_tasks.export_org_data_task": {"queue": "exports"},
+    "organizations.export_tasks.cleanup_expired_exports": {"queue": "maintenance"},
+    "accounts.tasks.cleanup_expired_tokens": {"queue": "maintenance"},
+}
 
 CELERY_BEAT_SCHEDULE = {
     "cleanup_expired_tokens": {
         "task": "accounts.tasks.cleanup_expired_tokens",
         "schedule": 24 * 60 * 60,
     },
-    "cleanup_orphaned_tags": {
-        "task": "tags.tasks.cleanup_orphaned_tags_task",
-        "schedule": 7 * 24 * 60 * 60,
+    "cleanup_expired_exports": {
+        "task": "organizations.export_tasks.cleanup_expired_exports",
+        "schedule": 24 * 60 * 60,
     },
 }
 
@@ -176,13 +184,19 @@ IMAGE_SHARE_LINK_DEFAULT_TTL_SECONDS = env.int(
     "IMAGE_SHARE_LINK_DEFAULT_TTL_SECONDS",
     default=7 * 24 * 60 * 60,
 )
+UPLOAD_IMAGE_MAX_BYTES = env.int("UPLOAD_IMAGE_MAX_BYTES", default=10 * 1024 * 1024)
+UPLOAD_IMAGE_MAX_PIXELS = env.int("UPLOAD_IMAGE_MAX_PIXELS", default=40_000_000)
+UPLOAD_IMAGE_MAX_DIMENSION = env.int("UPLOAD_IMAGE_MAX_DIMENSION", default=12_000)
+EXPORT_RETENTION_DAYS = env.int("EXPORT_RETENTION_DAYS", default=7)
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="webmaster@localhost")
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -219,10 +233,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 ALLOW_UNAUTHENTICATED_MEDIA_SERVE = False
-UPLOAD_IMAGE_MAX_BYTES = env.int("UPLOAD_IMAGE_MAX_BYTES", default=10 * 1024 * 1024)
 UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES = tuple(
     prefix.strip()
-    for prefix in env.str("UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", default="image/").split(",")
+    for prefix in env.str("UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES", default="image/").split(
+        ","
+    )
     if prefix.strip()
 )
 
@@ -232,6 +247,9 @@ IMAGES_RATE_LIMIT_BULK_UPLOAD = env.str("IMAGES_RATE_LIMIT_BULK_UPLOAD", default
 IMAGES_RATE_LIMIT_BULK_DELETE = env.str("IMAGES_RATE_LIMIT_BULK_DELETE", default="30/h")
 IMAGES_RATE_LIMIT_BULK_ATTACH = env.str("IMAGES_RATE_LIMIT_BULK_ATTACH", default="60/h")
 IMAGES_RATE_LIMIT_BULK_DETACH = env.str("IMAGES_RATE_LIMIT_BULK_DETACH", default="60/h")
+IMAGES_RATE_LIMIT_SHARE_RESOLVE = env.str(
+    "IMAGES_RATE_LIMIT_SHARE_RESOLVE", default="120/h"
+)
 
 LOG_LEVEL = env.str("LOG_LEVEL", default="INFO")
 LOGGING = {

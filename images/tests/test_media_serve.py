@@ -18,7 +18,10 @@ def test_media_serve_disabled_by_default():
 def test_media_serve_can_be_enabled_for_local_proxy(monkeypatch):
     request = RequestFactory().get("/media/images/private.jpg")
 
-    monkeypatch.setattr("images.views.default_storage.open", lambda *args, **kwargs: io.BytesIO(b"image-bytes"))
+    monkeypatch.setattr(
+        "images.views.default_storage.open",
+        lambda *args, **kwargs: io.BytesIO(b"image-bytes"),
+    )
 
     response = media_serve(request, "images/private.jpg")
 

@@ -13,7 +13,8 @@ def membership_role_cache_key(user_id, organization_id):
 
 
 def is_platform_admin(user) -> bool:
-    return bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+    # Staff grants access to Django admin, not cross-tenant application data.
+    return bool(getattr(user, "is_superuser", False))
 
 
 def get_membership_role(user, organization) -> str | None:
@@ -35,7 +36,9 @@ def get_membership_role(user, organization) -> str | None:
         .values_list("role", flat=True)
         .first()
     )
-    cache.set(cache_key, role or NO_MEMBERSHIP_ROLE, timeout=MEMBERSHIP_ROLE_CACHE_TIMEOUT)
+    cache.set(
+        cache_key, role or NO_MEMBERSHIP_ROLE, timeout=MEMBERSHIP_ROLE_CACHE_TIMEOUT
+    )
     return role
 
 
@@ -101,7 +104,9 @@ def assert_org_scoped_object_write(
         try:
             organization = Organization.objects.get(id=organization_id)
         except Organization.DoesNotExist as exc:
-            raise HttpError(403, "You do not have access to this organization.") from exc
+            raise HttpError(
+                403, "You do not have access to this organization."
+            ) from exc
 
     assert_org_write(user, organization)
 

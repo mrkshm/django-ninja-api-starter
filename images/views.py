@@ -3,7 +3,6 @@ from django.http import StreamingHttpResponse, Http404
 from django.core.files.storage import default_storage
 import mimetypes
 
-
 CHUNK_SIZE = 64 * 1024
 
 

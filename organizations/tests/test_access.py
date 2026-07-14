@@ -22,14 +22,20 @@ from organizations.scope import resolve_org_scope, resolve_write_org_scope
 
 
 @pytest.mark.django_db
-def test_platform_admin_is_explicit_staff_or_superuser():
+def test_platform_admin_is_explicit_superuser():
     User = get_user_model()
-    regular = User.objects.create_user(email="access-regular@example.com", password="pw")
-    staff = User.objects.create_user(email="access-staff@example.com", password="pw", is_staff=True)
-    superuser = User.objects.create_superuser(email="access-super@example.com", password="pw")
+    regular = User.objects.create_user(
+        email="access-regular@example.com", password="pw"
+    )
+    staff = User.objects.create_user(
+        email="access-staff@example.com", password="pw", is_staff=True
+    )
+    superuser = User.objects.create_superuser(
+        email="access-super@example.com", password="pw"
+    )
 
     assert is_platform_admin(regular) is False
-    assert is_platform_admin(staff) is True
+    assert is_platform_admin(staff) is False
     assert is_platform_admin(superuser) is True
 
 
@@ -39,7 +45,9 @@ def test_membership_role_drives_org_permissions():
     owner = User.objects.create_user(email="access-owner@example.com", password="pw")
     admin = User.objects.create_user(email="access-admin@example.com", password="pw")
     member = User.objects.create_user(email="access-member@example.com", password="pw")
-    outsider = User.objects.create_user(email="access-outsider@example.com", password="pw")
+    outsider = User.objects.create_user(
+        email="access-outsider@example.com", password="pw"
+    )
     org = Organization.objects.create(name="Access", slug="access", type="group")
     Membership.objects.create(user=owner, organization=org, role="owner")
     Membership.objects.create(user=admin, organization=org, role="admin")
@@ -57,8 +65,12 @@ def test_membership_role_drives_org_permissions():
 @pytest.mark.django_db
 def test_org_assertions_raise_403_for_insufficient_role():
     User = get_user_model()
-    member = User.objects.create_user(email="access-member-assert@example.com", password="pw")
-    outsider = User.objects.create_user(email="access-outsider-assert@example.com", password="pw")
+    member = User.objects.create_user(
+        email="access-member-assert@example.com", password="pw"
+    )
+    outsider = User.objects.create_user(
+        email="access-outsider-assert@example.com", password="pw"
+    )
     org = Organization.objects.create(name="Assert", slug="assert", type="group")
     Membership.objects.create(user=member, organization=org, role="member")
 
@@ -77,25 +89,37 @@ def test_org_assertions_raise_403_for_insufficient_role():
 @pytest.mark.django_db
 def test_org_scoped_object_write_handles_global_objects():
     User = get_user_model()
-    regular = User.objects.create_user(email="access-global-regular@example.com", password="pw")
-    staff = User.objects.create_user(email="access-global-staff@example.com", password="pw", is_staff=True)
+    regular = User.objects.create_user(
+        email="access-global-regular@example.com", password="pw"
+    )
+    superuser = User.objects.create_superuser(
+        email="access-global-super@example.com", password="pw"
+    )
     global_obj = SimpleNamespace(organization=None, organization_id=None)
 
     with pytest.raises(HttpError):
         assert_org_scoped_object_write(regular, global_obj)
 
-    assert assert_org_scoped_object_write(staff, global_obj) is None
+    assert assert_org_scoped_object_write(superuser, global_obj) is None
 
 
 @pytest.mark.django_db
 def test_visible_org_scoped_queryset_filters_memberships():
     User = get_user_model()
     user = User.objects.create_user(email="access-visible@example.com", password="pw")
-    first = Organization.objects.create(name="FirstVisible", slug="first-visible", type="group")
-    second = Organization.objects.create(name="SecondVisible", slug="second-visible", type="group")
+    first = Organization.objects.create(
+        name="FirstVisible", slug="first-visible", type="group"
+    )
+    second = Organization.objects.create(
+        name="SecondVisible", slug="second-visible", type="group"
+    )
     Membership.objects.create(user=user, organization=first, role="member")
-    visible = Contact.objects.create(display_name="Visible", slug="visible", organization=first, creator=user)
-    Contact.objects.create(display_name="Hidden", slug="hidden", organization=second, creator=user)
+    visible = Contact.objects.create(
+        display_name="Visible", slug="visible", organization=first, creator=user
+    )
+    Contact.objects.create(
+        display_name="Hidden", slug="hidden", organization=second, creator=user
+    )
 
     qs = visible_org_scoped_queryset(user, Contact.objects.all())
 
@@ -123,7 +147,9 @@ def test_resolve_org_scope_returns_user_org_and_role():
 def test_resolve_org_scope_rejects_non_member():
     User = get_user_model()
     user = User.objects.create_user(email="scope-outsider@example.com", password="pw")
-    org = Organization.objects.create(name="ScopeDenied", slug="scope-denied", type="group")
+    org = Organization.objects.create(
+        name="ScopeDenied", slug="scope-denied", type="group"
+    )
     request = SimpleNamespace(auth=user)
 
     with pytest.raises(HttpError) as exc_info:
@@ -135,13 +161,17 @@ def test_resolve_org_scope_rejects_non_member():
 @pytest.mark.django_db
 def test_platform_admin_scope_without_membership():
     User = get_user_model()
-    staff = User.objects.create_user(email="scope-staff@example.com", password="pw", is_staff=True)
-    org = Organization.objects.create(name="ScopeStaff", slug="scope-staff", type="group")
-    request = SimpleNamespace(auth=staff)
+    superuser = User.objects.create_superuser(
+        email="scope-super@example.com", password="pw"
+    )
+    org = Organization.objects.create(
+        name="ScopeStaff", slug="scope-staff", type="group"
+    )
+    request = SimpleNamespace(auth=superuser)
 
     scope = resolve_org_scope(request, org.slug)
 
-    assert scope.user == staff
+    assert scope.user == superuser
     assert scope.org == org
     assert scope.membership is None
     assert scope.role == "platform_admin"
@@ -153,8 +183,12 @@ def test_platform_admin_scope_without_membership():
 def test_write_scope_reuses_org_scope_policy():
     User = get_user_model()
     member = User.objects.create_user(email="scope-write@example.com", password="pw")
-    outsider = User.objects.create_user(email="scope-nowrite@example.com", password="pw")
-    org = Organization.objects.create(name="ScopeWrite", slug="scope-write", type="group")
+    outsider = User.objects.create_user(
+        email="scope-nowrite@example.com", password="pw"
+    )
+    org = Organization.objects.create(
+        name="ScopeWrite", slug="scope-write", type="group"
+    )
     Membership.objects.create(user=member, organization=org, role="member")
 
     assert resolve_write_org_scope(SimpleNamespace(auth=member), org.slug).org == org

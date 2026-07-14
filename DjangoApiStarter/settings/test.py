@@ -1,6 +1,5 @@
 from .base import *  # noqa: F403
 
-
 DEBUG = True
 SECRET_KEY = "test-only-secret-key-that-is-long-enough-for-hs256"
 NINJA_JWT = {

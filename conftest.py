@@ -8,6 +8,7 @@ from django.core.cache import cache
 from DjangoApiStarter.api import api as project_api
 from ninja import NinjaAPI
 
+
 # Globally disable Ninja ratelimit for all tests by default
 # (Turn on only for specific tests that explicitly test rate limiting)
 def pytest_configure():
@@ -57,15 +58,18 @@ def pytest_configure():
     settings.REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN = False
     # Ensure Ninja registry checks are skipped in tests
     import os as _os
+
     _os.environ.setdefault("NINJA_SKIP_REGISTRY", "true")
     # Set environment variable to skip Ninja registry validation
     os.environ.setdefault("NINJA_SKIP_REGISTRY", "true")
+
 
 @pytest.fixture(autouse=True)
 def clear_cache_between_tests():
     cache.clear()
     yield
     cache.clear()
+
 
 @pytest.fixture(autouse=True)
 def patch_ninja_user_rate_throttle(monkeypatch):
@@ -88,12 +92,15 @@ def api_client():
         pass
     return TestClient(project_api)
 
+
 @pytest.fixture
 def make_auth_headers():
     """Return a callable that generates Bearer auth headers for a user via /token/pair."""
+
     def _make(client: TestClient, user, password: str = "pw") -> dict[str, str]:
         from accounts.services import issue_token_pair
 
         access, _refresh = issue_token_pair(user)
         return {"Authorization": f"Bearer {access}"}
+
     return _make

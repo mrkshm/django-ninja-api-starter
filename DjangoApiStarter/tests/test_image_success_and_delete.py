@@ -5,8 +5,15 @@ from types import SimpleNamespace
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 
-from images.api import upload_image, bulk_upload_images, delete_image, list_images_for_org
+from images.api import (
+    upload_image,
+    bulk_upload_images,
+    delete_image,
+    list_images_for_org,
+)
 import os
+import io
+from PIL import Image as PillowImage
 from images.models import Image
 from organizations.models import Organization
 
@@ -20,22 +27,48 @@ def unwrap_status(response):
     return response.status_code, response.value
 
 
+def valid_image_file(name="image.png", image_format="PNG"):
+    buffer = io.BytesIO()
+    PillowImage.new("RGB", (32, 32), color="blue").save(buffer, format=image_format)
+    return SimpleUploadedFile(
+        name, buffer.getvalue(), content_type=f"image/{image_format.lower()}"
+    )
+
+
 @pytest.mark.django_db
 class TestImageSuccessAndDeletion:
     def _req(self):
-        return SimpleNamespace(auth=self.user, user=self.user, headers={}, META={}, FILES=SimpleNamespace(getlist=lambda name: []))
+        return SimpleNamespace(
+            auth=self.user,
+            user=self.user,
+            headers={},
+            META={},
+            FILES=SimpleNamespace(getlist=lambda name: []),
+        )
 
     def setup_method(self):
         User = get_user_model()
-        self.user = User.objects.create_user(email="u@example.com", password="pass12345")
-        self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.user)
+        self.user = User.objects.create_user(
+            email="u@example.com", password="pass12345"
+        )
+        self.org = Organization.objects.create(
+            name="Acme", slug="acme", creator=self.user
+        )
 
-    @override_settings(UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024, UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",))
+    @override_settings(
+        UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024,
+        UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",),
+    )
     def test_single_upload_success_creates_image(self):
         req = self._req()
-        f = SimpleUploadedFile("cat.png", b"\x89PNG\r\n\x1a\n" + b"x" * 100, content_type="image/png")
-        with patch("images.api.uploads.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
-             patch("images.services.upload_to_storage") as mock_upload:
+        f = valid_image_file("cat.png")
+        with (
+            patch(
+                "images.api.uploads.get_org_scope_for_request",
+                return_value=ScopeStub(org=self.org, user=self.user),
+            ),
+            patch("images.services.upload_to_storage") as mock_upload,
+        ):
             resp = upload_image(req, self.org.slug, f)
             # Response is ImageOut model; assert it has id and file
             assert hasattr(resp, "id")
@@ -52,15 +85,23 @@ class TestImageSuccessAndDeletion:
             assert resp.variant_keys.md == f"{base}_md.webp"
             assert resp.variant_keys.lg == f"{base}_lg.webp"
 
-    @override_settings(UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024, UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",))
+    @override_settings(
+        UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024,
+        UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",),
+    )
     def test_bulk_upload_success(self):
-        f1 = SimpleUploadedFile("a.jpg", b"JPEGDATA" * 10, content_type="image/jpeg")
-        f2 = SimpleUploadedFile("b.webp", b"WEBPDATA" * 10, content_type="image/webp")
+        f1 = valid_image_file("a.jpg", "JPEG")
+        f2 = valid_image_file("b.webp", "WEBP")
         files = [f1, f2]
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.uploads.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
-             patch("images.services.upload_to_storage") as mock_upload:
+        with (
+            patch(
+                "images.api.uploads.get_org_scope_for_request",
+                return_value=ScopeStub(org=self.org, user=self.user),
+            ),
+            patch("images.services.upload_to_storage") as mock_upload,
+        ):
             resp_list = bulk_upload_images(req, self.org.slug)
             assert len(resp_list) == 2
             assert all(r.status == "success" for r in resp_list)
@@ -71,8 +112,13 @@ class TestImageSuccessAndDeletion:
             # Verify variant URLs through list endpoint
             list_req = self._req()
             # Call undecorated function to bypass @paginate wrapper
-            with patch("images.api.listing.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)):
-                images_out = list_images_for_org.__wrapped__(list_req, self.org.slug, None)
+            with patch(
+                "images.api.listing.get_org_scope_for_request",
+                return_value=ScopeStub(org=self.org, user=self.user),
+            ):
+                images_out = list_images_for_org.__wrapped__(
+                    list_req, self.org.slug, None
+                )
             out_by_id = {img.id: img for img in images_out}
             for img_id in ids:
                 img = out_by_id[img_id]
@@ -85,13 +131,21 @@ class TestImageSuccessAndDeletion:
                 assert variants.md == f"{base}_md.webp"
                 assert variants.lg == f"{base}_lg.webp"
 
-    def test_delete_removes_original_and_variants(self):
+    def test_delete_removes_original_and_variants(
+        self, django_capture_on_commit_callbacks
+    ):
         # Create image with a known file name
         img = Image.objects.create(file="images/xyz.jpg", organization=self.org)
         req = self._req()
-        with patch("images.api.deletion.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
-             patch("images.api.deletion.default_storage.delete") as mock_delete:
-            status, _ = unwrap_status(delete_image(req, self.org.slug, img.id))
+        with (
+            patch(
+                "images.api.deletion.get_org_scope_for_request",
+                return_value=ScopeStub(org=self.org, user=self.user),
+            ),
+            patch("images.services.default_storage.delete") as mock_delete,
+        ):
+            with django_capture_on_commit_callbacks(execute=True):
+                status, _ = unwrap_status(delete_image(req, self.org.slug, img.id))
             assert status == 204
             # Original + 4 variants
             base = "images/xyz"

@@ -7,12 +7,15 @@ from organizations.models import Organization
 from io import BytesIO
 from PIL import Image as PilImage
 
+
 @pytest.mark.django_db
 class TestImageModel:
     def setup_method(self):
         self.org = Organization.objects.create(name="Test Org", slug="test-org")
 
-    def create_test_image_file(self, color=(255, 0, 0), size=(300, 300), name="test.png"):
+    def create_test_image_file(
+        self, color=(255, 0, 0), size=(300, 300), name="test.png"
+    ):
         img = PilImage.new("RGB", size, color)
         buf = BytesIO()
         img.save(buf, format="PNG")
@@ -33,6 +36,7 @@ class TestImageModel:
         assert image.title == "title"
         assert image.file
 
+
 @pytest.mark.django_db
 class TestPolymorphicImageRelation:
     def setup_method(self):
@@ -49,7 +53,9 @@ class TestPolymorphicImageRelation:
         self.target = User.objects.create(username="testuser")
         self.target_type = ContentType.objects.get_for_model(User)
 
-    def create_test_image_file(self, color=(0, 255, 0), size=(300, 300), name="test2.png"):
+    def create_test_image_file(
+        self, color=(0, 255, 0), size=(300, 300), name="test2.png"
+    ):
         img = PilImage.new("RGB", size, color)
         buf = BytesIO()
         img.save(buf, format="PNG")
