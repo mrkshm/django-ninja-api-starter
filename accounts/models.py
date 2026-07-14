@@ -1,9 +1,11 @@
 from django.db import models
+from django.db.models.functions import Lower
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.text import slugify
 from django.utils import timezone
 from core.utils import make_it_unique
 import string
+import uuid
 from django.core.cache import cache
 from accounts.tokens import generate_hashed_token, hash_token, is_token_hash
 
@@ -34,7 +36,7 @@ class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("The Email field must be set")
-        email = self.normalize_email(email)
+        email = self.normalize_email(email).strip().lower()
         if not extra_fields.get("username"):
             extra_fields["username"] = self._generate_username(email)
         if not extra_fields.get("slug"):
@@ -105,11 +107,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_login = models.DateTimeField(null=True, blank=True)
+    auth_version = models.PositiveBigIntegerField(default=1)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Lower("email"), name="accounts_user_email_ci_uniq"),
+            models.UniqueConstraint(Lower("username"), name="accounts_user_username_ci_uniq"),
+        ]
 
     def get_user_permissions(self):
         cache_key = f'user_permissions_{self.id}'
@@ -121,3 +130,32 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+
+class AuthSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="auth_sessions")
+    auth_version = models.PositiveBigIntegerField()
+    device_name = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "revoked_at"], name="auth_session_user_revoked_idx"),
+            models.Index(fields=["expires_at"], name="auth_session_expires_idx"),
+        ]
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None and self.expires_at > timezone.now()
+
+    def revoke(self) -> None:
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=["revoked_at"])
+
+    def __str__(self):
+        return f"AuthSession(user={self.user_id}, id={self.id})"

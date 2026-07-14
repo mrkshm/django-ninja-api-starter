@@ -5,7 +5,7 @@ from tags.models import Tag, TaggedItem
 from tags.schemas import DetailResponse, RemovedCountResponse, TagCreate, TagOut, TagUpdate
 from django.utils.text import slugify
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 from ninja.pagination import LimitOffsetPagination, paginate
 from core.utils.polymorphic import resolve_org_scoped_content_object
 from organizations.scope import resolve_org_scope

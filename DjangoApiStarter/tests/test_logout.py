@@ -4,26 +4,42 @@ from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
 
+
 @pytest.mark.django_db
 class TestLogout:
     def setup_method(self):
         NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
-    def test_logout_no_token(self):
-        # Call logout with no token
+    def test_logout_requires_refresh_token(self):
         response = self.client.post("/auth/logout/")
-        assert response.status_code == 200
-        assert response.json()["detail"] == "Logged out successfully."
+        assert response.status_code == 400
 
-    def test_logout_with_token(self):
-        # Register and login to get a token
+    def test_logout_revokes_session(self):
         email = "logoutuser@example.com"
         password = "testpass123"
         create_test_user(email=email, password=password)
-        token_response = self.client.post("/token/pair", json={"email": email, "password": password})
-        access_token = token_response.json()["access"]
-        # Call logout with Authorization header
-        response = self.client.post("/auth/logout/", headers={"Authorization": f"Bearer {access_token}"})
+        token_response = self.client.post(
+            "/token/pair",
+            json={"email": email, "password": password, "device_name": "Test iPhone"},
+        )
+        tokens = token_response.json()
+
+        response = self.client.post(
+            "/auth/logout/",
+            json={"refresh": tokens["refresh"]},
+        )
         assert response.status_code == 200
         assert response.json()["detail"] == "Logged out successfully."
+
+        refresh_response = self.client.post(
+            "/token/refresh",
+            json={"refresh": tokens["refresh"]},
+        )
+        assert refresh_response.status_code == 401
+
+        protected_response = self.client.get(
+            "/users/me",
+            headers={"Authorization": f"Bearer {tokens['access']}"},
+        )
+        assert protected_response.status_code in {401, 403}

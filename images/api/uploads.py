@@ -11,7 +11,7 @@ from images.services import upload_image_file
 from images.throttles import bulk_upload_throttle, upload_throttle
 from ninja import File, Status, UploadedFile
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 def validate_image_upload(file):

@@ -49,3 +49,18 @@ class TestRegister:
         # Registration should return a verification message, not tokens
         assert "detail" in data
         assert "verify" in data["detail"].lower()
+
+    def test_register_rejects_weak_password(self):
+        response = self.client.post(
+            "/auth/register/",
+            json={"email": "weak@example.com", "password": "password"},
+        )
+        assert response.status_code == 400
+
+    def test_register_email_uniqueness_is_case_insensitive(self):
+        create_test_user(email="existing@example.com", password="testpass123")
+        response = self.client.post(
+            "/auth/register/",
+            json={"email": "Existing@Example.com", "password": "strong-pass-2947"},
+        )
+        assert response.status_code == 400

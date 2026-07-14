@@ -7,7 +7,7 @@ from images.schemas import ImageOut, PolymorphicImageRelationOut
 from images.serializers import serialize_image, serialize_image_relation
 from ninja.errors import HttpError
 from ninja.pagination import LimitOffsetPagination, paginate
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 @router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())

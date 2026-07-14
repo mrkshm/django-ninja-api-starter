@@ -2,7 +2,7 @@ from ninja import Router
 from organizations.export_tasks import export_org_data_task
 from organizations.scope import resolve_admin_org_scope
 from ninja.schema import Schema
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 from pydantic import ConfigDict
 
 class ExportRequestSchema(Schema):

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, PendingEmailChange, PendingPasswordReset
+from .models import AuthSession, PendingEmailChange, PendingPasswordReset, User
 
 # Register your models here.
 
@@ -37,3 +37,31 @@ class PendingPasswordResetAdmin(admin.ModelAdmin):
     list_display = ("user", "token", "created_at", "expires_at")
     search_fields = ("user__email", "token")
     list_filter = ("created_at", "expires_at")
+
+
+@admin.register(AuthSession)
+class AuthSessionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "device_name",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+        "revoked_at",
+    )
+    search_fields = ("id", "user__email", "device_name")
+    list_filter = ("created_at", "expires_at", "revoked_at")
+    readonly_fields = (
+        "id",
+        "user",
+        "auth_version",
+        "device_name",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+        "revoked_at",
+    )
+
+    def has_add_permission(self, request):
+        return False

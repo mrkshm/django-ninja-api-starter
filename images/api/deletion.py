@@ -10,7 +10,7 @@ from images.models import Image, PolymorphicImageRelation
 from images.throttles import bulk_delete_throttle
 from ninja import Status
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 @router.delete("/orgs/{org_slug}/images/{image_id}/", auth=JWTAuth(), response={204: None})

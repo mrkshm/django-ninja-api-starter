@@ -1,4 +1,5 @@
 import orjson
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from ninja.renderers import BaseRenderer
 from ninja_extra import NinjaExtraAPI
 from accounts.api import auth_router, token_router
@@ -43,10 +44,10 @@ api.add_router("/orgs/", export_router, tags=["organization", "export"])
 api.add_exception_handler(NinjaValidationError, custom_validation_error)
 
 # Normalize HttpError responses to {"detail": string}
-from django.http import JsonResponse as _JsonResponse
-
-def _custom_http_error(request, exc: HttpError):
-    return _JsonResponse({"detail": str(exc)}, status=getattr(exc, "status_code", 400))
+def _custom_http_error(
+    request: HttpRequest, exc: HttpError | type[HttpError]
+) -> HttpResponse:
+    return JsonResponse({"detail": str(exc)}, status=getattr(exc, "status_code", 400))
 
 api.add_exception_handler(HttpError, _custom_http_error)
 # Register fallback path for NinjaAPI for bulk endpoints

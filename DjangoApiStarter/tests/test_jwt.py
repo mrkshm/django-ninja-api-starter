@@ -79,8 +79,21 @@ class TestJWT:
         assert response.status_code == 200
         data = response.json()
         assert "access" in data
+        assert "refresh" in data
+        assert data["refresh"] != refresh_token
         assert isinstance(data["access"], str)
         assert data["access"].count(".") == 2, "Refreshed access token is not a valid JWT"
+
+        replay = self.client.post("/token/refresh", json={"refresh": refresh_token})
+        assert replay.status_code == 401
+
+        # Replay detection revokes the complete device session, including the
+        # token returned by the successful rotation.
+        after_replay = self.client.post(
+            "/token/refresh",
+            json={"refresh": data["refresh"]},
+        )
+        assert after_replay.status_code == 401
 
     def test_refresh_token_invalid_and_missing(self):
         response = self.client.post("/token/refresh", json={"refresh": "invalid.token.value"})

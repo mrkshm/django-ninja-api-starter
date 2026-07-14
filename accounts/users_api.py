@@ -1,6 +1,6 @@
 from ninja import Router, Schema, File, UploadedFile
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 from django.db import transaction
 from core.utils import (
     generate_presigned_storage_url,

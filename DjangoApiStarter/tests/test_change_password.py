@@ -42,6 +42,12 @@ class TestChangePassword:
         )
         assert response.status_code == 200
         assert "successfully" in response.json()["detail"]
+        # The password change revokes the session used to perform it.
+        old_session = self.client.get(
+            "/users/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert old_session.status_code in {401, 403}
         # Login with new password should work
         login_response = self.client.post("/token/pair", json={"email": email, "password": new_password})
         assert login_response.status_code == 200

@@ -1,6 +1,6 @@
 from ninja import Router
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 import os

@@ -12,7 +12,7 @@ from images.serializers import serialize_image_relation
 from images.throttles import bulk_attach_throttle, bulk_detach_throttle
 from ninja import Status
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/", response=List[PolymorphicImageRelationOut], auth=JWTAuth())

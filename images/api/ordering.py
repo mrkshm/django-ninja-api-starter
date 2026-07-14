@@ -6,7 +6,7 @@ from images.api_schemas import ReorderIn
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import DetailResponse, SetCoverIn
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", response=DetailResponse, auth=JWTAuth())

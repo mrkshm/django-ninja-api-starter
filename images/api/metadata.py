@@ -3,7 +3,7 @@ from images.api.common import get_org_scope_for_request, router
 from images.models import Image
 from images.schemas import ImageOut, ImagePatchIn
 from images.serializers import serialize_image
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 @router.patch("/orgs/{org_slug}/images/{image_id}/", response={200: ImageOut, 400: dict}, auth=JWTAuth())

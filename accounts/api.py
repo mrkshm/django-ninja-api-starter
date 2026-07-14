@@ -8,9 +8,7 @@ from django.core.validators import validate_email
 from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
-from ninja.throttling import UserRateThrottle
-from ninja_jwt.authentication import JWTAuth
-from ninja_jwt.schema import TokenRefreshInputSchema, TokenVerifyInputSchema
+from ninja_jwt.schema import TokenVerifyInputSchema
 
 from accounts.models import PendingEmailChange, PendingPasswordReset, PendingRegistration
 from accounts.schemas import (
@@ -22,11 +20,33 @@ from accounts.schemas import (
     PasswordResetRequestSchema,
     PasswordResetSchema,
     RegisterSchema,
+    LogoutInputSchema,
+    TokenRefreshInputSchema,
+    TokenRefreshOutputSchema,
     TokenPairInputSchema,
     UnverifiedUserSchema,
 )
-from accounts.services import authenticate_for_token, issue_token_pair, send_templated_email
+from accounts.services import (
+    authenticate_for_token,
+    issue_token_pair,
+    normalize_email,
+    revoke_all_sessions,
+    revoke_session_from_refresh,
+    rotate_token_pair,
+    send_templated_email,
+    validate_new_password,
+)
+from accounts.throttles import (
+    email_change_throttle,
+    login_throttle,
+    password_reset_confirm_throttle,
+    password_reset_request_throttle,
+    refresh_throttle,
+    register_throttle,
+    verification_throttle,
+)
 from accounts.tokens import generate_raw_token, hash_token
+from core.authentication import JWTAuth
 from core.utils.auth_utils import get_request_user
 
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
@@ -39,7 +59,11 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-@token_router.post("/pair", response={200: CustomTokenOutputSchema, 403: UnverifiedUserSchema})
+@token_router.post(
+    "/pair",
+    response={200: CustomTokenOutputSchema, 403: UnverifiedUserSchema},
+    throttle=[login_throttle],
+)
 def obtain_token_pair(request, data: TokenPairInputSchema):
     user, is_verified = authenticate_for_token(data.email, data.password)
     if not is_verified:
@@ -51,13 +75,18 @@ def obtain_token_pair(request, data: TokenPairInputSchema):
             ),
         )
 
-    access, refresh = issue_token_pair(user)
+    access, refresh = issue_token_pair(user, device_name=data.device_name or "")
     return CustomTokenOutputSchema(access=access, refresh=refresh, email=user.email)
 
 
-@token_router.post("/refresh", response={200: TokenRefreshInputSchema.get_response_schema()})
+@token_router.post(
+    "/refresh",
+    response={200: TokenRefreshOutputSchema},
+    throttle=[refresh_throttle],
+)
 def refresh_token(request, data: TokenRefreshInputSchema):
-    return data.to_response_schema()
+    access, refresh = rotate_token_pair(data.refresh)
+    return TokenRefreshOutputSchema(access=access, refresh=refresh)
 
 
 @token_router.post("/verify", response={200: TokenVerifyInputSchema.get_response_schema()})
@@ -81,18 +110,21 @@ def send_verification_email(user, token):
         logger.warning("accounts:verification_email_failed user=%s", getattr(user, "id", None))
         raise HttpError(500, "Failed to send verification email.") from exc
 
-email_change_throttle = UserRateThrottle('3/h')
-password_reset_throttle = UserRateThrottle('3/h')
-
-@auth_router.post("/register/")
+@auth_router.post("/register/", throttle=[register_throttle])
 def register(request, data: RegisterSchema):
+    email = normalize_email(data.email)
+    try:
+        validate_email(email)
+    except DjangoValidationError as exc:
+        raise HttpError(400, "Invalid email address") from exc
+    validate_new_password(data.password)
     # Check if user already exists
-    if User.objects.filter(email=data.email).exists():
+    if User.objects.filter(email__iexact=email).exists():
         raise HttpError(400, "User with this email already exists")
     
     # Create user with email_verified=False
     user = User.objects.create_user(
-        email=data.email, 
+        email=email,
         password=data.password,
         email_verified=False
     )
@@ -138,7 +170,7 @@ def verify_registration(request, token: str):
         "refresh": refresh,
     }
 
-@auth_router.post("/resend-verification")
+@auth_router.post("/resend-verification", throttle=[verification_throttle])
 def resend_verification(request, data: EmailSchema):
     email = data.email.strip().lower()
     
@@ -166,8 +198,8 @@ def resend_verification(request, data: EmailSchema):
     return {"detail": "If your account exists and is not verified, a new verification email has been sent."}
     
 @auth_router.post("/logout/")
-def logout(request):
-    # Stateless logout: client should delete tokens
+def logout(request, data: LogoutInputSchema):
+    revoke_session_from_refresh(data.refresh)
     return {"detail": "Logged out successfully."}
 
 @auth_router.delete("/delete/", auth=JWTAuth())
@@ -183,8 +215,10 @@ def change_password(request, data: ChangePasswordSchema):
     user = get_request_user(request)
     if not user.check_password(data.old_password):
         raise HttpError(400, "Old password is incorrect")
+    validate_new_password(data.new_password, user=user)
     user.set_password(data.new_password)
     user.save()
+    revoke_all_sessions(user)
     return {"detail": "Password changed successfully."}
 
 @auth_router.patch("/email", auth=JWTAuth(), throttle=[email_change_throttle])
@@ -244,10 +278,14 @@ def verify_email_change(request, token: str):
         raise HttpError(400, "Email already taken.")
     pending.user.email = pending.new_email
     pending.user.save()
+    revoke_all_sessions(pending.user)
     pending.delete()
     return {"detail": "Email address updated successfully."}
 
-@auth_router.post("/password-reset/request", throttle=[password_reset_throttle])
+@auth_router.post(
+    "/password-reset/request",
+    throttle=[password_reset_request_throttle],
+)
 def request_password_reset(request, data: PasswordResetRequestSchema):
     """
     Initiate password reset: send reset email if user exists (always return generic response).
@@ -282,7 +320,10 @@ def request_password_reset(request, data: PasswordResetRequestSchema):
         pass  # Don't leak info
     return {"detail": "If the email exists, a password reset link has been sent."}
 
-@auth_router.post("/password-reset/confirm")
+@auth_router.post(
+    "/password-reset/confirm",
+    throttle=[password_reset_confirm_throttle],
+)
 def confirm_password_reset(request, data: PasswordResetSchema):
     """
     Reset password using token.
@@ -297,7 +338,9 @@ def confirm_password_reset(request, data: PasswordResetSchema):
         pending.delete()
         raise HttpError(400, "Token has expired.")
     user = pending.user
+    validate_new_password(new_password, user=user)
     user.set_password(new_password)
     user.save()
+    revoke_all_sessions(user)
     pending.delete()
     return {"detail": "Password has been reset successfully."}

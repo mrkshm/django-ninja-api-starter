@@ -15,9 +15,25 @@ class CustomTokenOutputSchema(Schema):
     email: str
 
 
+class TokenRefreshInputSchema(Schema):
+    refresh: str
+    model_config = ConfigDict(extra="forbid")
+
+
+class TokenRefreshOutputSchema(Schema):
+    access: str
+    refresh: str
+
+
+class LogoutInputSchema(Schema):
+    refresh: str
+    model_config = ConfigDict(extra="forbid")
+
+
 class TokenPairInputSchema(Schema):
     email: str
     password: str
+    device_name: Optional[str] = Field(None, max_length=120)
     model_config = ConfigDict(extra="forbid")
 
 

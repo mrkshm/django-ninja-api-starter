@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
@@ -17,6 +19,11 @@ if SECRET_KEY in {
     "django-insecure-development-only-secret-key",
 }:
     raise ImproperlyConfigured("SECRET_KEY must be changed in production.")
+
+JWT_SIGNING_KEY = required("JWT_SIGNING_KEY")
+if JWT_SIGNING_KEY == SECRET_KEY:
+    raise ImproperlyConfigured("JWT_SIGNING_KEY must be independent from SECRET_KEY.")
+NINJA_JWT = {**NINJA_JWT, "SIGNING_KEY": JWT_SIGNING_KEY}  # noqa: F405
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")  # noqa: F405
 FRONTEND_URL = required("FRONTEND_URL")
@@ -41,7 +48,7 @@ R2_ACCESS_KEY_ID = required("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = required("R2_SECRET_ACCESS_KEY")
 R2_ENDPOINT_URL = required("R2_ENDPOINT_URL")
 R2_PRIVATE_BUCKET_NAME = required("R2_PRIVATE_BUCKET_NAME")
-STORAGES["default"]["OPTIONS"].update(  # noqa: F405
+cast(dict[str, Any], STORAGES["default"])["OPTIONS"].update(  # noqa: F405
     {
         "access_key": R2_ACCESS_KEY_ID,
         "secret_key": R2_SECRET_ACCESS_KEY,

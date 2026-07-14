@@ -75,6 +75,10 @@ def test_password_reset_request_email_send_failure(monkeypatch, api_client):
 @pytest.mark.django_db
 def test_password_reset_confirm_success(api_client):
     user = create_test_user(email="resetme@example.com", password="oldpassword")
+    login = api_client.post(
+        "/token/pair",
+        json={"email": user.email, "password": "oldpassword"},
+    ).json()
     # Create a valid PendingPasswordReset
     from django.utils import timezone
     import secrets
@@ -92,6 +96,14 @@ def test_password_reset_confirm_success(api_client):
     assert user.check_password("newpass123")
     # PendingPasswordReset should be deleted
     assert not PendingPasswordReset.objects.filter(token=hash_token(token)).exists()
+    assert api_client.post(
+        "/token/refresh",
+        json={"refresh": login["refresh"]},
+    ).status_code == 401
+    assert api_client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {login['access']}"},
+    ).status_code in {401, 403}
 
 @pytest.mark.django_db
 def test_password_reset_confirm_invalid_token(api_client):

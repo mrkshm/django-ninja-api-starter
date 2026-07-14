@@ -8,7 +8,7 @@ from images.models import Image, ImageShareLink
 from images.schemas import CreateImageShareIn, DetailResponse, ImageShareOut, ImageSignedUrlsOut
 from images.services import sign_image_variant_urls
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 
 
 def serialize_share_link(share_link: ImageShareLink) -> ImageShareOut:

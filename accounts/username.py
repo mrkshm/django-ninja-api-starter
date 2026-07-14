@@ -1,6 +1,6 @@
 from ninja import Router, Schema
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+from core.authentication import JWTAuth
 from pydantic import ConfigDict
 from django.db import transaction
 from django.contrib.auth import get_user_model

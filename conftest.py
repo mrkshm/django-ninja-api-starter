@@ -92,9 +92,8 @@ def api_client():
 def make_auth_headers():
     """Return a callable that generates Bearer auth headers for a user via /token/pair."""
     def _make(client: TestClient, user, password: str = "pw") -> dict[str, str]:
-        from ninja_jwt.tokens import RefreshToken
+        from accounts.services import issue_token_pair
 
-        refresh = RefreshToken.for_user(user)
-        access = str(refresh.access_token)
+        access, _refresh = issue_token_pair(user)
         return {"Authorization": f"Bearer {access}"}
     return _make

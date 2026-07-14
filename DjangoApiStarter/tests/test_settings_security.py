@@ -28,6 +28,7 @@ def _import_settings_with_env(extra_env):
             "EMAIL_HOST_USER": "mailer",
             "EMAIL_HOST_PASSWORD": "email-secret",
             "DEFAULT_FROM_EMAIL": "noreply@example.com",
+            "JWT_SIGNING_KEY": "independent-test-jwt-signing-key-for-production",
         }
     )
     env.update(extra_env)

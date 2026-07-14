@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import timedelta
 
 import environ
 
@@ -52,6 +53,7 @@ INSTALLED_APPS = [
     "csp",
     "corsheaders",
     "django_celery_beat",
+    "ninja_jwt.token_blacklist",
     "accounts.apps.AccountsConfig",
     "organizations.apps.OrganizationsConfig",
     "core",
@@ -190,6 +192,22 @@ REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN = env.bool(
     "REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN",
     default=True,
 )
+
+JWT_SIGNING_KEY = env.str(
+    "JWT_SIGNING_KEY",
+    default="development-only-jwt-signing-key-change-me",
+)
+NINJA_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": False,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": JWT_SIGNING_KEY,
+    "AUDIENCE": env.str("JWT_AUDIENCE", default="django-ninja-api"),
+    "ISSUER": env.str("JWT_ISSUER", default="django-ninja-api"),
+}
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
