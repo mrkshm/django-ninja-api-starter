@@ -1,17 +1,18 @@
-from django.test import TestCase
+import pytest
 from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
 
-class TestChangePassword(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestChangePassword:
+    def setup_method(self):
         NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_change_password_requires_auth(self):
         response = self.client.post("/auth/change-password/", json={"old_password": "x", "new_password": "y"})
-        self.assertIn(response.status_code, [401, 403])
+        assert response.status_code in [401, 403]
 
     def test_change_password_wrong_old(self):
         email = "changepass@example.com"
@@ -24,8 +25,8 @@ class TestChangePassword(TestCase):
             json={"old_password": "wrongpass", "new_password": "newpass456"},
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("incorrect", response.json()["detail"])
+        assert response.status_code == 400
+        assert "incorrect" in response.json()["detail"]
 
     def test_change_password_success(self):
         email = "changepass2@example.com"
@@ -39,11 +40,11 @@ class TestChangePassword(TestCase):
             json={"old_password": old_password, "new_password": new_password},
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("successfully", response.json()["detail"])
+        assert response.status_code == 200
+        assert "successfully" in response.json()["detail"]
         # Login with new password should work
         login_response = self.client.post("/token/pair", json={"email": email, "password": new_password})
-        self.assertEqual(login_response.status_code, 200)
+        assert login_response.status_code == 200
         # Login with old password should fail
         login_fail = self.client.post("/token/pair", json={"email": email, "password": old_password})
-        self.assertEqual(login_fail.status_code, 401)
+        assert login_fail.status_code == 401

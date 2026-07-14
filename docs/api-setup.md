@@ -29,7 +29,7 @@ def get_tags_router():
 ```python
 # DjangoApiStarter/api.py
 from tags.api import get_tags_router
-api.add_router("/", get_tags_router(), tags=["tags"])
+api.add_router("/", get_tags_router(), tags=["tags"])  # exposes /tags/orgs/...
 ```
 
 **In your test fixtures:**

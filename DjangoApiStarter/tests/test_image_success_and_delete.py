@@ -1,4 +1,5 @@
-from django.test import TestCase, override_settings
+import pytest
+from django.test import override_settings
 from unittest.mock import patch, call
 from types import SimpleNamespace
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -10,15 +11,21 @@ from images.models import Image
 from organizations.models import Organization
 
 
+class ScopeStub(SimpleNamespace):
+    def require_write(self):
+        return self
+
+
 def unwrap_status(response):
     return response.status_code, response.value
 
 
-class TestImageSuccessAndDeletion(TestCase):
+@pytest.mark.django_db
+class TestImageSuccessAndDeletion:
     def _req(self):
-        return SimpleNamespace(user=self.user, headers={}, META={}, FILES=SimpleNamespace(getlist=lambda name: []))
+        return SimpleNamespace(auth=self.user, user=self.user, headers={}, META={}, FILES=SimpleNamespace(getlist=lambda name: []))
 
-    def setUp(self):
+    def setup_method(self):
         User = get_user_model()
         self.user = User.objects.create_user(email="u@example.com", password="pass12345")
         self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.user)
@@ -27,23 +34,23 @@ class TestImageSuccessAndDeletion(TestCase):
     def test_single_upload_success_creates_image(self):
         req = self._req()
         f = SimpleUploadedFile("cat.png", b"\x89PNG\r\n\x1a\n" + b"x" * 100, content_type="image/png")
-        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+        with patch("images.api.uploads.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
              patch("images.services.upload_to_storage") as mock_upload:
             resp = upload_image(req, self.org.slug, f)
             # Response is ImageOut model; assert it has id and file
-            self.assertTrue(hasattr(resp, "id"))
-            self.assertTrue(resp.id)
-            self.assertTrue(Image.objects.filter(id=resp.id, organization=self.org).exists())
-            self.assertEqual(resp.visibility, "private")
+            assert hasattr(resp, "id")
+            assert resp.id
+            assert Image.objects.filter(id=resp.id, organization=self.org).exists()
+            assert resp.visibility == "private"
             mock_upload.assert_called()  # ensure storage called
             # Private-media responses expose storage keys, not public URLs.
-            self.assertIsNone(resp.url)
+            assert resp.url is None
             base = os.path.splitext(resp.file)[0]
-            self.assertEqual(resp.variant_keys.original, resp.file)
-            self.assertEqual(resp.variant_keys.thumb, f"{base}_thumb.webp")
-            self.assertEqual(resp.variant_keys.sm, f"{base}_sm.webp")
-            self.assertEqual(resp.variant_keys.md, f"{base}_md.webp")
-            self.assertEqual(resp.variant_keys.lg, f"{base}_lg.webp")
+            assert resp.variant_keys.original == resp.file
+            assert resp.variant_keys.thumb == f"{base}_thumb.webp"
+            assert resp.variant_keys.sm == f"{base}_sm.webp"
+            assert resp.variant_keys.md == f"{base}_md.webp"
+            assert resp.variant_keys.lg == f"{base}_lg.webp"
 
     @override_settings(UPLOAD_IMAGE_MAX_BYTES=10 * 1024 * 1024, UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES=("image/",))
     def test_bulk_upload_success(self):
@@ -52,19 +59,19 @@ class TestImageSuccessAndDeletion(TestCase):
         files = [f1, f2]
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+        with patch("images.api.uploads.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
              patch("images.services.upload_to_storage") as mock_upload:
             resp_list = bulk_upload_images(req, self.org.slug)
-            self.assertEqual(len(resp_list), 2)
-            self.assertTrue(all(r.status == "success" for r in resp_list))
+            assert len(resp_list) == 2
+            assert all(r.status == "success" for r in resp_list)
             # Images created
             ids = [r.id for r in resp_list]
-            self.assertEqual(Image.objects.filter(id__in=ids, organization=self.org).count(), 2)
-            self.assertGreaterEqual(mock_upload.call_count, 2)
+            assert Image.objects.filter(id__in=ids, organization=self.org).count() == 2
+            assert mock_upload.call_count >= 2
             # Verify variant URLs through list endpoint
             list_req = self._req()
             # Call undecorated function to bypass @paginate wrapper
-            with patch("images.api.listing.get_org_for_request", return_value=self.org):
+            with patch("images.api.listing.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)):
                 images_out = list_images_for_org.__wrapped__(list_req, self.org.slug, None)
             out_by_id = {img.id: img for img in images_out}
             for img_id in ids:
@@ -82,10 +89,10 @@ class TestImageSuccessAndDeletion(TestCase):
         # Create image with a known file name
         img = Image.objects.create(file="images/xyz.jpg", organization=self.org)
         req = self._req()
-        with patch("images.api.deletion.get_org_for_request", return_value=self.org), \
+        with patch("images.api.deletion.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
              patch("images.api.deletion.default_storage.delete") as mock_delete:
             status, _ = unwrap_status(delete_image(req, self.org.slug, img.id))
-            self.assertEqual(status, 204)
+            assert status == 204
             # Original + 4 variants
             base = "images/xyz"
             expected_calls = [
@@ -96,4 +103,4 @@ class TestImageSuccessAndDeletion(TestCase):
                 call("images/xyz.jpg"),
             ]
             mock_delete.assert_has_calls(expected_calls, any_order=True)
-            self.assertFalse(Image.objects.filter(id=img.id).exists())
+            assert not Image.objects.filter(id=img.id).exists()

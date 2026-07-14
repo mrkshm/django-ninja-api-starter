@@ -2,6 +2,7 @@ from typing import Optional
 from pydantic import BaseModel, model_validator, Field, ConfigDict
 from datetime import datetime
 
+from core.schemas import DetailResponse
 from tags.schemas import TagOut
 
 class ContactIn(BaseModel):
@@ -14,6 +15,7 @@ class ContactIn(BaseModel):
     notes: Optional[str] = None
     avatar_path: Optional[str] = None
     organization: Optional[str] = None  # Optional organization slug
+    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def at_least_one_name(self):
@@ -29,7 +31,7 @@ class ContactUpdate(BaseModel):
     organization: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
-    address: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
 
 
 class ContactOut(BaseModel):
@@ -56,6 +58,3 @@ class ContactAvatarResponse(BaseModel):
     avatar_path: Optional[str] = None
     avatar_url: Optional[str] = None
     large_avatar_url: Optional[str] = None
-
-class DetailResponse(BaseModel):
-    detail: str

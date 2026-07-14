@@ -2,10 +2,20 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.text import slugify
 from django.utils import timezone
-import secrets
 from core.utils import make_it_unique
 import string
 from django.core.cache import cache
+from accounts.tokens import generate_hashed_token, hash_token, is_token_hash
+
+
+class PendingTokenMixin(models.Model):
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if self.token and not is_token_hash(self.token):
+            self.token = hash_token(self.token)
+        super().save(*args, **kwargs)
 
 class UserManager(BaseUserManager):
     def _clean_username(self, username):
@@ -39,10 +49,10 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         return self.create_user(email, password, **extra_fields)
 
-class PendingEmailChange(models.Model):
+class PendingEmailChange(PendingTokenMixin):
     user = models.ForeignKey('User', on_delete=models.CASCADE)
     new_email = models.EmailField()
-    token = models.CharField(max_length=64, unique=True, default=secrets.token_urlsafe)
+    token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -52,9 +62,9 @@ class PendingEmailChange(models.Model):
     def __str__(self):
         return f"PendingEmailChange(user={self.user_id}, new_email={self.new_email})"
 
-class PendingPasswordReset(models.Model):
+class PendingPasswordReset(PendingTokenMixin):
     user = models.ForeignKey('User', on_delete=models.CASCADE)
-    token = models.CharField(max_length=64, unique=True, default=secrets.token_urlsafe)
+    token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -64,9 +74,9 @@ class PendingPasswordReset(models.Model):
     def __str__(self):
         return f"PendingPasswordReset(user={self.user_id})"
 
-class PendingRegistration(models.Model):
+class PendingRegistration(PendingTokenMixin):
     user = models.OneToOneField('User', on_delete=models.CASCADE)
-    token = models.CharField(max_length=100, unique=True, default=secrets.token_urlsafe)
+    token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 

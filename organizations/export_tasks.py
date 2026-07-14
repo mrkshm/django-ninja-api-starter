@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.core.files.storage import storages
 from django.utils import timezone
 from celery import shared_task
 from core.email_utils import send_email
@@ -13,7 +14,6 @@ from organizations.models import Organization, Membership
 from contacts.models import Contact
 from tags.models import Tag, TaggedItem
 from images.models import Image
-import boto3
 from botocore.exceptions import ClientError
 
 User = get_user_model()
@@ -22,8 +22,21 @@ EXPORT_RETENTION_DAYS = 7
 EXPORT_PREFIX = "exports/"
 
 def get_export_bucket():
-    # Use custom export bucket if set, else default S3 bucket
-    return getattr(settings, "EXPORT_BUCKET", getattr(settings, "AWS_STORAGE_BUCKET_NAME", None))
+    # Use a custom export bucket if set, else the configured private media bucket.
+    if getattr(settings, "EXPORT_BUCKET", None):
+        return settings.EXPORT_BUCKET
+    if getattr(settings, "R2_PRIVATE_BUCKET_NAME", None):
+        return settings.R2_PRIVATE_BUCKET_NAME
+    options = settings.STORAGES.get("default", {}).get("OPTIONS", {})
+    return options.get("bucket_name") or getattr(settings, "AWS_STORAGE_BUCKET_NAME", None)
+
+
+def _get_s3_client():
+    storage = storages["default"]
+    try:
+        return storage.connection.meta.client
+    except AttributeError as exc:
+        raise RuntimeError("Default storage backend does not expose an S3 client.") from exc
 
 def _serialize_org_data(org):
     # Users/Members
@@ -104,17 +117,17 @@ def _add_images_to_zip(zipf, images):
                 zipf.writestr(f"images/{img.file.name.split('/')[-1]}", f.read())
 
 def _upload_to_s3(file_bytes, s3_key):
-    s3 = boto3.client("s3")
+    s3 = _get_s3_client()
     bucket = get_export_bucket()
     if not bucket:
-        raise RuntimeError("No S3 bucket configured for exports. Set AWS_STORAGE_BUCKET_NAME or EXPORT_BUCKET in settings.")
+        raise RuntimeError("No S3 bucket configured for exports. Set R2_PRIVATE_BUCKET_NAME, AWS_STORAGE_BUCKET_NAME, or EXPORT_BUCKET in settings.")
     s3.upload_fileobj(io.BytesIO(file_bytes), bucket, s3_key)
 
 def _generate_presigned_url(s3_key, expires=3600):
-    s3 = boto3.client("s3")
+    s3 = _get_s3_client()
     bucket = get_export_bucket()
     if not bucket:
-        raise RuntimeError("No S3 bucket configured for exports. Set AWS_STORAGE_BUCKET_NAME or EXPORT_BUCKET in settings.")
+        raise RuntimeError("No S3 bucket configured for exports. Set R2_PRIVATE_BUCKET_NAME, AWS_STORAGE_BUCKET_NAME, or EXPORT_BUCKET in settings.")
     try:
         url = s3.generate_presigned_url(
             "get_object",

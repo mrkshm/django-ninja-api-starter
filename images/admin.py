@@ -11,6 +11,7 @@ class ImageAdmin(admin.ModelAdmin):
     list_filter = ("visibility", "organization", "creator")
     fields = ("file", "thumbnail", "title", "visibility", "description", "alt_text", "organization", "creator")
 
+    @admin.display(description="Thumbnail")
     def thumbnail(self, obj):
         if obj.file:
             # If you have a dedicated thumbnail version, adjust the URL accordingly
@@ -23,9 +24,6 @@ class ImageAdmin(admin.ModelAdmin):
                 thumb_url = url
             return format_html('<img src="{}" width="60" style="object-fit:cover; border-radius:4px;" />', thumb_url)
         return ""
-    thumbnail.short_description = "Thumbnail"
-    thumbnail.allow_tags = True
-
     def has_add_permission(self, request):
         return False
 

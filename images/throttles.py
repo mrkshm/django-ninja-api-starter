@@ -13,7 +13,7 @@ class LoggingUserRateThrottle(UserRateThrottle):
     def allow_request(self, request, view=None):
         allowed = super().allow_request(request)
         if not allowed:
-            user_id = getattr(getattr(request, "user", None), "id", None)
+            user_id = getattr(getattr(request, "auth", None), "id", None)
             org = None
             try:
                 parts = (request.path or "").split("/")

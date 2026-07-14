@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
@@ -23,12 +24,13 @@ def signed_url_ttl_seconds() -> int:
 
 
 def image_variant_keys(image: Image) -> dict[str, str]:
-    file_name = image.file.name if hasattr(image.file, "name") else str(image.file)
+    file_name = image.file.name or str(image.file) if hasattr(image.file, "name") else str(image.file)
     return build_variant_keys(file_name).model_dump()
 
 
 def upload_image_file(file, organization, *, creator_id=None) -> Image:
-    filename = generate_upload_filename(f"img_{organization.slug[:8]}", file.name)
+    original_name = file.name or "image"
+    filename = generate_upload_filename(f"img_{organization.slug[:8]}", original_name)
     data = file.read()
     upload_to_storage(filename, data)
     try:
@@ -47,7 +49,7 @@ def upload_image_file(file, organization, *, creator_id=None) -> Image:
         file=filename,
         organization=organization,
         creator_id=creator_id,
-        title=file.name,
+        title=original_name,
         description="",
         alt_text="",
     )
@@ -69,7 +71,7 @@ def sign_image_variant_urls(
         )
         for variant, key in keys.items()
     }
-    expires_at = timezone.now() + timezone.timedelta(seconds=ttl)
+    expires_at = timezone.now() + timedelta(seconds=ttl)
     return ImageSignedUrlsOut(
         image_id=image.id,
         expires_at=expires_at.isoformat(),

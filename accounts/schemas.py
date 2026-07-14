@@ -1,6 +1,7 @@
 from ninja import Schema, Field
 from typing import Optional
 from datetime import datetime
+from pydantic import ConfigDict
 
 
 class UnverifiedUserSchema(Schema):
@@ -17,33 +18,45 @@ class CustomTokenOutputSchema(Schema):
 class TokenPairInputSchema(Schema):
     email: str
     password: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class RegisterSchema(Schema):
     email: str
     password: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class ChangePasswordSchema(Schema):
     old_password: str
     new_password: str
+    model_config = ConfigDict(extra="forbid")
+
+
+class DeleteAccountSchema(Schema):
+    password: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class EmailUpdateSchema(Schema):
     email: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class EmailSchema(Schema):
     email: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class PasswordResetRequestSchema(Schema):
     email: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class PasswordResetSchema(Schema):
     token: str
     new_password: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class UserProfileOut(Schema):
@@ -66,15 +79,13 @@ class UserProfileOut(Schema):
     created_at: Optional[datetime]
 
 class UserProfileUpdate(Schema):
-    first_name: str = Field(None, max_length=50)
-    last_name: str = Field(None, max_length=50)
+    first_name: Optional[str] = Field(None, max_length=50)
+    last_name: Optional[str] = Field(None, max_length=50)
     location: Optional[str] = None
     about: Optional[str] = None
     preferred_theme: Optional[str] = None
     preferred_language: Optional[str] = None
-    model_config = {
-        "extra": "forbid"
-    }
+    model_config = ConfigDict(extra="forbid")
 
 class UsernameCheckResponse(Schema):
     available: bool

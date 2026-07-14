@@ -139,7 +139,7 @@ registry:
 # Uncomment and configure proxy if needed
 # proxy:
 #   ssl: true
-#   host: 65.21.6.154
+#   host: <%= ENV['SERVER_IP'] %>
 
 # Add any additional Kamal config below as needed.
 

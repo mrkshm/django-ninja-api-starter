@@ -1,4 +1,4 @@
-from django.test import TestCase
+import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -7,8 +7,9 @@ from organizations.models import Organization
 from io import BytesIO
 from PIL import Image as PilImage
 
-class ImageModelTest(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestImageModel:
+    def setup_method(self):
         self.org = Organization.objects.create(name="Test Org", slug="test-org")
 
     def create_test_image_file(self, color=(255, 0, 0), size=(300, 300), name="test.png"):
@@ -27,13 +28,14 @@ class ImageModelTest(TestCase):
             title="title",
             organization=self.org,
         )
-        self.assertEqual(image.description, "desc")
-        self.assertEqual(image.alt_text, "alt")
-        self.assertEqual(image.title, "title")
-        self.assertTrue(image.file)
+        assert image.description == "desc"
+        assert image.alt_text == "alt"
+        assert image.title == "title"
+        assert image.file
 
-class PolymorphicImageRelationTest(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestPolymorphicImageRelation:
+    def setup_method(self):
         self.org = Organization.objects.create(name="Test Org", slug="test-org")
         self.image = Image.objects.create(
             file=self.create_test_image_file(),
@@ -65,10 +67,10 @@ class PolymorphicImageRelationTest(TestCase):
             custom_alt_text="custom alt",
             custom_title="custom title",
         )
-        self.assertEqual(relation.image, self.image)
-        self.assertEqual(relation.content_object, self.target)
-        self.assertTrue(relation.is_cover)
-        self.assertEqual(relation.order, 1)
-        self.assertEqual(relation.custom_description, "custom desc")
-        self.assertEqual(relation.custom_alt_text, "custom alt")
-        self.assertEqual(relation.custom_title, "custom title")
+        assert relation.image == self.image
+        assert relation.content_object == self.target
+        assert relation.is_cover
+        assert relation.order == 1
+        assert relation.custom_description == "custom desc"
+        assert relation.custom_alt_text == "custom alt"
+        assert relation.custom_title == "custom title"

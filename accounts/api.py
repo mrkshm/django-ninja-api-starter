@@ -1,5 +1,5 @@
 import logging
-import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -11,12 +11,12 @@ from ninja.errors import HttpError
 from ninja.throttling import UserRateThrottle
 from ninja_jwt.authentication import JWTAuth
 from ninja_jwt.schema import TokenRefreshInputSchema, TokenVerifyInputSchema
-from ninja_jwt.tokens import RefreshToken
 
 from accounts.models import PendingEmailChange, PendingPasswordReset, PendingRegistration
 from accounts.schemas import (
     ChangePasswordSchema,
     CustomTokenOutputSchema,
+    DeleteAccountSchema,
     EmailSchema,
     EmailUpdateSchema,
     PasswordResetRequestSchema,
@@ -26,7 +26,8 @@ from accounts.schemas import (
     UnverifiedUserSchema,
 )
 from accounts.services import authenticate_for_token, issue_token_pair, send_templated_email
-from core.utils.auth_utils import require_authenticated_user
+from accounts.tokens import generate_raw_token, hash_token
+from core.utils.auth_utils import get_request_user
 
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
@@ -97,13 +98,13 @@ def register(request, data: RegisterSchema):
     )
     
     # Generate token and expiry
-    token = secrets.token_urlsafe(32)
-    expires_at = timezone.now() + timezone.timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
+    token = generate_raw_token()
+    expires_at = timezone.now() + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
     
     # Create pending registration
     PendingRegistration.objects.create(
         user=user, 
-        token=token, 
+        token=hash_token(token),
         expires_at=expires_at
     )
     
@@ -115,7 +116,7 @@ def register(request, data: RegisterSchema):
 @auth_router.get("/verify-registration")
 def verify_registration(request, token: str):
     try:
-        pending = PendingRegistration.objects.get(token=token)
+        pending = PendingRegistration.objects.get(token=hash_token(token))
     except PendingRegistration.DoesNotExist:
         raise HttpError(400, "Invalid or expired token.")
         
@@ -130,11 +131,11 @@ def verify_registration(request, token: str):
     pending.delete()
     
     # Issue tokens
-    refresh = RefreshToken.for_user(user)
+    access, refresh = issue_token_pair(user)
     return {
         "detail": "Email verified successfully.",
-        "access": str(refresh.access_token),
-        "refresh": str(refresh),
+        "access": access,
+        "refresh": refresh,
     }
 
 @auth_router.post("/resend-verification")
@@ -151,12 +152,12 @@ def resend_verification(request, data: EmailSchema):
     PendingRegistration.objects.filter(user=user).delete()
     
     # Create new token
-    token = secrets.token_urlsafe(32)
-    expires_at = timezone.now() + timezone.timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
+    token = generate_raw_token()
+    expires_at = timezone.now() + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
     
     PendingRegistration.objects.create(
         user=user, 
-        token=token, 
+        token=hash_token(token),
         expires_at=expires_at
     )
     
@@ -170,16 +171,16 @@ def logout(request):
     return {"detail": "Logged out successfully."}
 
 @auth_router.delete("/delete/", auth=JWTAuth())
-def delete_account(request):
-    user = request.auth
-    require_authenticated_user(user)
+def delete_account(request, data: DeleteAccountSchema):
+    user = get_request_user(request)
+    if not user.check_password(data.password):
+        raise HttpError(400, "Password is incorrect")
     user.delete()
     return {"detail": "Account deleted successfully."}
 
 @auth_router.post("/change-password/", auth=JWTAuth())
 def change_password(request, data: ChangePasswordSchema):
-    user = request.auth
-    require_authenticated_user(user)
+    user = get_request_user(request)
     if not user.check_password(data.old_password):
         raise HttpError(400, "Old password is incorrect")
     user.set_password(data.new_password)
@@ -191,8 +192,7 @@ def request_email_change(request, data: EmailUpdateSchema):
     """
     Initiate email change: send verification email to new address.
     """
-    user = request.auth
-    require_authenticated_user(user)
+    user = get_request_user(request)
     new_email = data.email.strip().lower()
     # Validate email format
     try:
@@ -205,9 +205,9 @@ def request_email_change(request, data: EmailUpdateSchema):
     # Remove any previous pending changes for this user
     PendingEmailChange.objects.filter(user=user).delete()
     # Generate token and expiry
-    token = secrets.token_urlsafe(32)
-    expires_at = timezone.now() + timezone.timedelta(hours=EMAIL_CHANGE_TOKEN_EXPIRY_HOURS)
-    PendingEmailChange.objects.create(user=user, new_email=new_email, token=token, expires_at=expires_at)
+    token = generate_raw_token()
+    expires_at = timezone.now() + timedelta(hours=EMAIL_CHANGE_TOKEN_EXPIRY_HOURS)
+    PendingEmailChange.objects.create(user=user, new_email=new_email, token=hash_token(token), expires_at=expires_at)
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
     verification_link = f"{settings.FRONTEND_URL}/verify-email-change?token={token}"
     try:
@@ -232,7 +232,7 @@ def verify_email_change(request, token: str):
     Verify email change using token.
     """
     try:
-        pending = PendingEmailChange.objects.get(token=token)
+        pending = PendingEmailChange.objects.get(token=hash_token(token))
     except PendingEmailChange.DoesNotExist:
         raise HttpError(400, "Invalid or expired token.")
     if pending.is_expired():
@@ -263,9 +263,9 @@ def request_password_reset(request, data: PasswordResetRequestSchema):
         return {"detail": "If the email exists, a password reset link has been sent."}
     # Remove any previous pending resets for this user
     PendingPasswordReset.objects.filter(user=user).delete()
-    token = secrets.token_urlsafe(32)
-    expires_at = timezone.now() + timezone.timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS)
-    PendingPasswordReset.objects.create(user=user, token=token, expires_at=expires_at)
+    token = generate_raw_token()
+    expires_at = timezone.now() + timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS)
+    PendingPasswordReset.objects.create(user=user, token=hash_token(token), expires_at=expires_at)
     display_name = f"{user.first_name} {user.last_name}".strip() or user.email
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
     try:
@@ -290,7 +290,7 @@ def confirm_password_reset(request, data: PasswordResetSchema):
     token = data.token
     new_password = data.new_password
     try:
-        pending = PendingPasswordReset.objects.get(token=token)
+        pending = PendingPasswordReset.objects.get(token=hash_token(token))
     except PendingPasswordReset.DoesNotExist:
         raise HttpError(400, "Invalid or expired token.")
     if pending.is_expired():

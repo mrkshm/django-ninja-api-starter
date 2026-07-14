@@ -1,19 +1,20 @@
-from django.test import TestCase
+import pytest
 from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
 
-class TestLogout(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestLogout:
+    def setup_method(self):
         NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_logout_no_token(self):
         # Call logout with no token
         response = self.client.post("/auth/logout/")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["detail"], "Logged out successfully.")
+        assert response.status_code == 200
+        assert response.json()["detail"] == "Logged out successfully."
 
     def test_logout_with_token(self):
         # Register and login to get a token
@@ -24,5 +25,5 @@ class TestLogout(TestCase):
         access_token = token_response.json()["access"]
         # Call logout with Authorization header
         response = self.client.post("/auth/logout/", headers={"Authorization": f"Bearer {access_token}"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["detail"], "Logged out successfully.")
+        assert response.status_code == 200
+        assert response.json()["detail"] == "Logged out successfully."

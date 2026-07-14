@@ -1,4 +1,4 @@
-from django.test import TestCase
+import pytest
 from types import SimpleNamespace
 from django.contrib.auth import get_user_model
 
@@ -20,11 +20,12 @@ def unwrap_status(response):
     return response.status_code, response.value
 
 
-class TestImageAttachDetach(TestCase):
+@pytest.mark.django_db
+class TestImageAttachDetach:
     def _req(self):
-        return SimpleNamespace(user=self.user, headers={}, META={})
+        return SimpleNamespace(auth=self.user, user=self.user, headers={}, META={})
 
-    def setUp(self):
+    def setup_method(self):
         User = get_user_model()
         self.user = User.objects.create_user(email="owner@example.com", password="pass12345")
         self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.user)
@@ -39,20 +40,37 @@ class TestImageAttachDetach(TestCase):
         req = self._req()
         # Single attach via attach_images (uses ImageIdsIn)
         out = attach_images(req, self.org.slug, "contacts", "contact", self.contact.id, ImageIdsIn(image_ids=[self.img1.id]))
-        self.assertEqual(len(out), 1)
-        self.assertTrue(PolymorphicImageRelation.objects.filter(image_id=self.img1.id, object_id=self.contact.id).exists())
+        assert len(out) == 1
+        assert PolymorphicImageRelation.objects.filter(image_id=self.img1.id, object_id=self.contact.id).exists()
         # Remove via remove_image_from_object
         status, _ = unwrap_status(remove_image_from_object(req, self.org.slug, "contacts", "contact", self.contact.id, self.img1.id))
-        self.assertEqual(status, 204)
-        self.assertFalse(PolymorphicImageRelation.objects.filter(image_id=self.img1.id, object_id=self.contact.id).exists())
+        assert status == 204
+        assert not PolymorphicImageRelation.objects.filter(image_id=self.img1.id, object_id=self.contact.id).exists()
+
+    def test_single_attach_locks_existing_relations(self, monkeypatch):
+        from django.db.models.query import QuerySet
+
+        calls = []
+        original_select_for_update = QuerySet.select_for_update
+
+        def tracking_select_for_update(self, *args, **kwargs):
+            if self.model is PolymorphicImageRelation:
+                calls.append(self.model)
+            return original_select_for_update(self, *args, **kwargs)
+
+        monkeypatch.setattr(QuerySet, "select_for_update", tracking_select_for_update)
+
+        attach_images(self._req(), self.org.slug, "contacts", "contact", self.contact.id, ImageIdsIn(image_ids=[self.img1.id]))
+
+        assert calls == [PolymorphicImageRelation]
 
     def test_bulk_attach_and_detach(self):
         req = self._req()
         # Bulk attach
         resp = bulk_attach_images(req, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[self.img1.id, self.img2.id]))
-        self.assertCountEqual(resp["attached"], [self.img1.id, self.img2.id])
-        self.assertEqual(PolymorphicImageRelation.objects.filter(object_id=self.contact.id).count(), 2)
+        assert sorted(resp["attached"]) == sorted([self.img1.id, self.img2.id])
+        assert PolymorphicImageRelation.objects.filter(object_id=self.contact.id).count() == 2
         # Bulk detach
         resp2 = bulk_detach_images(req, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[self.img1.id, self.img2.id]))
-        self.assertCountEqual(resp2["detached"], [self.img1.id, self.img2.id])
-        self.assertEqual(PolymorphicImageRelation.objects.filter(object_id=self.contact.id).count(), 0)
+        assert sorted(resp2["detached"]) == sorted([self.img1.id, self.img2.id])
+        assert PolymorphicImageRelation.objects.filter(object_id=self.contact.id).count() == 0

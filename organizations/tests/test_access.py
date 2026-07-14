@@ -18,6 +18,7 @@ from organizations.access import (
     visible_org_scoped_queryset,
 )
 from organizations.models import Membership, Organization
+from organizations.scope import resolve_org_scope, resolve_write_org_scope
 
 
 @pytest.mark.django_db
@@ -99,3 +100,66 @@ def test_visible_org_scoped_queryset_filters_memberships():
     qs = visible_org_scoped_queryset(user, Contact.objects.all())
 
     assert list(qs) == [visible]
+
+
+@pytest.mark.django_db
+def test_resolve_org_scope_returns_user_org_and_role():
+    User = get_user_model()
+    user = User.objects.create_user(email="scope-member@example.com", password="pw")
+    org = Organization.objects.create(name="Scope", slug="scope", type="group")
+    Membership.objects.create(user=user, organization=org, role="admin")
+    request = SimpleNamespace(auth=user)
+
+    scope = resolve_org_scope(request, org.slug)
+
+    assert scope.user == user
+    assert scope.org == org
+    assert scope.role == "admin"
+    assert scope.can_admin is True
+    assert scope.can_write is True
+
+
+@pytest.mark.django_db
+def test_resolve_org_scope_rejects_non_member():
+    User = get_user_model()
+    user = User.objects.create_user(email="scope-outsider@example.com", password="pw")
+    org = Organization.objects.create(name="ScopeDenied", slug="scope-denied", type="group")
+    request = SimpleNamespace(auth=user)
+
+    with pytest.raises(HttpError) as exc_info:
+        resolve_org_scope(request, org.slug)
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.django_db
+def test_platform_admin_scope_without_membership():
+    User = get_user_model()
+    staff = User.objects.create_user(email="scope-staff@example.com", password="pw", is_staff=True)
+    org = Organization.objects.create(name="ScopeStaff", slug="scope-staff", type="group")
+    request = SimpleNamespace(auth=staff)
+
+    scope = resolve_org_scope(request, org.slug)
+
+    assert scope.user == staff
+    assert scope.org == org
+    assert scope.membership is None
+    assert scope.role == "platform_admin"
+    assert scope.can_admin is True
+    assert scope.can_write is True
+
+
+@pytest.mark.django_db
+def test_write_scope_reuses_org_scope_policy():
+    User = get_user_model()
+    member = User.objects.create_user(email="scope-write@example.com", password="pw")
+    outsider = User.objects.create_user(email="scope-nowrite@example.com", password="pw")
+    org = Organization.objects.create(name="ScopeWrite", slug="scope-write", type="group")
+    Membership.objects.create(user=member, organization=org, role="member")
+
+    assert resolve_write_org_scope(SimpleNamespace(auth=member), org.slug).org == org
+
+    with pytest.raises(HttpError) as exc_info:
+        resolve_write_org_scope(SimpleNamespace(auth=outsider), org.slug)
+
+    assert exc_info.value.status_code == 403

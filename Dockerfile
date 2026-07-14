@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.13 as builder
+FROM python:3.14 as builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -22,7 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Final stage
-FROM python:3.13
+FROM python:3.14
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

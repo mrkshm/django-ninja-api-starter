@@ -2,24 +2,27 @@ from pydantic import BaseModel, Field, field_serializer, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
+from core.schemas import DetailResponse
+
 class ImageCreate(BaseModel):
     file: Optional[str] = None  # Accepts file path or URL; actual upload handled separately
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
 class ImagePatchIn(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     alt_text: Optional[str] = None
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 class ImageUpdate(BaseModel):
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
 
 class ImageVariants(BaseModel):
     original: Optional[str] = None
@@ -95,16 +98,14 @@ class BulkDetachOut(BaseModel):
     detached: List[int]
 
 
-class DetailResponse(BaseModel):
-    detail: str
-
-
 class SetCoverIn(BaseModel):
     image_id: int
+    model_config = ConfigDict(extra="forbid")
 
 
 class CreateImageShareIn(BaseModel):
     expires_in_seconds: Optional[int] = Field(None, ge=60, le=60 * 60 * 24 * 30)
+    model_config = ConfigDict(extra="forbid")
 
 
 class ImageShareOut(BaseModel):

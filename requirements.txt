@@ -4,18 +4,13 @@ django-ninja
 psycopg2-binary
 postgis
 
-django-allauth
-django-defender
 django-csp
 
 django-storages
 Pillow
-django-imagekit
 
-django-filter
 django-environ
 django-money
-django-health-check
 
 celery
 redis

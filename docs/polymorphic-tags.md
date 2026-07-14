@@ -54,7 +54,7 @@ Defines a generic (polymorphic) relationship between a `Tag` and any other model
 ## Example: Assigning a Tag to Any Object
 
 To assign a tag to a model instance (e.g., a `Contact` or `Image`):
-- Use the API endpoint: `POST /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/`
+- Use the API endpoint: `POST /api/v1/tags/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/`
 - Provide the tag slug(s) and any additional metadata as needed.
 
 ## Why Use Polymorphic Tags?

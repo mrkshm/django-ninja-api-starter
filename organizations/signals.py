@@ -1,12 +1,11 @@
-from django.db.models.signals import pre_delete, post_save
-from django.dispatch import receiver
 from django.contrib.auth import get_user_model
-from organizations.models import Organization, Membership
-from core.utils import make_it_unique
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
 from django.core.cache import cache
+from django.db.models.signals import post_delete, post_save, pre_delete
+from django.dispatch import receiver
+
+from core.utils import make_it_unique
 from organizations.access import membership_role_cache_key
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 

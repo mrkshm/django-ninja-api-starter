@@ -1,6 +1,6 @@
 from PIL import Image
 from io import BytesIO
-from typing import Tuple, Union, Dict
+from typing import Dict, Tuple, Union
 
 def resize_and_save(img, size, quality, format="WEBP"):
     img_copy = img.copy()
@@ -20,6 +20,7 @@ def resize_avatar_images(
     Returns (small_image_bytes, large_image_bytes).
     Accepts bytes, BytesIO, or PIL.Image.Image as input.
     """
+    image: Image.Image
     if isinstance(image_input, bytes):
         image = Image.open(BytesIO(image_input))
     elif isinstance(image_input, BytesIO):
@@ -55,6 +56,7 @@ def resize_images(
         'md':     ((1024, 1024), 85),
         'lg':     ((2048, 2048), 85),
     }
+    image: Image.Image
     if isinstance(image_input, bytes):
         image = Image.open(BytesIO(image_input))
     elif isinstance(image_input, BytesIO):

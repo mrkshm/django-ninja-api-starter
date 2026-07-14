@@ -9,7 +9,7 @@ from organizations.models import Organization, Membership
 from contacts.models import Contact
 from tags.models import Tag, TaggedItem
 from images.models import Image
-from organizations.export_tasks import export_org_data_task, _serialize_org_data, _upload_to_s3, _generate_presigned_url
+from organizations.export_tasks import export_org_data_task, _serialize_org_data, _upload_to_s3, _generate_presigned_url, _get_s3_client
 
 User = get_user_model()
 
@@ -87,7 +87,7 @@ def test_export_org_data_task_creates_zip_and_emails(tmp_path, settings, monkeyp
 
 def test_upload_to_s3_success(monkeypatch):
     fake_s3 = mock.Mock()
-    monkeypatch.setattr("organizations.export_tasks.boto3.client", lambda service: fake_s3)
+    monkeypatch.setattr("organizations.export_tasks._get_s3_client", lambda: fake_s3)
     monkeypatch.setattr("organizations.export_tasks.get_export_bucket", lambda: "mybucket")
     file_bytes = b"abc"
     s3_key = "some/key.zip"
@@ -99,7 +99,7 @@ def test_upload_to_s3_success(monkeypatch):
     assert args[2] == s3_key
 
 def test_upload_to_s3_no_bucket(monkeypatch):
-    monkeypatch.setattr("organizations.export_tasks.boto3.client", lambda service: mock.Mock())
+    monkeypatch.setattr("organizations.export_tasks._get_s3_client", lambda: mock.Mock())
     monkeypatch.setattr("organizations.export_tasks.get_export_bucket", lambda: None)
     with pytest.raises(RuntimeError, match="No S3 bucket configured for exports"):
         _upload_to_s3(b"abc", "some/key.zip")
@@ -107,7 +107,7 @@ def test_upload_to_s3_no_bucket(monkeypatch):
 def test_generate_presigned_url_success(monkeypatch):
     fake_s3 = mock.Mock()
     fake_s3.generate_presigned_url.return_value = "https://presigned.url"
-    monkeypatch.setattr("organizations.export_tasks.boto3.client", lambda service: fake_s3)
+    monkeypatch.setattr("organizations.export_tasks._get_s3_client", lambda: fake_s3)
     monkeypatch.setattr("organizations.export_tasks.get_export_bucket", lambda: "mybucket")
     url = _generate_presigned_url("some/key.zip", expires=1234)
     fake_s3.generate_presigned_url.assert_called_once_with(
@@ -118,7 +118,7 @@ def test_generate_presigned_url_success(monkeypatch):
     assert url == "https://presigned.url"
 
 def test_generate_presigned_url_no_bucket(monkeypatch):
-    monkeypatch.setattr("organizations.export_tasks.boto3.client", lambda service: mock.Mock())
+    monkeypatch.setattr("organizations.export_tasks._get_s3_client", lambda: mock.Mock())
     monkeypatch.setattr("organizations.export_tasks.get_export_bucket", lambda: None)
     with pytest.raises(RuntimeError, match="No S3 bucket configured for exports"):
         _generate_presigned_url("some/key.zip")
@@ -129,10 +129,25 @@ def test_generate_presigned_url_clienterror(monkeypatch):
         from botocore.exceptions import ClientError
         raise ClientError({}, "generate_presigned_url")
     fake_s3.generate_presigned_url.side_effect = raise_client_error
-    monkeypatch.setattr("organizations.export_tasks.boto3.client", lambda service: fake_s3)
+    monkeypatch.setattr("organizations.export_tasks._get_s3_client", lambda: fake_s3)
     monkeypatch.setattr("organizations.export_tasks.get_export_bucket", lambda: "mybucket")
     url = _generate_presigned_url("some/key.zip")
     assert url is None
+
+def test_get_s3_client_uses_configured_default_storage(monkeypatch):
+    fake_client = mock.Mock()
+    fake_storage = mock.Mock()
+    fake_storage.connection.meta.client = fake_client
+
+    monkeypatch.setattr("organizations.export_tasks.storages", {"default": fake_storage})
+
+    assert _get_s3_client() is fake_client
+
+def test_get_s3_client_requires_s3_storage(monkeypatch):
+    monkeypatch.setattr("organizations.export_tasks.storages", {"default": mock.Mock(spec=[])})
+
+    with pytest.raises(RuntimeError, match="Default storage backend does not expose an S3 client"):
+        _get_s3_client()
 
 def test_get_export_bucket(settings):
     # Only EXPORT_BUCKET
@@ -141,8 +156,12 @@ def test_get_export_bucket(settings):
         del settings.AWS_STORAGE_BUCKET_NAME
     from organizations.export_tasks import get_export_bucket
     assert get_export_bucket() == "export-bucket"
-    # Only AWS_STORAGE_BUCKET_NAME
+    # R2 private bucket
     del settings.EXPORT_BUCKET
+    settings.R2_PRIVATE_BUCKET_NAME = "private-r2-bucket"
+    assert get_export_bucket() == "private-r2-bucket"
+    # Only AWS_STORAGE_BUCKET_NAME
+    del settings.R2_PRIVATE_BUCKET_NAME
     settings.AWS_STORAGE_BUCKET_NAME = "aws-bucket"
     assert get_export_bucket() == "aws-bucket"
     # Neither set

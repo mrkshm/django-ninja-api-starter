@@ -1,4 +1,4 @@
-from django.test import TestCase
+import pytest
 from ninja.testing import TestClient
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -6,8 +6,9 @@ from organizations.models import Organization, Membership
 from ..api import api
 
 
-class TestApiErrorShapeImages(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestApiErrorShapeImages:
+    def setup_method(self):
         User = get_user_model()
         self.member = User.objects.create_user(email="member@example.com", password="pass12345")
         self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.member)
@@ -25,9 +26,9 @@ class TestApiErrorShapeImages(TestCase):
         url = f"/images/orgs/{self.org.slug}/images/"  # Note: relative to API root
         fake = SimpleUploadedFile("test.txt", b"hello", content_type="text/plain")
         resp = self.client.post(url, FILES={"file": fake})
-        self.assertEqual(resp.status_code, 401)
-        self.assertIsInstance(resp.json(), dict)
-        self.assertIn("detail", resp.json())
+        assert resp.status_code == 401
+        assert isinstance(resp.json(), dict)
+        assert "detail" in resp.json()
 
     def test_invalid_file_type_returns_400_with_detail(self):
         headers = self._get_auth_headers(self.member)
@@ -35,6 +36,6 @@ class TestApiErrorShapeImages(TestCase):
         # Not an image MIME -> should hit invalid type branch and return normalized error
         fake = SimpleUploadedFile("test.txt", b"hello", content_type="text/plain")
         resp = self.client.post(url, FILES={"file": fake}, headers=headers)
-        self.assertEqual(resp.status_code, 400)
-        self.assertIsInstance(resp.json(), dict)
-        self.assertIn("detail", resp.json())
+        assert resp.status_code == 400
+        assert isinstance(resp.json(), dict)
+        assert "detail" in resp.json()

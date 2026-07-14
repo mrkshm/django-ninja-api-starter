@@ -1,12 +1,13 @@
-from django.test import TestCase
+import pytest
 from django.contrib.auth import get_user_model
 from organizations.models import Organization
 from contacts.models import Contact
 
 # Create your tests here.
 
-class ContactModelTest(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestContactModel:
+    def setup_method(self):
         User = get_user_model()
         self.user = User.objects.create_user(email="test@example.com", password="pw")
         self.org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=self.user)
@@ -17,9 +18,9 @@ class ContactModelTest(TestCase):
             organization=self.org,
             creator=self.user
         )
-        self.assertEqual(contact.display_name, "Joe")
-        self.assertEqual(contact.organization, self.org)
-        self.assertEqual(contact.creator, self.user)
+        assert contact.display_name == "Joe"
+        assert contact.organization == self.org
+        assert contact.creator == self.user
 
     def test_optional_fields(self):
         contact = Contact.objects.create(
@@ -32,11 +33,11 @@ class ContactModelTest(TestCase):
             notes="Friend",
             avatar_path="/avatars/ann.png"
         )
-        self.assertEqual(contact.email, "ann@example.com")
-        self.assertEqual(contact.location, "Berlin")
-        self.assertEqual(contact.phone, "12345")
-        self.assertEqual(contact.notes, "Friend")
-        self.assertEqual(contact.avatar_path, "/avatars/ann.png")
+        assert contact.email == "ann@example.com"
+        assert contact.location == "Berlin"
+        assert contact.phone == "12345"
+        assert contact.notes == "Friend"
+        assert contact.avatar_path == "/avatars/ann.png"
 
     def test_str_method(self):
         contact = Contact.objects.create(
@@ -44,7 +45,7 @@ class ContactModelTest(TestCase):
             organization=self.org,
             creator=self.user
         )
-        self.assertEqual(str(contact), "Bob")
+        assert str(contact) == "Bob"
 
     def test_on_delete_organization(self):
         contact = Contact.objects.create(
@@ -53,7 +54,7 @@ class ContactModelTest(TestCase):
             creator=self.user
         )
         self.org.delete()
-        self.assertFalse(Contact.objects.filter(id=contact.id).exists())
+        assert not Contact.objects.filter(id=contact.id).exists()
 
     def test_on_delete_creator_set_null(self):
         contact = Contact.objects.create(
@@ -63,4 +64,4 @@ class ContactModelTest(TestCase):
         )
         self.user.delete()
         contact.refresh_from_db()
-        self.assertIsNone(contact.creator)
+        assert contact.creator is None

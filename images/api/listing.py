@@ -1,7 +1,7 @@
 from typing import List
 
 from core.utils.polymorphic import resolve_org_scoped_content_object
-from images.api.common import get_org_for_request, router
+from images.api.common import get_org_scope_for_request, router
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, PolymorphicImageRelationOut
 from images.serializers import serialize_image, serialize_image_relation
@@ -13,7 +13,7 @@ from ninja_jwt.authentication import JWTAuth
 @router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
 def list_images_for_org(request, org_slug: str, ordering: str | None = None):
-    org = get_org_for_request(request, org_slug)
+    scope = get_org_scope_for_request(request, org_slug)
     ordering_map = {
         None: "-created_at",
         "created_at": "created_at",
@@ -25,7 +25,7 @@ def list_images_for_org(request, org_slug: str, ordering: str | None = None):
         raise HttpError(400, "Invalid ordering. Allowed: created_at, -created_at, title, -title")
     return [
         serialize_image(image)
-        for image in Image.objects.filter(organization=org).order_by(ordering_map[ordering])
+        for image in Image.objects.filter(organization=scope.org).order_by(ordering_map[ordering])
     ]
 
 

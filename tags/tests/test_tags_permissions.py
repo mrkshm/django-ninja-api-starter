@@ -40,7 +40,7 @@ def test_list_tags_requires_membership():
     user = User.objects.create_user(email="tags1@example.com", password="pw", email_verified=True)
     client = Client()
     access = get_access_token("tags1@example.com", "pw")
-    resp = client.get(f"/api/v1/orgs/{org.slug}/tags/", HTTP_AUTHORIZATION=f"Bearer {access}")
+    resp = client.get(f"/api/v1/tags/orgs/{org.slug}/tags/", HTTP_AUTHORIZATION=f"Bearer {access}")
     assert resp.status_code in (401, 403)
 
 
@@ -58,7 +58,7 @@ def test_assign_tags_wrong_object_org_forbidden():
     model = "organization"
     object_id = org2.id  # object belongs to different org than route
 
-    url = f"/api/v1/orgs/{org1.slug}/tags/{app_label}/{model}/{object_id}/"
+    url = f"/api/v1/tags/orgs/{org1.slug}/tags/{app_label}/{model}/{object_id}/"
     resp = client.post(url, data=["vip"], content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {access}")
     assert resp.status_code == 403
 
@@ -75,6 +75,6 @@ def test_unassign_by_slug_wrong_object_forbidden():
     app_label = "organizations"
     model = "organization"
     # try to unassign from an object in a different org
-    url = f"/api/v1/orgs/{org1.slug}/tags/{app_label}/{model}/{org2.id}/some-slug/"
+    url = f"/api/v1/tags/orgs/{org1.slug}/tags/{app_label}/{model}/{org2.id}/some-slug/"
     resp = client.delete(url, HTTP_AUTHORIZATION=f"Bearer {access}")
     assert resp.status_code == 403

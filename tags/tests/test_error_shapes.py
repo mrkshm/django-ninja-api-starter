@@ -23,7 +23,7 @@ def test_update_tag_duplicate_name_error_shape():
     access = resp.json()["access"]
 
     resp2 = client.patch(
-        f"/api/v1/orgs/{org.slug}/tags/{t1.id}/",
+        f"/api/v1/tags/orgs/{org.slug}/tags/{t1.id}/",
         data={"name": "beta"},
         content_type="application/json",
         HTTP_AUTHORIZATION=f"Bearer {access}",

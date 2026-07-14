@@ -1,17 +1,19 @@
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth
+from pydantic import ConfigDict
 from django.db import transaction
 from django.contrib.auth import get_user_model
 from organizations.models import Organization
 from core.utils import make_it_unique
-from core.utils.auth_utils import require_authenticated_user
+from core.utils.auth_utils import get_request_user
 from django.utils.text import slugify
 from .schemas import UserProfileOut
 from .username_validation import validate_username_value
 
 class UsernameUpdateSchema(Schema):
     username: str
+    model_config = ConfigDict(extra="forbid")
 
 router = Router()
 User = get_user_model()
@@ -19,12 +21,11 @@ User = get_user_model()
 @router.patch("/username", response=UserProfileOut, auth=JWTAuth())
 @transaction.atomic
 def update_username(request, data: UsernameUpdateSchema):
-    user = request.auth
-    require_authenticated_user(user)
+    user = get_request_user(request)
     new_username = data.username.strip()
     is_valid, reason = validate_username_value(new_username)
     if not is_valid:
-        raise HttpError(400, reason)
+        raise HttpError(400, reason or "Invalid username")
     # Case-insensitive uniqueness check
     if User.objects.filter(username__iexact=new_username).exclude(id=user.id).exists():
         raise HttpError(400, "Username already taken")

@@ -15,6 +15,7 @@ import os
 import sys
 import warnings
 import environ
+from django.core.exceptions import ImproperlyConfigured
 try:
     from django.utils.deprecation import RemovedInDjango60Warning as DjangoRemovedWarning
 except ImportError:
@@ -39,11 +40,19 @@ warnings.filterwarnings(
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env('SECRET_KEY', default='keySoS3cr3tOMGomgnoCaps')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=True)
+
+# SECURITY WARNING: keep the secret key used in production secret!
+INSECURE_DEFAULT_SECRET_KEY = "keySoS3cr3tOMGomgnoCaps"
+SECRET_KEY = env("SECRET_KEY", default=None)
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-development-only-secret-key"
+    else:
+        raise ImproperlyConfigured("SECRET_KEY must be set when DEBUG=False.")
+elif not DEBUG and SECRET_KEY == INSECURE_DEFAULT_SECRET_KEY:
+    raise ImproperlyConfigured("SECRET_KEY must be changed in production.")
 
 # Security Settings
 if not DEBUG:
@@ -89,19 +98,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.gis",
-    "django.contrib.sites",
     "django_extensions",
     "storages",
-    "django_filters",
-    "health_check",
     "ninja_extra",
     "csp",
     "corsheaders",
-    "defender",
-    "allauth",
-    "allauth.account",
-    "allauth.socialaccount",
-    "imagekit",
     "django_celery_beat",
     "django_redis",
     "accounts",
@@ -121,7 +122,6 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "csp.middleware.CSPMiddleware",

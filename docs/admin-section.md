@@ -7,7 +7,7 @@ This project comes with a Django admin interface for managing users, organizatio
 To enable and use the admin section, follow these steps:
 
 1. **Apply Migrations:**
-   Ensure all migrations are applied, including for the `sites` app:
+   Ensure all migrations are applied:
 
    ```bash
    python manage.py migrate
@@ -20,18 +20,6 @@ To enable and use the admin section, follow these steps:
    python manage.py createsuperuser
    ```
 
-3. **Create a Site Entry:**
-   If you see `Site matching query does not exist`, create a Site object:
-   ```python
-   from django.contrib.sites.models import Site
-   Site.objects.create(domain='localhost:8000', name='localhost')
-   ```
-   Or use the Django shell:
-   ```bash
-   python manage.py shell
-   ```
-   Then run the above Python code.
-
 ## Image Uploads in Admin
 
 - **Image uploads are intentionally disabled in the admin.**
@@ -42,7 +30,3 @@ To enable and use the admin section, follow these steps:
 
 - Admin includes thumbnails for images, improved user management, and sensible filters/search for all major models.
 - You can further customize the admin as needed.
-
-## Troubleshooting
-
-- If you see errors about missing `Site` objects, make sure to follow step 3 above.

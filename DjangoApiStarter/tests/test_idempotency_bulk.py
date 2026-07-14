@@ -1,4 +1,4 @@
-from django.test import TestCase, override_settings
+import pytest
 from types import SimpleNamespace
 from unittest.mock import patch
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -16,17 +16,26 @@ from organizations.models import Membership, Organization
 from contacts.models import Contact
 
 
+class ScopeStub(SimpleNamespace):
+    def require_write(self):
+        return self
+
+
 def unwrap_status(response):
     return response.status_code, response.value
 
 
-@override_settings(CACHES={
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-    }
-})
-class TestIdempotencyBulk(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestIdempotencyBulk:
+    @pytest.fixture(autouse=True)
+    def _locmem_cache(self, settings):
+        settings.CACHES = {
+            "default": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            }
+        }
+
+    def setup_method(self):
         User = get_user_model()
         self.user = User.objects.create_user(email="u@example.com", password="pass12345")
         self.org = Organization.objects.create(name="Acme", slug="acme", creator=self.user)
@@ -36,6 +45,7 @@ class TestIdempotencyBulk(TestCase):
     def _req(self, method: str, path: str, idem_key: str):
         # Minimal request stub with headers, META, method, path, user, FILES/POST/body
         return SimpleNamespace(
+            auth=self.user,
             user=self.user,
             headers={"Idempotency-Key": idem_key},
             META={"HTTP_IDEMPOTENCY_KEY": idem_key},
@@ -56,7 +66,7 @@ class TestIdempotencyBulk(TestCase):
         req1.FILES = SimpleNamespace(getlist=lambda name: files)
         req2 = self._req("POST", path, "key-1")
         req2.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+        with patch("images.api.uploads.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
              patch("images.services.upload_to_storage") as mock_upload:
             first = bulk_upload_images(req1, self.org.slug)
             second = bulk_upload_images(req2, self.org.slug)
@@ -64,9 +74,9 @@ class TestIdempotencyBulk(TestCase):
             first_norm = [dict(id=r.id, file=r.file, status=r.status, error=r.error) for r in first]
             # second may be list[dict]
             second_norm = [dict(id=r.get("id"), file=r.get("file"), status=r.get("status"), error=r.get("error")) for r in second]
-            self.assertEqual(first_norm, second_norm)
+            assert first_norm == second_norm
             # Storage should have been called only once for each file
-            self.assertEqual(mock_upload.call_count, len(files))
+            assert mock_upload.call_count == len(files)
 
     def test_bulk_upload_different_keys_trigger_fresh_run(self):
         files = [
@@ -78,16 +88,16 @@ class TestIdempotencyBulk(TestCase):
         req1.FILES = SimpleNamespace(getlist=lambda name: files)
         req2 = self._req("POST", path, "key-B")
         req2.FILES = SimpleNamespace(getlist=lambda name: files)
-        with patch("images.api.uploads.get_org_for_request", return_value=self.org), \
+        with patch("images.api.uploads.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)), \
              patch("images.services.upload_to_storage") as mock_upload:
             first = bulk_upload_images(req1, self.org.slug)
             second = bulk_upload_images(req2, self.org.slug)
             # Different keys should not hit cache, so storage called twice per file set
-            self.assertEqual(mock_upload.call_count, len(files) * 2)
+            assert mock_upload.call_count == len(files * 2)
             # The created image ids should be distinct sets
             first_ids = {r.id for r in first}
             second_ids = {r.id for r in second}
-            self.assertTrue(first_ids.isdisjoint(second_ids))
+            assert first_ids.isdisjoint(second_ids)
 
     def test_bulk_attach_idempotent_same_key(self):
         # Prepare two images
@@ -99,8 +109,8 @@ class TestIdempotencyBulk(TestCase):
         req2 = self._req("POST", path, "key-2")
         first = bulk_attach_images(req1, self.org.slug, "contacts", "contact", self.contact.id, data)
         second = bulk_attach_images(req2, self.org.slug, "contacts", "contact", self.contact.id, data)
-        self.assertEqual(first, second)
-        self.assertCountEqual(first["attached"], [img1.id, img2.id])
+        assert first == second
+        assert sorted(first["attached"]) == sorted([img1.id, img2.id])
 
     def test_bulk_detach_idempotent_same_key(self):
         # Attach first
@@ -115,8 +125,8 @@ class TestIdempotencyBulk(TestCase):
         req2 = self._req("POST", detach_path, "key-3b")
         first = bulk_detach_images(req1, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
         second = bulk_detach_images(req2, self.org.slug, "contacts", "contact", self.contact.id, BulkImageIdsIn(image_ids=[img1.id, img2.id]))
-        self.assertEqual(first, second)
-        self.assertCountEqual(first["detached"], [img1.id, img2.id])
+        assert first == second
+        assert sorted(first["detached"]) == sorted([img1.id, img2.id])
 
     def test_bulk_delete_idempotent_same_key(self):
         img1 = Image.objects.create(file="i/1.jpg", organization=self.org, creator=self.user)
@@ -129,9 +139,31 @@ class TestIdempotencyBulk(TestCase):
         req1.body = body
         req2 = self._req("POST", path, "key-4")
         req2.body = body
-        with patch("images.api.deletion.get_org_for_request", return_value=self.org):
+        with patch("images.api.deletion.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)):
             status1, _ = unwrap_status(bulk_delete_images(req1, self.org.slug))
             status2, _ = unwrap_status(bulk_delete_images(req2, self.org.slug))
-            self.assertEqual(status1, 204)
-            self.assertEqual(status2, 204)
-            self.assertEqual(Image.objects.filter(id__in=[img1.id, img2.id]).count(), 0)
+            assert status1 == 204
+            assert status2 == 204
+            assert Image.objects.filter(id__in=[img1.id, img2.id]).count() == 0
+
+    def test_bulk_delete_idempotent_partial_failure(self):
+        img = Image.objects.create(file="i/1.jpg", organization=self.org, creator=self.user)
+        missing_id = img.id + 999
+        path = f"/api/v1/images/orgs/{self.org.slug}/bulk-delete/"
+        import json
+        body = json.dumps({"ids": [img.id, missing_id]}).encode("utf-8")
+        req1 = self._req("POST", path, "key-5")
+        req1.body = body
+        req2 = self._req("POST", path, "key-5")
+        req2.body = body
+
+        with patch("images.api.deletion.get_org_scope_for_request", return_value=ScopeStub(org=self.org, user=self.user)):
+            status1, body1 = unwrap_status(bulk_delete_images(req1, self.org.slug))
+            status2, body2 = unwrap_status(bulk_delete_images(req2, self.org.slug))
+
+        assert status1 == 400
+        assert status2 == 400
+        assert body1 == body2
+        assert body1["deleted"] == [img.id]
+        assert body1["failed"] == [{"id": missing_id, "reason": "not found"}]
+        assert not Image.objects.filter(id=img.id).exists()

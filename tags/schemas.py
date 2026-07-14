@@ -1,12 +1,22 @@
 # tags/schemas.py
 from pydantic import BaseModel, Field, ConfigDict
 
+from core.schemas import DetailResponse
+
 class TagCreate(BaseModel):
     name: str
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        json_schema_extra={"examples": [{"name": "vip"}]},
+    )
 
 class TagUpdate(BaseModel):
     name: str | None = None
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"name": "priority"}]},
+    )
 
 class TagOut(BaseModel):
     id: int
@@ -22,9 +32,6 @@ class TaggedItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class DetailResponse(BaseModel):
-    detail: str
-
-
 class RemovedCountResponse(BaseModel):
     removed_count: int
+    model_config = ConfigDict(json_schema_extra={"examples": [{"removed_count": 2}]})

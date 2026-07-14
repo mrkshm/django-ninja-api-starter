@@ -1,18 +1,19 @@
-from django.test import TestCase
+import pytest
 from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
 from ninja.main import NinjaAPI
 
-class TestDeleteAccount(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestDeleteAccount:
+    def setup_method(self):
         NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_delete_account_requires_auth(self):
         # Should fail without JWT
         response = self.client.delete("/auth/delete/")
-        self.assertIn(response.status_code, [401, 403])
+        assert response.status_code in [401, 403]
 
     def test_delete_account_success(self):
         # Register and login to get a token
@@ -21,10 +22,35 @@ class TestDeleteAccount(TestCase):
         create_test_user(email=email, password=password)
         token_response = self.client.post("/token/pair", json={"email": email, "password": password})
         access_token = token_response.json()["access"]
-        # Delete account with JWT
-        response = self.client.delete("/auth/delete/", headers={"Authorization": f"Bearer {access_token}"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["detail"], "Account deleted successfully.")
+        # Delete account with JWT and current password
+        response = self.client.delete(
+            "/auth/delete/",
+            json={"password": password},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["detail"] == "Account deleted successfully."
         # Further requests with same token should fail
-        response = self.client.delete("/auth/delete/", headers={"Authorization": f"Bearer {access_token}"})
-        self.assertIn(response.status_code, [401, 403])
+        response = self.client.delete(
+            "/auth/delete/",
+            json={"password": password},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert response.status_code in [401, 403]
+
+    def test_delete_account_rejects_wrong_password(self):
+        email = "deletewrong@example.com"
+        password = "testpass123"
+        user = create_test_user(email=email, password=password)
+        token_response = self.client.post("/token/pair", json={"email": email, "password": password})
+        access_token = token_response.json()["access"]
+
+        response = self.client.delete(
+            "/auth/delete/",
+            json={"password": "wrong-password"},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Password is incorrect"
+        assert type(user).objects.filter(id=user.id).exists()

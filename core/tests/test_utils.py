@@ -2,6 +2,8 @@
 # Please add new tests for core/utils/auth_utils.py there.
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from organizations.models import Organization
 from core.utils import make_it_unique, generate_upload_filename
 import re
@@ -37,6 +39,31 @@ def test_make_it_unique_handles_long_base():
     assert unique != base
     assert unique.startswith(base)
     assert len(unique) <= 50  # SlugField default max_length is 50
+
+
+@pytest.mark.django_db
+def test_make_it_unique_uses_single_collision_query():
+    Organization.objects.create(name="Org foo", slug="foo", type="personal")
+    for index in range(1, 11):
+        Organization.objects.create(name=f"Org foo {index}", slug=f"foo-{index}", type="personal")
+
+    with CaptureQueriesContext(connection) as queries:
+        unique = make_it_unique("foo", Organization, "slug")
+
+    assert unique == "foo-11"
+    assert len(queries) == 1
+
+
+@pytest.mark.django_db
+def test_make_it_unique_respects_field_max_length_with_suffix_collisions():
+    base = "x" * 50
+    Organization.objects.create(name="Long Org", slug=base, type="personal")
+    Organization.objects.create(name="Long Org 1", slug=f"{base[:48]}-1", type="personal")
+
+    unique = make_it_unique(base, Organization, "slug")
+
+    assert unique == f"{base[:48]}-2"
+    assert len(unique) == 50
 
 def test_generate_upload_filename_prefix_and_truncation():
     name = generate_upload_filename('avatar', 'averylongfilenameforavatar.jpg')

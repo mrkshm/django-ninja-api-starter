@@ -1,23 +1,19 @@
 from ninja import Router
-from organizations.access import assert_org_admin
-from organizations.models import Organization
 from organizations.export_tasks import export_org_data_task
+from organizations.scope import resolve_admin_org_scope
 from ninja.schema import Schema
-from django.shortcuts import get_object_or_404
-from core.utils.auth_utils import require_authenticated_user
+from ninja_jwt.authentication import JWTAuth
+from pydantic import ConfigDict
 
 class ExportRequestSchema(Schema):
     # Can be extended later
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 export_router = Router(tags=["organization", "export"])
 
-@export_router.post("/orgs/{org_slug}/export/")
+@export_router.post("/orgs/{org_slug}/export/", auth=JWTAuth())
 def trigger_export(request, org_slug: str):
-    user = request.user
-    require_authenticated_user(user)
-    org = get_object_or_404(Organization, slug=org_slug)
-    assert_org_admin(user, org)
+    scope = resolve_admin_org_scope(request, org_slug)
     # Trigger Celery export task
-    export_org_data_task.delay(org.id, user.email)
+    export_org_data_task.delay(scope.org.id, scope.user.email)
     return {"detail": "Export started. You will receive an email when it is ready."}

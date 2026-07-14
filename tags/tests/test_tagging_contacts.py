@@ -23,7 +23,7 @@ def test_assign_tag_to_contact(api_client):
     contact = Contact.objects.create(display_name="Test C", organization=org, creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     login_client(api_client, user)
-    url = f"/orgs/{org.slug}/tags/contacts/contact/{contact.id}/"
+    url = f"/tags/orgs/{org.slug}/tags/contacts/contact/{contact.id}/"
     response = api_client.post(url, json=["vip", "newsletter"])
     assert response.status_code == 200
     data = response.json()
@@ -40,7 +40,7 @@ def test_assign_duplicate_tag_to_contact(api_client):
     Tag.objects.create(organization=org, name="vip", slug="vip")
     Membership.objects.create(user=user, organization=org, role="owner")
     login_client(api_client, user)
-    url = f"/orgs/{org.slug}/tags/contacts/contact/{contact.id}/"
+    url = f"/tags/orgs/{org.slug}/tags/contacts/contact/{contact.id}/"
     response1 = api_client.post(url, json=["vip"])
     response2 = api_client.post(url, json=["vip"])
     assert response1.status_code == 200
@@ -56,7 +56,7 @@ def test_remove_tag_from_contact(api_client):
     TaggedItem.objects.create(tag=tag, content_object=contact)
     Membership.objects.create(user=user, organization=org, role="owner")
     login_client(api_client, user)
-    url = f"/orgs/{org.slug}/tags/contacts/contact/{contact.id}/vip/"
+    url = f"/tags/orgs/{org.slug}/tags/contacts/contact/{contact.id}/vip/"
     response = api_client.delete(url)
     assert response.status_code == 200
     assert not TaggedItem.objects.filter(object_id=contact.id, tag__name="vip").exists()
@@ -96,7 +96,7 @@ def test_edit_tag_name(api_client):
     Membership.objects.create(user=user, organization=org, role="owner")
     tag = Tag.objects.create(organization=org, name="old", slug="old")
     login_client(api_client, user)
-    response = api_client.patch(f"/orgs/{org.slug}/tags/{tag.id}/", json={"name": "newname"})
+    response = api_client.patch(f"/tags/orgs/{org.slug}/tags/{tag.id}/", json={"name": "newname"})
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "newname"
@@ -114,7 +114,7 @@ def test_edit_tag_name_conflict(api_client):
     tag1 = Tag.objects.create(organization=org, name="foo", slug="foo")
     tag2 = Tag.objects.create(organization=org, name="bar", slug="bar")
     login_client(api_client, user)
-    response = api_client.patch(f"/orgs/{org.slug}/tags/{tag2.id}/", json={"name": "foo"})
+    response = api_client.patch(f"/tags/orgs/{org.slug}/tags/{tag2.id}/", json={"name": "foo"})
     assert response.status_code == 400
     assert b"already exists" in response.content
 
@@ -126,10 +126,40 @@ def test_tag_list_pagination(api_client):
     for i in range(15):
         Tag.objects.create(organization=org, name=f"tag{i}", slug=f"tag{i}")
     login_client(api_client, user)
-    response = api_client.get(f"/orgs/{org.slug}/tags/?limit=10&offset=0")
+    response = api_client.get(f"/tags/orgs/{org.slug}/tags/?limit=10&offset=0")
     assert response.status_code == 200
     data = response.json()
     assert "items" in data
     assert "count" in data
     assert len(data["items"]) == 10
     assert data["count"] == 15
+
+
+@pytest.mark.django_db
+def test_canonical_tags_prefix_routes_work(api_client):
+    org = Organization.objects.create(name="CanonicalOrg", slug="canonicalorg")
+    user = User.objects.create_user(email="canonical@example.com", password="pw")
+    contact = Contact.objects.create(display_name="Canonical C", organization=org, creator=user)
+    Membership.objects.create(user=user, organization=org, role="owner")
+    login_client(api_client, user)
+
+    assign_response = api_client.post(
+        f"/tags/orgs/{org.slug}/tags/contacts/contact/{contact.id}/",
+        json=["vip"],
+    )
+    assert assign_response.status_code == 200
+
+    list_response = api_client.get(f"/tags/orgs/{org.slug}/tags/?limit=10&offset=0")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["name"] == "vip"
+
+
+@pytest.mark.django_db
+def test_legacy_org_tags_prefix_is_not_registered(api_client):
+    org = Organization.objects.create(name="NoLegacyOrg", slug="nolegacyorg")
+    user = User.objects.create_user(email="nolegacy@example.com", password="pw")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    login_client(api_client, user)
+
+    with pytest.raises(Exception, match="Cannot resolve"):
+        api_client.get(f"/orgs/{org.slug}/tags/?limit=10&offset=0")

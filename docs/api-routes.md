@@ -72,21 +72,21 @@ This document describes all REST API endpoints provided by this project. For ful
 
 ## 3. Tags (Polymorphic Tagging)
 
-- GET /api/v1/orgs/{org_slug}/tags/ # List tags for an organization
+- GET /api/v1/tags/orgs/{org_slug}/tags/ # List tags for an organization
   - Pagination examples:
-    - `GET /api/v1/orgs/{org_slug}/tags/?limit=20&offset=0`
-    - `GET /api/v1/orgs/{org_slug}/tags/?limit=50&offset=100`
+    - `GET /api/v1/tags/orgs/{org_slug}/tags/?limit=20&offset=0`
+    - `GET /api/v1/tags/orgs/{org_slug}/tags/?limit=50&offset=100`
   - Ordering: `?ordering=name|-name|id|-id` (default: `name`)
-- POST /api/v1/orgs/{org_slug}/tags/ # Create a tag for an organization
-- PATCH /api/v1/orgs/{org_slug}/tags/{tag_id}/ # Update a tag
-- DELETE /api/v1/orgs/{org_slug}/tags/{tag_id}/ # Delete a tag
-- POST /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/ # Assign tags to an object
+- POST /api/v1/tags/orgs/{org_slug}/tags/ # Create a tag for an organization
+- PATCH /api/v1/tags/orgs/{org_slug}/tags/{tag_id}/ # Update a tag
+- DELETE /api/v1/tags/orgs/{org_slug}/tags/{tag_id}/ # Delete a tag
+- POST /api/v1/tags/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/ # Assign tags to an object
   - Body: JSON array of tag names, e.g. `["vip", "newsletter"]` (created if missing in org)
   - 200 → `TagOut[]` where `organization` is the org ID
-- DELETE /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/ # Unassign a single tag by slug from an object
+- DELETE /api/v1/tags/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/{slug}/ # Unassign a single tag by slug from an object
   - 200 → `{ detail: "removed" }`
 
-- GET /api/v1/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/
+- GET /api/v1/tags/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/
   - List tags for object (paginated)
   - 200 → List[TagOut]
   - Pagination: `?limit=<n>&offset=<n>`
@@ -96,7 +96,7 @@ This document describes all REST API endpoints provided by this project. For ful
 
 - All tag endpoints use `org_slug` (never integer ID).
 - Polymorphic assignment uses `app_label`, `model`, and `obj_id`.
-- Bulk unassign is available at `DELETE /orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/` with body `tag_ids: number[]`.
+- Bulk unassign is available at `DELETE /tags/orgs/{org_slug}/tags/{app_label}/{model}/{obj_id}/` with body `tag_ids: number[]`.
 
 ---
 

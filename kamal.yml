@@ -12,7 +12,7 @@ registry:
 servers:
   web:
     hosts:
-      - 65.21.6.154
+      - <%= ENV['SERVER_IP'] %>
     roles:
       - web
       - worker
@@ -24,7 +24,7 @@ servers:
       SECRET_KEY: <%= ENV['SECRET_KEY'] %> # Use environment variable for security
       DEBUG: 'False'
       DJANGO_ENV: production
-      DJANGO_ALLOWED_HOSTS: "65.21.6.154,<%= ENV['ALLOWED_HOSTS'] %>" # Server IP and any additional hosts
+      DJANGO_ALLOWED_HOSTS: "<%= ENV['SERVER_IP'] %>,<%= ENV['ALLOWED_HOSTS'] %>" # Server IP and any additional hosts
       FRONTEND_URL: <%= ENV['FRONTEND_URL'] %> # Your frontend URL
       POSTGRES_DB: django_db
       POSTGRES_USER: django_user

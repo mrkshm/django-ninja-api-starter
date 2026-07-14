@@ -35,6 +35,7 @@ api.add_router("/token", token_router, tags=["token"])
 api.add_router("/auth/", auth_router, tags=["auth"])
 api.add_router("/users/", users_router, tags=["users"])
 api.add_router("/contacts/", contacts_router, tags=["contacts"])
+# Tags router exposes /tags/orgs/... routes.
 api.add_router("/", get_tags_router(), tags=["tags"])
 api.add_router("/images/", images_router)
 api.add_router("/orgs/", export_router, tags=["organization", "export"])

@@ -3,6 +3,8 @@ import json
 from typing import Any, Optional, Tuple
 from django.core.cache import cache
 
+from core.utils.auth_utils import get_request_user
+
 # TTL in seconds (24h)
 IDEMPOTENCY_TTL = 24 * 60 * 60
 
@@ -20,7 +22,7 @@ def read_cached_response(request) -> Optional[Tuple[int, Any]]:
     client_key = request.headers.get(HEADER_NAME) or request.META.get("HTTP_IDEMPOTENCY_KEY")
     if not client_key:
         return None
-    user_id = getattr(request.user, "id", "anon")
+    user_id = getattr(get_request_user(request), "id", "anon")
     key = _cache_key(user_id, request.method, request.path, client_key)
     payload = cache.get(key)
     if not payload:
@@ -37,6 +39,6 @@ def store_cached_response(request, status: int, data: Any) -> None:
     client_key = request.headers.get(HEADER_NAME) or request.META.get("HTTP_IDEMPOTENCY_KEY")
     if not client_key:
         return
-    user_id = getattr(request.user, "id", "anon")
+    user_id = getattr(get_request_user(request), "id", "anon")
     key = _cache_key(user_id, request.method, request.path, client_key)
     cache.set(key, {"status": status, "data": data}, timeout=IDEMPOTENCY_TTL)

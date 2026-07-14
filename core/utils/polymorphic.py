@@ -7,26 +7,21 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
-from core.utils.auth_utils import check_object_belongs_to_org, get_org_or_404
-from organizations.access import assert_org_view
+from core.utils.auth_utils import check_object_belongs_to_org
+from organizations.scope import OrgScope, resolve_org_scope
 
 
 @dataclass(frozen=True)
 class OrgScopedContentObject:
+    scope: OrgScope
     organization: Any
     content_type: ContentType
     model_class: type
     obj: Any
 
 
-def get_request_user(request):
-    return getattr(request, "auth", None) or getattr(request, "user", None)
-
-
 def resolve_org_for_request(request, org_slug: str):
-    org = get_org_or_404(org_slug)
-    assert_org_view(get_request_user(request), org)
-    return org
+    return resolve_org_scope(request, org_slug).org
 
 
 def resolve_content_type(app_label: str, model: str) -> ContentType:
@@ -51,7 +46,8 @@ def resolve_org_scoped_content_object(
     model: str,
     obj_id: int,
 ) -> OrgScopedContentObject:
-    org = resolve_org_for_request(request, org_slug)
+    scope = resolve_org_scope(request, org_slug)
+    org = scope.org
     content_type = resolve_content_type(app_label, model)
     model_class = apps.get_model(app_label, model)
     try:
@@ -60,6 +56,7 @@ def resolve_org_scoped_content_object(
         raise HttpError(404, "Object not found") from exc
     check_object_belongs_to_org(obj, org)
     return OrgScopedContentObject(
+        scope=scope,
         organization=org,
         content_type=content_type,
         model_class=model_class,

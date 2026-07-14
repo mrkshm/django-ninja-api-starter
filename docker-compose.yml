@@ -46,9 +46,9 @@ services:
         condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
-      SECRET_KEY: ${SECRET_KEY:-keySoS3cr3tOMGomgnoCaps}
+      SECRET_KEY: ${SECRET_KEY}
       DEBUG: ${DEBUG:-True}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,65.21.6.154}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       POSTGRES_DB: django_db
       POSTGRES_USER: django_user
@@ -72,7 +72,7 @@ services:
         condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
-      SECRET_KEY: ${SECRET_KEY:-keySoS3cr3tOMGomgnoCaps}
+      SECRET_KEY: ${SECRET_KEY}
       DEBUG: ${DEBUG:-True}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
@@ -99,7 +99,7 @@ services:
         condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: DjangoApiStarter.settings
-      SECRET_KEY: ${SECRET_KEY:-keySoS3cr3tOMGomgnoCaps}
+      SECRET_KEY: ${SECRET_KEY}
       DEBUG: ${DEBUG:-True}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}

@@ -12,10 +12,11 @@ from ninja_jwt.authentication import JWTAuth
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/reorder", response=DetailResponse, auth=JWTAuth())
 def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: int, data: ReorderIn):
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
     ct = resolved.content_type
-    user = request.user
+    user = resolved.scope.user
 
     rels = list(
         PolymorphicImageRelation.objects.filter(content_type=ct, object_id=obj.pk).select_related("image")
@@ -68,10 +69,11 @@ def reorder_images(request, org_slug: str, app_label: str, model: str, obj_id: i
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/set_cover", response=DetailResponse, auth=JWTAuth())
 def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int, data: SetCoverIn):
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
     ct = resolved.content_type
-    user = request.user
+    user = resolved.scope.user
 
     image = get_object_or_404(Image, id=data.image_id, organization=org)
     get_object_or_404(PolymorphicImageRelation, image=image, content_type=ct, object_id=obj.pk)
@@ -95,10 +97,11 @@ def set_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: 
 @router.post("/orgs/{org_slug}/images/{app_label}/{model}/{obj_id}/unset_cover", response=DetailResponse, auth=JWTAuth())
 def unset_cover_image(request, org_slug: str, app_label: str, model: str, obj_id: int):
     resolved = resolve_org_scoped_content_object(request, org_slug, app_label, model, obj_id)
+    resolved.scope.require_write()
     org = resolved.organization
     obj = resolved.obj
     ct = resolved.content_type
-    user = request.user
+    user = resolved.scope.user
 
     with transaction.atomic():
         qs = (

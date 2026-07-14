@@ -32,7 +32,7 @@ def build_public_variant_urls(variant_keys: ImageVariants) -> ImageVariants | No
 
 
 def serialize_image(image: Image) -> ImageOut:
-    file_name = image.file.name if hasattr(image.file, "name") else str(image.file)
+    file_name = image.file.name or str(image.file) if hasattr(image.file, "name") else str(image.file)
     variant_keys = build_variant_keys(file_name)
     public_variant_urls = build_public_variant_urls(variant_keys) if image.is_public else None
     return ImageOut.model_validate(

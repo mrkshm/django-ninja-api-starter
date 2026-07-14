@@ -135,6 +135,54 @@ def test_bulk_delete_images():
     for img_id in ids:
         assert not Image.objects.filter(id=img_id).exists()
 
+
+@pytest.mark.django_db
+def test_bulk_delete_images_reports_missing_ids():
+    org = Organization.objects.create(name="BulkDelPartialOrg", slug="bulkdelpartialorg")
+    user = User.objects.create_user(email="bulkdelpartial@example.com", password="pw", email_verified=True)
+    Membership.objects.create(user=user, organization=org, role="owner")
+    img = Image.objects.create(file=create_test_image_file(name="bdp.png"), organization=org, creator=user)
+    missing_id = img.id + 999
+    client = Client()
+    access = get_access_token("bulkdelpartial@example.com", "pw")
+
+    response = client.post(
+        f"/api/v1/images/orgs/{org.slug}/bulk-delete/",
+        {"ids": [img.id, missing_id]},
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {access}"
+    )
+
+    assert response.status_code == 400, response.content
+    data = response.json()
+    assert data["detail"] == "Some images could not be deleted"
+    assert data["deleted"] == [img.id]
+    assert data["failed"] == [{"id": missing_id, "reason": "not found"}]
+    assert not Image.objects.filter(id=img.id).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_delete_images_reports_no_deletions():
+    org = Organization.objects.create(name="BulkDelNoneOrg", slug="bulkdelnoneorg")
+    user = User.objects.create_user(email="bulkdelnone@example.com", password="pw", email_verified=True)
+    Membership.objects.create(user=user, organization=org, role="owner")
+    missing_id = 999999
+    client = Client()
+    access = get_access_token("bulkdelnone@example.com", "pw")
+
+    response = client.post(
+        f"/api/v1/images/orgs/{org.slug}/bulk-delete/",
+        {"ids": [missing_id]},
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {access}"
+    )
+
+    assert response.status_code == 400, response.content
+    data = response.json()
+    assert data["detail"] == "No images were deleted"
+    assert data["deleted"] == []
+    assert data["failed"] == [{"id": missing_id, "reason": "not found"}]
+
 @pytest.mark.django_db
 def test_attach_and_detach_image():
     # Create org and user

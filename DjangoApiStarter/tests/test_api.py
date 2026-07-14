@@ -1,13 +1,14 @@
-from django.test import TestCase
+import pytest
 from ninja.testing import TestClient
 from ..api import api
 
-class TestHealthCheck(TestCase):
-    def setUp(self):
+@pytest.mark.django_db
+class TestHealthCheck:
+    def setup_method(self):
         self.client = TestClient(api)
 
     def test_health_check(self):
         response = self.client.get("/health/")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
-        self.assertEqual(response.data, {"status": "ok"})
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+        assert response.data == {"status": "ok"}

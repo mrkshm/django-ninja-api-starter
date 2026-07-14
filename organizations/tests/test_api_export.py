@@ -3,7 +3,6 @@ from django.contrib.auth import get_user_model
 from organizations.models import Organization, Membership
 from organizations.api_export import trigger_export
 from ninja.errors import HttpError
-from unittest import mock
 from django.test import RequestFactory
 
 User = get_user_model()
@@ -12,7 +11,7 @@ User = get_user_model()
 def test_trigger_export_auth_required():
     rf = RequestFactory()
     request = rf.post("/orgs/test-org/export/")
-    request.user = mock.Mock(is_authenticated=False)
+    request.auth = None
     with pytest.raises(HttpError) as exc:
         trigger_export(request, org_slug="test-org")
     assert exc.value.status_code == 401
@@ -24,7 +23,7 @@ def test_trigger_export_forbidden():
     org = Organization.objects.create(name="Test Org", slug="test-org", type="group")
     user = User.objects.create(email="user@example.com", username="user")
     request = rf.post("/orgs/test-org/export/")
-    request.user = user
+    request.auth = user
     # User is not a member
     with pytest.raises(HttpError) as exc:
         trigger_export(request, org_slug="test-org")
@@ -43,7 +42,7 @@ def test_trigger_export_success(monkeypatch):
     user = User.objects.create(email="admin@example.com", username="admin")
     Membership.objects.create(user=user, organization=org, role="admin")
     request = rf.post("/orgs/test-org/export/")
-    request.user = user
+    request.auth = user
     called = {}
     def fake_delay(org_id, email):
         called['org_id'] = org_id

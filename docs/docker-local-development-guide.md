@@ -14,7 +14,7 @@ The project uses a multi-container setup with Docker Compose, consisting of:
 ### Container Details
 
 #### Django Application (`web`)
-- Base image: Python 3.13
+- Base image: Python 3.14
 - Port: 8000
 - Multi-stage build for optimized image size
 - Virtual environment for dependency isolation

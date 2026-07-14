@@ -31,7 +31,7 @@ def authenticate_for_token(email: str, password: str):
 
 def issue_token_pair(user) -> tuple[str, str]:
     refresh = RefreshToken.for_user(user)
-    return str(refresh.access_token), str(refresh)
+    return str(getattr(refresh, "access_token")), str(refresh)
 
 
 def send_templated_email(template_name: str, context: dict, recipients: list[str]) -> None:
