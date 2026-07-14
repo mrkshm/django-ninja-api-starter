@@ -1,9 +1,8 @@
 import pytest
-from django.core.cache import cache
 from accounts.models import User, PendingEmailChange, PendingPasswordReset
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from django.contrib.auth.models import PermissionsMixin
+from django.contrib.auth.models import Group, Permission
 
 
 @pytest.mark.django_db
@@ -52,32 +51,30 @@ def test_create_user_requires_email():
 
 
 @pytest.mark.django_db
-def test_get_user_permissions_caching(monkeypatch):
+def test_direct_permission_changes_are_visible_to_fresh_user_instances():
     user = User.objects.create_user(email="perm@example.com", password="pw")
-    cache_key = f"user_permissions_{user.id}"
-    cache.delete(cache_key)
-    called = {}
+    permission = Permission.objects.first()
+    assert permission is not None
+    permission_name = f"{permission.content_type.app_label}.{permission.codename}"
 
-    original = PermissionsMixin.get_user_permissions
+    user.user_permissions.add(permission)
+    assert permission_name in User.objects.get(pk=user.pk).get_user_permissions()
 
-    def fake_super_get_user_permissions(self):
-        called["called"] = called.get("called", 0) + 1
-        return {"foo"}
+    user.user_permissions.remove(permission)
+    assert permission_name not in User.objects.get(pk=user.pk).get_user_permissions()
 
-    monkeypatch.setattr(
-        PermissionsMixin, "get_user_permissions", fake_super_get_user_permissions
-    )
 
-    # First call: should call the patched super method and set cache
-    perms = user.get_user_permissions()
-    assert perms == {"foo"}
-    assert called["called"] == 1
+@pytest.mark.django_db
+def test_group_permission_changes_are_visible_to_fresh_user_instances():
+    user = User.objects.create_user(email="group-perm@example.com", password="pw")
+    permission = Permission.objects.first()
+    assert permission is not None
+    permission_name = f"{permission.content_type.app_label}.{permission.codename}"
+    group = Group.objects.create(name="permission-test-group")
+    group.permissions.add(permission)
 
-    # Second call: should use cache, not call the patched method again
-    called["called"] = 0
-    perms2 = user.get_user_permissions()
-    assert perms2 == {"foo"}
-    assert called["called"] == 0  # Should not call the patched method, uses cache
+    user.groups.add(group)
+    assert permission_name in User.objects.get(pk=user.pk).get_group_permissions()
 
-    # Restore original
-    monkeypatch.setattr(PermissionsMixin, "get_user_permissions", original)
+    user.groups.remove(group)
+    assert permission_name not in User.objects.get(pk=user.pk).get_group_permissions()

@@ -10,7 +10,6 @@ from django.utils import timezone
 from core.utils import make_it_unique
 import string
 import uuid
-from django.core.cache import cache
 from accounts.tokens import generate_hashed_token, hash_token, is_token_hash
 
 
@@ -134,14 +133,6 @@ class User(AbstractBaseUser, PermissionsMixin):
                 Lower("username"), name="accounts_user_username_ci_uniq"
             ),
         ]
-
-    def get_user_permissions(self):
-        cache_key = f"user_permissions_{self.id}"
-        permissions = cache.get(cache_key)
-        if permissions is None:
-            permissions = super().get_user_permissions()
-            cache.set(cache_key, permissions, timeout=3600)  # 1 hour
-        return permissions
 
     def __str__(self):
         return self.email
