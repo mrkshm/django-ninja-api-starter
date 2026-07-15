@@ -1,35 +1,37 @@
-from ninja import Router
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
-from django.shortcuts import get_object_or_404
 import os
 import uuid
-from core.utils.storage import (
-    delete_from_public_storage,
-    public_storage_url,
-    upload_to_public_storage,
-)
+from typing import List
+
+from django.db import transaction
+from django.db.models import Case, IntegerField, Q, Value, When
+from django.shortcuts import get_object_or_404
+from ninja import File, Router, UploadedFile
+from ninja.errors import HttpError
+from ninja.pagination import LimitOffsetPagination, paginate
+
+from contacts.services import create_contact_record, update_contact_record
+from core.authentication import JWTAuth
+from core.utils.avatar import schedule_avatar_file_deletion
 from core.utils.image import (
     InvalidImageContent,
     resize_avatar_images,
     validate_image_content,
 )
-from core.utils.avatar import delete_avatar_files
+from core.utils.storage import (
+    delete_from_public_storage,
+    public_storage_url,
+    upload_to_public_storage,
+)
+from organizations.scope import resolve_org_scope, resolve_write_org_scope
+
 from .models import Contact
 from .schemas import (
+    ContactAvatarResponse,
     ContactIn,
     ContactOut,
-    ContactAvatarResponse,
     ContactUpdate,
     DetailResponse,
 )
-from organizations.scope import resolve_org_scope, resolve_write_org_scope
-from contacts.services import create_contact_record, update_contact_record
-from ninja.pagination import paginate, LimitOffsetPagination
-from ninja import File, UploadedFile
-from django.db import transaction
-from django.db.models import Q, Case, When, Value, IntegerField
-from typing import List
 
 contacts_router = Router()
 
@@ -193,7 +195,7 @@ def upload_contact_avatar(
                 contact.avatar_path = filename
                 contact.save(update_fields=["avatar_path", "updated_at"])
                 if old_avatar_path:
-                    transaction.on_commit(lambda: delete_avatar_files(old_avatar_path))
+                    schedule_avatar_file_deletion(old_avatar_path)
         except Exception:
             for key in uploaded:
                 delete_from_public_storage(key)
@@ -221,7 +223,7 @@ def delete_contact_avatar(request, org_slug: str, slug: str):
     with transaction.atomic():
         contact.avatar_path = None
         contact.save(update_fields=["avatar_path", "updated_at"])
-        transaction.on_commit(lambda: delete_avatar_files(old_avatar_path))
+        schedule_avatar_file_deletion(old_avatar_path)
     return DetailResponse(detail="Avatar deleted.")
 
 

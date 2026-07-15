@@ -56,7 +56,7 @@ INSTALLED_APPS = [
     "accounts.apps.AccountsConfig",
     "organizations.apps.OrganizationsConfig",
     "core",
-    "contacts",
+    "contacts.apps.ContactsConfig",
     "tags",
     "images",
 ]

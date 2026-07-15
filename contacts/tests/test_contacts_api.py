@@ -1,12 +1,15 @@
+import io
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
-from accounts.tests.utils import create_test_user
-from organizations.models import Organization, Membership
-from contacts.models import Contact
-import io
-from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.datastructures import MultiValueDict
+from PIL import Image
+
+from accounts.tests.utils import create_test_user
+from contacts.models import Contact
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 
@@ -126,7 +129,9 @@ def test_list_contacts(make_auth_headers, api_client):
 
 
 @pytest.mark.django_db
-def test_delete_contact(make_auth_headers, api_client):
+def test_delete_contact(
+    make_auth_headers, api_client, django_capture_on_commit_callbacks
+):
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
     )
@@ -135,14 +140,21 @@ def test_delete_contact(make_auth_headers, api_client):
     )
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(
-        display_name="Z", slug="z", organization=org, creator=user
+        display_name="Z",
+        slug="z",
+        organization=org,
+        creator=user,
+        avatar_path="public/avatars/contacts/z.webp",
     )
     headers = make_auth_headers(api_client, user, password="pw")
-    resp = api_client.delete(
-        f"/orgs/{org.slug}/contacts/{contact.slug}/", headers=headers
-    )
+    with patch("core.utils.avatar.delete_avatar_files") as delete_avatar_files:
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = api_client.delete(
+                f"/orgs/{org.slug}/contacts/{contact.slug}/", headers=headers
+            )
     assert resp.status_code == 200
     assert not Contact.objects.filter(slug="z").exists()
+    delete_avatar_files.assert_called_once_with("public/avatars/contacts/z.webp")
 
 
 @pytest.mark.django_db

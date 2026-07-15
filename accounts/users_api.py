@@ -1,25 +1,26 @@
-from ninja import Router, Schema, File, UploadedFile
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
+import os
+import uuid
+
+from django.contrib.auth import get_user_model
 from django.db import transaction
-from core.utils import (
-    resize_avatar_images,
-)
-from core.utils.avatar import delete_avatar_files
+from ninja import File, Router, Schema, UploadedFile
+from ninja.errors import HttpError
+
+from core.authentication import JWTAuth
+from core.utils import resize_avatar_images
+from core.utils.auth_utils import get_request_user
+from core.utils.avatar import schedule_avatar_file_deletion
 from core.utils.image import InvalidImageContent, validate_image_content
 from core.utils.storage import (
     delete_from_public_storage,
     public_storage_url,
     upload_to_public_storage,
 )
-from core.utils.auth_utils import get_request_user
-import os
-import uuid
-from .schemas import UserProfileOut, UserProfileUpdate, UsernameCheckResponse
-from django.contrib.auth import get_user_model
+from organizations.models import Organization
+
+from .schemas import UsernameCheckResponse, UserProfileOut, UserProfileUpdate
 from .username import router as username_router
 from .username_validation import validate_username_value
-from organizations.models import Organization
 
 User = get_user_model()
 
@@ -84,7 +85,7 @@ def upload_avatar(request, file: UploadedFile = File(...)):
             user.avatar_path = filename
             user.save(update_fields=["avatar_path", "updated_at"])
             if old_avatar_path:
-                transaction.on_commit(lambda: delete_avatar_files(old_avatar_path))
+                schedule_avatar_file_deletion(old_avatar_path)
     except Exception as exc:
         for key in uploaded:
             delete_from_public_storage(key)
@@ -102,7 +103,7 @@ def delete_avatar(request):
         user.avatar_path = None
         user.save(update_fields=["avatar_path", "updated_at"])
         if old_avatar_path:
-            transaction.on_commit(lambda: delete_avatar_files(old_avatar_path))
+            schedule_avatar_file_deletion(old_avatar_path)
     return {"detail": "Avatar deleted."}
 
 
