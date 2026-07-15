@@ -12,6 +12,9 @@ The design principles in [`styleguide.md`](./styleguide.md) guide the work, but
 they are defaults rather than a reason to split files or add infrastructure for
 its own sake.
 
+**Status (2026-07-15): Phases 1–8 are complete.** Phase 9 and the explicitly
+deferred items remain optional future work.
+
 ## Working rules
 
 - Preserve public API behavior unless a checklist item explicitly changes it.
@@ -41,50 +44,50 @@ password-reset, and email-change records.
 
 Rules:
 
-- [ ] Lock organizations first when an operation enforces an organization
+- [x] Lock organizations first when an operation enforces an organization
   invariant.
-- [ ] Lock organizations in ascending primary-key order when more than one is
+- [x] Lock organizations in ascending primary-key order when more than one is
   involved.
-- [ ] Lock the user next when user state or credentials are involved.
-- [ ] Lock user-dependent rows only after the user.
-- [ ] Lock multiple rows of one type in ascending primary-key order.
-- [ ] If an operation needs a dependent row to discover the user or
+- [x] Lock the user next when user state or credentials are involved.
+- [x] Lock user-dependent rows only after the user.
+- [x] Lock multiple rows of one type in ascending primary-key order.
+- [x] If an operation needs a dependent row to discover the user or
   organization, perform an unlocked identity lookup, acquire canonical locks,
   then refetch and fully revalidate the dependent row under lock.
-- [ ] Prefer separate explicit locking queries over a `select_for_update()`
+- [x] Prefer separate explicit locking queries over a `select_for_update()`
   join whose cross-table lock acquisition is difficult to see.
-- [ ] Document any unavoidable exception next to the operation and cover it
+- [x] Document any unavoidable exception next to the operation and cover it
   with a PostgreSQL concurrency test.
 
 ## Priority summary
 
 ### Do first: demonstrated bugs and risks
 
-- [ ] Bound every image upload read.
-- [ ] Cap bulk image file count and aggregate input size.
-- [ ] Fingerprint multipart idempotency requests using file content.
-- [ ] Make password changes atomic with session revocation.
-- [ ] Make password-reset tokens concurrency-safe and single-use.
-- [ ] Enforce one coherent pending password-reset state per user.
-- [ ] Remove the unused and misleading `last_login` field.
-- [ ] Make inaccessible and nonexistent organization slugs indistinguishable.
-- [ ] Remove hidden pending-token hashing and unusable token defaults.
+- [x] Bound every image upload read.
+- [x] Cap bulk image file count and aggregate input size.
+- [x] Fingerprint multipart idempotency requests using file content.
+- [x] Make password changes atomic with session revocation.
+- [x] Make password-reset tokens concurrency-safe and single-use.
+- [x] Enforce one coherent pending password-reset state per user.
+- [x] Remove the unused and misleading `last_login` field.
+- [x] Make inaccessible and nonexistent organization slugs indistinguishable.
+- [x] Remove hidden pending-token hashing and unusable token defaults.
 
 ### Do next: simplify real duplication and strengthen assurance
 
-- [ ] Consolidate tenant scope and authorization helpers.
-- [ ] Remove dead wrappers and compatibility exports.
-- [ ] Include the project package in mypy and enable checking untyped bodies.
-- [ ] Add routed permission, multipart, and idempotency tests.
-- [ ] Move account transactions into one explicit operations module while
+- [x] Consolidate tenant scope and authorization helpers.
+- [x] Remove dead wrappers and compatibility exports.
+- [x] Include the project package in mypy and enable checking untyped bodies.
+- [x] Add routed permission, multipart, and idempotency tests.
+- [x] Move account transactions into one explicit operations module while
   implementing the credential fixes.
-- [ ] Add PostgreSQL and admin coverage for user-deletion ownership behavior.
+- [x] Add PostgreSQL and admin coverage for user-deletion ownership behavior.
 
 ### Do only if the code benefits while being changed
 
 - [ ] Move repeated image/tag mutation algorithms out of HTTP handlers.
 - [ ] Extract export archive construction from the Celery task module.
-- [ ] Reorganize test locations where ownership is currently misleading.
+- [x] Reorganize test locations where ownership is currently misleading.
 
 ### Defer until a concrete requirement appears
 
@@ -135,23 +138,23 @@ Current behavior:
 
 Implementation:
 
-- [ ] Define one authoritative accessor for `UPLOAD_IMAGE_MAX_BYTES`.
-- [ ] Reuse `read_uploaded_file_bounded` for the image library.
-- [ ] Prefer passing bounded bytes into `upload_image_file` so the operation's
+- [x] Define one authoritative accessor for `UPLOAD_IMAGE_MAX_BYTES`.
+- [x] Reuse `read_uploaded_file_bounded` for the image library.
+- [x] Prefer passing bounded bytes into `upload_image_file` so the operation's
   memory contract is explicit.
-- [ ] Preserve MIME-prefix checks as an early rejection only; Pillow content
+- [x] Preserve MIME-prefix checks as an early rejection only; Pillow content
   validation remains authoritative.
-- [ ] Return a stable 400 response for declared and streamed oversize failures.
-- [ ] Ensure an upload whose declared size exceeds the limit is never read.
-- [ ] Keep normalized/variant generation after the bounded read.
+- [x] Return a stable 400 response for declared and streamed oversize failures.
+- [x] Ensure an upload whose declared size exceeds the limit is never read.
+- [x] Keep normalized/variant generation after the bounded read.
 
 Tests:
 
-- [ ] A declared oversized image is rejected without calling `read()`.
-- [ ] An unknown-size oversized stream reads at most `max_bytes + 1`.
-- [ ] A dishonest declared size cannot bypass the bound.
-- [ ] Valid images still generate all expected variants.
-- [ ] Invalid content and decompression-bomb failures remain controlled 400s.
+- [x] A declared oversized image is rejected without calling `read()`.
+- [x] An unknown-size oversized stream reads at most `max_bytes + 1`.
+- [x] A dishonest declared size cannot bypass the bound.
+- [x] Valid images still generate all expected variants.
+- [x] Invalid content and decompression-bomb failures remain controlled 400s.
 
 ### 1.2 Cap bulk upload work
 
@@ -163,23 +166,23 @@ Current behavior:
 
 Implementation:
 
-- [ ] Add `UPLOAD_IMAGE_MAX_FILES_PER_REQUEST`.
-- [ ] Add `UPLOAD_IMAGE_MAX_TOTAL_BYTES`.
-- [ ] Choose conservative starter defaults, for example 20 files and 50 MiB
+- [x] Add `UPLOAD_IMAGE_MAX_FILES_PER_REQUEST`.
+- [x] Add `UPLOAD_IMAGE_MAX_TOTAL_BYTES`.
+- [x] Choose conservative starter defaults, for example 20 files and 50 MiB
   aggregate input, while retaining the per-file limit.
-- [ ] Reject excessive file count before processing any image.
-- [ ] Reject excessive declared aggregate size before processing.
-- [ ] Track bytes actually read so unknown or dishonest sizes cannot bypass the
+- [x] Reject excessive file count before processing any image.
+- [x] Reject excessive declared aggregate size before processing.
+- [x] Track bytes actually read so unknown or dishonest sizes cannot bypass the
   aggregate limit.
-- [ ] Document settings in `docs/environment.md` and the example environment.
+- [x] Document settings in `docs/environment.md` and the example environment.
 
 Tests:
 
-- [ ] File count above the limit is rejected.
-- [ ] Declared aggregate size above the limit is rejected.
-- [ ] Actual aggregate bytes above the limit are rejected.
-- [ ] Exact boundary values are accepted.
-- [ ] Rejection performs no storage writes or image-row creation.
+- [x] File count above the limit is rejected.
+- [x] Declared aggregate size above the limit is rejected.
+- [x] Actual aggregate bytes above the limit are rejected.
+- [x] Exact boundary values are accepted.
+- [x] Rejection performs no storage writes or image-row creation.
 
 ### 1.3 Fingerprint multipart content correctly
 
@@ -195,25 +198,25 @@ Current behavior:
 
 Recommended design:
 
-- [ ] Extend `run_idempotently` to accept an explicit request fingerprint or a
+- [x] Extend `run_idempotently` to accept an explicit request fingerprint or a
   bounded fingerprint callback.
-- [ ] Prepare bounded file content once, before the idempotent operation.
-- [ ] Hash field name, stable file order, normalized non-file values, file
+- [x] Prepare bounded file content once, before the idempotent operation.
+- [x] Hash field name, stable file order, normalized non-file values, file
   metadata, and file bytes.
-- [ ] Pass the digest to the idempotency layer without rereading the request
+- [x] Pass the digest to the idempotency layer without rereading the request
   stream.
-- [ ] Keep generic JSON fingerprint normalization for JSON endpoints.
-- [ ] Do not silently replace an unreadable body with an empty body when doing
+- [x] Keep generic JSON fingerprint normalization for JSON endpoints.
+- [x] Do not silently replace an unreadable body with an empty body when doing
   so weakens identity; use the explicit multipart path or return a controlled
   error.
 
 Required semantics:
 
-- [ ] Same key and identical content replays the stored response.
-- [ ] Same key with different bytes returns 409 even when metadata matches.
-- [ ] Same content under a different key executes independently.
-- [ ] File ordering semantics are explicit and tested.
-- [ ] Fingerprinting never performs an unbounded read.
+- [x] Same key and identical content replays the stored response.
+- [x] Same key with different bytes returns 409 even when metadata matches.
+- [x] Same content under a different key executes independently.
+- [x] File ordering semantics are explicit and tested.
+- [x] Fingerprinting never performs an unbounded read.
 
 ### 1.4 Keep cross-system cleanup proportionate
 
@@ -225,12 +228,12 @@ for the current synchronous starter.
 
 Implement now:
 
-- [ ] Use storage keys that are traceable to an image/operation identifier.
-- [ ] Keep best-effort cleanup for known partial failures.
-- [ ] Add a focused test for a DB failure after storage writes.
-- [ ] Ensure the existing media audit reports unreferenced image keys.
-- [ ] Verify age-gated cleanup can safely remove those keys.
-- [ ] Document that Postgres and object storage are not one atomic system.
+- [x] Use storage keys that are traceable to an image/operation identifier.
+- [x] Keep best-effort cleanup for known partial failures.
+- [x] Add a focused test for a DB failure after storage writes.
+- [x] Ensure the existing media audit reports unreferenced image keys.
+- [x] Verify age-gated cleanup can safely remove those keys.
+- [x] Document that Postgres and object storage are not one atomic system.
 
 Do **not** add `pending`/`ready` upload state solely for theoretical atomicity.
 Revisit a durable upload lifecycle if uploads become asynchronous, resumable,
@@ -238,11 +241,11 @@ or operational evidence shows meaningful orphan accumulation.
 
 Acceptance criteria for Phase 1:
 
-- [ ] No image path performs an unbounded request-file read.
-- [ ] Bulk work has count and byte budgets.
-- [ ] Multipart retries distinguish actual content.
-- [ ] Known failures compensate; unknown orphans are reconcilable.
-- [ ] Routed multipart tests cover the real Ninja/Django stack.
+- [x] No image path performs an unbounded request-file read.
+- [x] Bulk work has count and byte budgets.
+- [x] Multipart retries distinguish actual content.
+- [x] Known failures compensate; unknown orphans are reconcilable.
+- [x] Routed multipart tests cover the real Ninja/Django stack.
 
 ---
 
@@ -267,21 +270,21 @@ Current behavior:
 
 Implementation:
 
-- [ ] Add `change_password` to `accounts/operations.py`.
-- [ ] Lock the user row with `select_for_update()`.
-- [ ] Verify the current password against the locked row.
-- [ ] Validate the new password.
-- [ ] Save the password, revoke sessions, and increment `auth_version` in one
+- [x] Add `change_password` to `accounts/operations.py`.
+- [x] Lock the user row with `select_for_update()`.
+- [x] Verify the current password against the locked row.
+- [x] Validate the new password.
+- [x] Save the password, revoke sessions, and increment `auth_version` in one
   transaction.
-- [ ] Emit the audit event only after the operation succeeds.
-- [ ] Keep request parsing and HTTP error/response mapping in `accounts/api.py`.
+- [x] Emit the audit event only after the operation succeeds.
+- [x] Keep request parsing and HTTP error/response mapping in `accounts/api.py`.
 
 Tests:
 
-- [ ] Password update and session invalidation succeed together.
-- [ ] Simulated session-revocation failure rolls back the password.
-- [ ] Incorrect current password changes nothing.
-- [ ] Existing access and refresh tokens fail after success.
+- [x] Password update and session invalidation succeed together.
+- [x] Simulated session-revocation failure rolls back the password.
+- [x] Incorrect current password changes nothing.
+- [x] Existing access and refresh tokens fail after success.
 
 ### 2.2 Atomic single-use password reset
 
@@ -296,28 +299,28 @@ Current behavior:
 
 Implementation:
 
-- [ ] Add `confirm_password_reset` to `accounts/operations.py`.
-- [ ] Hash the supplied token before lookup.
-- [ ] Read the pending row's `user_id` without locking only to discover lock
+- [x] Add `confirm_password_reset` to `accounts/operations.py`.
+- [x] Hash the supplied token before lookup.
+- [x] Read the pending row's `user_id` without locking only to discover lock
   identity.
-- [ ] Open one transaction and lock the user row first.
-- [ ] Refetch and lock the pending reset row after the user lock.
-- [ ] Revalidate the token hash, user relationship, and current pending state
+- [x] Open one transaction and lock the user row first.
+- [x] Refetch and lock the pending reset row after the user lock.
+- [x] Revalidate the token hash, user relationship, and current pending state
   under lock.
-- [ ] Recheck expiry while holding the lock.
-- [ ] Validate and save the password.
-- [ ] Revoke all sessions and increment `auth_version`.
-- [ ] Delete the pending reset in the same transaction.
-- [ ] Return a small result or raise a domain error; map it to the stable API
+- [x] Recheck expiry while holding the lock.
+- [x] Validate and save the password.
+- [x] Revoke all sessions and increment `auth_version`.
+- [x] Delete the pending reset in the same transaction.
+- [x] Return a small result or raise a domain error; map it to the stable API
   response at the boundary.
 
 Tests:
 
-- [ ] A reset token succeeds once.
-- [ ] Reuse returns the generic invalid/expired response.
-- [ ] A PostgreSQL concurrency test proves only one simultaneous confirmation
+- [x] A reset token succeeds once.
+- [x] Reuse returns the generic invalid/expired response.
+- [x] A PostgreSQL concurrency test proves only one simultaneous confirmation
   succeeds.
-- [ ] A failure during credential/session mutation leaves a consistent password
+- [x] A failure during credential/session mutation leaves a consistent password
   and token state.
 
 ### 2.3 One pending reset per user
@@ -330,13 +333,13 @@ Current behavior:
 
 Recommended default:
 
-- [ ] Enforce one pending reset per user with a one-to-one relation or unique
+- [x] Enforce one pending reset per user with a one-to-one relation or unique
   constraint.
-- [ ] Rotate the pending token with `update_or_create` in a transaction.
-- [ ] Treat concurrent reset requests as replacement of the same pending
+- [x] Rotate the pending token with `update_or_create` in a transaction.
+- [x] Treat concurrent reset requests as replacement of the same pending
   operation.
-- [ ] Preserve the enumeration-resistant generic response.
-- [ ] Ensure an old rotated link is invalid.
+- [x] Preserve the enumeration-resistant generic response.
+- [x] Ensure an old rotated link is invalid.
 
 ### 2.4 Make forced reauthentication explicit
 
@@ -349,20 +352,20 @@ Current behavior:
 
 Implementation:
 
-- [ ] Keep all-device revocation as the default.
-- [ ] Return a typed `reauthentication_required: true` field after operations
+- [x] Keep all-device revocation as the default.
+- [x] Return a typed `reauthentication_required: true` field after operations
   that revoke the caller.
-- [ ] Document that iOS clients must remove the refresh token from Keychain and
+- [x] Document that iOS clients must remove the refresh token from Keychain and
   clear the in-memory access token.
-- [ ] Update `docs/security.md`, `docs/api-routes.md`, and OpenAPI.
-- [ ] Do not add “keep this device signed in” without a separate product and
+- [x] Update `docs/security.md`, `docs/api-routes.md`, and OpenAPI.
+- [x] Do not add “keep this device signed in” without a separate product and
   threat-model decision.
 
 Tests:
 
-- [ ] Successful responses explicitly require reauthentication.
-- [ ] The caller's access and refresh tokens are rejected afterward.
-- [ ] Failed operations leave the caller's session active.
+- [x] Successful responses explicitly require reauthentication.
+- [x] The caller's access and refresh tokens are rejected afterward.
+- [x] Failed operations leave the caller's session active.
 
 ### 2.5 Apply the lock order to adjacent account workflows
 
@@ -371,26 +374,26 @@ account workflows must not retain the inverse order.
 
 Audit and update:
 
-- [ ] Email-change confirmation, which currently locks the pending email row
+- [x] Email-change confirmation, which currently locks the pending email row
   before the user. Use discovery lookup → user lock → pending-row lock and
   revalidation.
-- [ ] Refresh-token rotation, which currently uses `select_for_update()` with
+- [x] Refresh-token rotation, which currently uses `select_for_update()` with
   a joined user. Decode `user_id`, lock the user explicitly, then lock and
   validate the auth session.
-- [ ] User deactivation. Keep organization locks before the user, order all
+- [x] User deactivation. Keep organization locks before the user, order all
   affected organizations by primary key, then revoke dependent sessions after
   the user lock.
-- [ ] Membership role/removal operations. Preserve organization → membership
+- [x] Membership role/removal operations. Preserve organization → membership
   ordering and use deterministic ordering if a bulk form is introduced.
-- [ ] Account deletion and admin deletion. Preserve organization invariants
+- [x] Account deletion and admin deletion. Preserve organization invariants
   before user/dependent-row teardown.
 
 Tests:
 
-- [ ] PostgreSQL concurrency tests exercise password reset versus password
+- [x] PostgreSQL concurrency tests exercise password reset versus password
   change, email confirmation versus password change, refresh rotation versus
   session revocation, and deactivation of users sharing owned organizations.
-- [ ] Tests use bounded waits/timeouts so a deadlock fails clearly instead of
+- [x] Tests use bounded waits/timeouts so a deadlock fails clearly instead of
   hanging CI.
 
 ### 2.6 Remove dead `last_login` state
@@ -401,21 +404,21 @@ JWT login never updates `User.last_login`, while `AuthSession.created_at` and
 
 Implementation:
 
-- [ ] Set `last_login = None` on the custom user model.
-- [ ] Create the field-removal migration.
-- [ ] Remove `last_login` from admin fieldsets and readonly fields.
-- [ ] Verify Django admin/forms and token login do not assume the field exists.
-- [ ] Document `AuthSession.created_at` and `last_used_at` as the operational
+- [x] Set `last_login = None` on the custom user model.
+- [x] Create the field-removal migration.
+- [x] Remove `last_login` from admin fieldsets and readonly fields.
+- [x] Verify Django admin/forms and token login do not assume the field exists.
+- [x] Document `AuthSession.created_at` and `last_used_at` as the operational
   source for login/session activity.
 
 Acceptance criteria for Phase 2:
 
-- [ ] Credential writes are serialized and atomic.
-- [ ] Reset tokens have one coherent lifecycle.
-- [ ] Session UX is an explicit client contract.
-- [ ] All touched account workflows follow the canonical lock hierarchy.
-- [ ] `last_login` no longer exposes misleading dead state.
-- [ ] HTTP handlers no longer contain transaction orchestration.
+- [x] Credential writes are serialized and atomic.
+- [x] Reset tokens have one coherent lifecycle.
+- [x] Session UX is an explicit client contract.
+- [x] All touched account workflows follow the canonical lock hierarchy.
+- [x] `last_login` no longer exposes misleading dead state.
+- [x] HTTP handlers no longer contain transaction orchestration.
 
 ---
 
@@ -432,35 +435,35 @@ Current behavior in `organizations/scope.py:resolve_org_scope`:
 
 Recommended implementation:
 
-- [ ] For ordinary users, resolve membership and organization in one scoped
+- [x] For ordinary users, resolve membership and organization in one scoped
   query such as `Membership.objects.select_related("organization")` filtered
   by the user and `organization__slug`.
-- [ ] If no membership is found, return the same 404 status and error shape used
+- [x] If no membership is found, return the same 404 status and error shape used
   for an unknown slug.
-- [ ] Keep a separate platform-admin branch that resolves any organization.
-- [ ] Preserve audit logging for platform-admin cross-tenant access.
-- [ ] Ensure write/admin scope helpers inherit the same non-enumerating lookup.
-- [ ] Review polymorphic object resolution for consistent 404 behavior after
+- [x] Keep a separate platform-admin branch that resolves any organization.
+- [x] Preserve audit logging for platform-admin cross-tenant access.
+- [x] Ensure write/admin scope helpers inherit the same non-enumerating lookup.
+- [x] Review polymorphic object resolution for consistent 404 behavior after
   the canonical scope lookup succeeds.
 
 Tests:
 
-- [ ] Unknown slug and inaccessible existing slug have identical status and
+- [x] Unknown slug and inaccessible existing slug have identical status and
   response shape through the real API.
-- [ ] Query-count tests prove the ordinary-user resolver performs exactly one
+- [x] Query-count tests prove the ordinary-user resolver performs exactly one
   database query for an accessible organization.
-- [ ] Query-count tests prove unknown and inaccessible slugs each perform
+- [x] Query-count tests prove unknown and inaccessible slugs each perform
   exactly one database query.
-- [ ] A member still resolves their organization and role.
-- [ ] A platform administrator still resolves and audits cross-tenant access.
-- [ ] Cross-tenant contact, tag, image, and export routes do not reveal whether
+- [x] A member still resolves their organization and role.
+- [x] A platform administrator still resolves and audits cross-tenant access.
+- [x] Cross-tenant contact, tag, image, and export routes do not reveal whether
   the target organization exists.
 
 Acceptance criteria:
 
-- [ ] No authenticated tenant route distinguishes nonexistent from inaccessible
+- [x] No authenticated tenant route distinguishes nonexistent from inaccessible
   organization slugs.
-- [ ] The ordinary-user resolver performs exactly one query by resolving the
+- [x] The ordinary-user resolver performs exactly one query by resolving the
   membership and related organization together.
 
 ---
@@ -487,23 +490,23 @@ Target behavior:
 
 Implementation:
 
-- [ ] Add or retain one explicit helper returning `(raw_token, token_hash)`.
-- [ ] Update registration, email-change, and password-reset creation paths to
+- [x] Add or retain one explicit helper returning `(raw_token, token_hash)`.
+- [x] Update registration, email-change, and password-reset creation paths to
   supply the hash explicitly.
-- [ ] Remove `generate_hashed_token` defaults from all pending-token fields.
-- [ ] Remove `PendingTokenMixin.save()` and unused hash-shape detection.
-- [ ] Create the schema migration.
-- [ ] Keep unique constraints on stored hashes.
-- [ ] Ensure admin cannot create unusable pending records accidentally; pending
+- [x] Remove `generate_hashed_token` defaults from all pending-token fields.
+- [x] Remove `PendingTokenMixin.save()` and unused hash-shape detection.
+- [x] Create the schema migration.
+- [x] Keep unique constraints on stored hashes.
+- [x] Ensure admin cannot create unusable pending records accidentally; pending
   models can be read-only if manual creation has no valid use-case.
 
 Tests:
 
-- [ ] Raw tokens are never stored.
-- [ ] Every supported creation path persists the expected hash.
-- [ ] Model creation without a token fails explicitly rather than inventing an
+- [x] Raw tokens are never stored.
+- [x] Every supported creation path persists the expected hash.
+- [x] Model creation without a token fails explicitly rather than inventing an
   unreachable token.
-- [ ] Existing verification/reset/email-change flows remain single-use.
+- [x] Existing verification/reset/email-change flows remain single-use.
 
 ### User creation and personal organizations
 
@@ -545,26 +548,26 @@ of reusable policy functions no longer has a coherent existing home.
 
 Implementation:
 
-- [ ] Implement the non-enumerating canonical scope resolver from Phase 3.
-- [ ] Inventory production imports with `rg` before deletion.
-- [ ] Keep `OrgScope` as an immutable typed request context.
-- [ ] Move `is_platform_admin` into `scope.py`.
-- [ ] Remove access helpers used only by their own tests.
-- [ ] Remove `get_org_scope_for_request`/`get_org_for_request` wrappers in
+- [x] Implement the non-enumerating canonical scope resolver from Phase 3.
+- [x] Inventory production imports with `rg` before deletion.
+- [x] Keep `OrgScope` as an immutable typed request context.
+- [x] Move `is_platform_admin` into `scope.py`.
+- [x] Remove access helpers used only by their own tests.
+- [x] Remove `get_org_scope_for_request`/`get_org_for_request` wrappers in
   images and tags.
-- [ ] Remove unused `get_org_or_404` and `resolve_org_for_request` variants.
-- [ ] Keep polymorphic model allowlisting and object-to-org verification
+- [x] Remove unused `get_org_or_404` and `resolve_org_for_request` variants.
+- [x] Keep polymorphic model allowlisting and object-to-org verification
   explicit.
-- [ ] Update tests to target the canonical resolver.
-- [ ] Delete tests whose only purpose was preserving dead compatibility APIs.
+- [x] Update tests to target the canonical resolver.
+- [x] Delete tests whose only purpose was preserving dead compatibility APIs.
 
 Acceptance criteria:
 
-- [ ] There is one obvious way to resolve organization scope.
-- [ ] There is one obvious place for tenant policy decisions.
-- [ ] Platform-admin access remains audited.
-- [ ] Cross-tenant resources remain inaccessible and non-enumerable.
-- [ ] OpenAPI is unchanged.
+- [x] There is one obvious way to resolve organization scope.
+- [x] There is one obvious place for tenant policy decisions.
+- [x] Platform-admin access remains audited.
+- [x] Cross-tenant resources remain inaccessible and non-enumerable.
+- [x] OpenAPI is unchanged.
 
 ---
 
@@ -583,16 +586,16 @@ This is meaningful but limited checking—not no checking at all.
 
 Incremental implementation:
 
-- [ ] Add `DjangoApiStarter` to mypy's checked packages.
-- [ ] Enable `check_untyped_defs = True` globally.
-- [ ] Fix resulting errors rather than masking whole modules.
-- [ ] Type all new account operations and the canonical scope resolver.
-- [ ] Type public image/tag operations touched by later phases.
-- [ ] Add narrow module overrides with `disallow_untyped_defs = True` after a
+- [x] Add `DjangoApiStarter` to mypy's checked packages.
+- [x] Enable `check_untyped_defs = True` globally.
+- [x] Fix resulting errors rather than masking whole modules.
+- [x] Type all new account operations and the canonical scope resolver.
+- [x] Type public image/tag operations touched by later phases.
+- [x] Add narrow module overrides with `disallow_untyped_defs = True` after a
   module has been cleaned.
-- [ ] Expand strictness app by app.
-- [ ] Avoid replacing useful types with broad `Any` solely to make CI pass.
-- [ ] Keep migrations excluded; keep tests excluded unless checking them becomes
+- [x] Expand strictness app by app.
+- [x] Avoid replacing useful types with broad `Any` solely to make CI pass.
+- [x] Keep migrations excluded; keep tests excluded unless checking them becomes
   clearly valuable.
 
 Suggested order:
@@ -607,10 +610,10 @@ Suggested order:
 
 Acceptance criteria:
 
-- [ ] Every new public operation has typed inputs and output.
-- [ ] Every untyped function body is checked.
-- [ ] The project/bootstrap package is in scope.
-- [ ] CI's “mypy passes” claim accurately reflects those settings.
+- [x] Every new public operation has typed inputs and output.
+- [x] Every untyped function body is checked.
+- [x] The project/bootstrap package is in scope.
+- [x] CI's “mypy passes” claim accurately reflects those settings.
 
 ---
 
@@ -630,18 +633,18 @@ Current gap:
 
 Implementation:
 
-- [ ] Keep fast direct tests after moving logic into operations.
-- [ ] Add TestClient tests for every permission-sensitive route family:
+- [x] Keep fast direct tests after moving logic into operations.
+- [x] Add TestClient tests for every permission-sensitive route family:
   contacts, tags, images, exports, and organization scope.
-- [ ] Prove missing, malformed, expired, and revoked JWT behavior through the
+- [x] Prove missing, malformed, expired, and revoked JWT behavior through the
   router.
-- [ ] Prove members, outsiders, admins, owners, and platform administrators see
+- [x] Prove members, outsiders, admins, owners, and platform administrators see
   the intended status and error shapes.
-- [ ] Test idempotency headers through real JSON requests.
-- [ ] Test idempotent image upload through real multipart requests.
-- [ ] Test reused keys with changed bodies and changed file bytes.
-- [ ] Exercise actual throttle decorators for representative routes.
-- [ ] Move clearly misplaced domain tests from `DjangoApiStarter/tests` into
+- [x] Test idempotency headers through real JSON requests.
+- [x] Test idempotent image upload through real multipart requests.
+- [x] Test reused keys with changed bodies and changed file bytes.
+- [x] Exercise actual throttle decorators for representative routes.
+- [x] Move clearly misplaced domain tests from `DjangoApiStarter/tests` into
   their owning app when touching them.
 
 Do not split a large test file solely because of its line count. Split only
@@ -649,10 +652,10 @@ when distinct fixtures or responsibilities make navigation materially easier.
 
 Acceptance criteria:
 
-- [ ] Every security-critical decorator stack has routed coverage.
-- [ ] Direct endpoint tests are no longer the only proof of permission or
+- [x] Every security-critical decorator stack has routed coverage.
+- [x] Direct endpoint tests are no longer the only proof of permission or
   idempotency behavior.
-- [ ] Test location communicates domain ownership where practical.
+- [x] Test location communicates domain ownership where practical.
 
 ---
 
@@ -673,26 +676,26 @@ protect integrity, but operators may receive a raw database failure.
 
 Implementation and proof:
 
-- [ ] Add PostgreSQL integration coverage for `user.delete()` with a personal
+- [x] Add PostgreSQL integration coverage for `user.delete()` with a personal
   organization.
-- [ ] Add PostgreSQL coverage for `User.objects.filter(...).delete()`.
-- [ ] Exercise `UserAdmin.delete_model` and `delete_queryset` behavior.
-- [ ] Prove personal organizations and avatar files follow their intended
+- [x] Add PostgreSQL coverage for `User.objects.filter(...).delete()`.
+- [x] Exercise `UserAdmin.delete_model` and `delete_queryset` behavior.
+- [x] Prove personal organizations and avatar files follow their intended
   lifecycle.
-- [ ] Prove deletion of a last active group owner fails without corrupting
+- [x] Prove deletion of a last active group owner fails without corrupting
   data.
-- [ ] Disable bulk user deletion unless its multi-user ownership semantics are
+- [x] Disable bulk user deletion unless its multi-user ownership semantics are
   deliberately implemented.
-- [ ] Route supported single-user admin deletion through
+- [x] Route supported single-user admin deletion through
   `delete_user_account` or an equivalent operation so the operator receives a
   controlled explanation.
-- [ ] Do not weaken the database trigger; it remains the final invariant.
+- [x] Do not weaken the database trigger; it remains the final invariant.
 
 Acceptance criteria:
 
-- [ ] Personal-owner deletion succeeds on PostgreSQL through supported paths.
-- [ ] Last-group-owner deletion fails cleanly before a raw constraint error.
-- [ ] Admin actions cannot bypass ownership invariants.
+- [x] Personal-owner deletion succeeds on PostgreSQL through supported paths.
+- [x] Last-group-owner deletion fails cleanly before a raw constraint error.
+- [x] Admin actions cannot bypass ownership invariants.
 
 ---
 
@@ -898,30 +901,31 @@ that motivates them. Every commit should leave the full suite green.
 
 ## Final validation checklist
 
-- [ ] Full pytest suite passes.
-- [ ] PostgreSQL integration tests for constraints, row locks, triggers, and
+- [x] Full pytest suite passes.
+- [x] PostgreSQL integration tests for constraints, row locks, triggers, and
   concurrency pass.
-- [ ] Routed tests cover authentication, tenant isolation, throttling,
+- [x] Routed tests cover authentication, tenant isolation, throttling,
   idempotency, and multipart parsing.
-- [ ] mypy passes with `DjangoApiStarter` included and
+- [x] mypy passes with `DjangoApiStarter` included and
   `check_untyped_defs = True`.
-- [ ] Black, isort, Flake8, and `git diff --check` pass.
-- [ ] `manage.py check` passes under test and production settings.
-- [ ] `makemigrations --check --dry-run` reports no missing migrations.
-- [ ] Production Compose renders successfully with representative environment
+- [x] Black, isort, the CI Flake8 fatal-error selection, and
+  `git diff --check` pass.
+- [x] `manage.py check` passes under test and production settings.
+- [x] `makemigrations --check --dry-run` reports no missing migrations.
+- [x] Production Compose renders successfully with representative environment
   variables.
-- [ ] OpenAPI is regenerated and reviewed for intentional changes only.
-- [ ] Image storage failure and DB rollback scenarios have focused tests.
-- [ ] Credential concurrency and token single-use behavior have PostgreSQL
+- [x] OpenAPI is regenerated and reviewed for intentional changes only.
+- [x] Image storage failure and DB rollback scenarios have focused tests.
+- [x] Credential concurrency and token single-use behavior have PostgreSQL
   tests.
-- [ ] Multi-row account and organization workflows follow the documented
+- [x] Multi-row account and organization workflows follow the documented
   organization → user → dependent-row lock hierarchy.
-- [ ] Unknown and inaccessible organization slugs have identical routed
+- [x] Unknown and inaccessible organization slugs have identical routed
   responses.
-- [ ] The ordinary-user organization resolver uses exactly one query for
+- [x] The ordinary-user organization resolver uses exactly one query for
   accessible, inaccessible, and unknown slugs.
-- [ ] `last_login` is removed from the model, database schema, and admin.
-- [ ] Admin direct and bulk deletion behavior is explicitly tested.
-- [ ] Environment, security, and operations documentation reflects new limits
+- [x] `last_login` is removed from the model, database schema, and admin.
+- [x] Admin direct and bulk deletion behavior is explicitly tested.
+- [x] Environment, security, and operations documentation reflects new limits
   and client reauthentication behavior.
-- [ ] This checklist records any deliberately deferred or rejected item.
+- [x] This checklist records any deliberately deferred or rejected item.

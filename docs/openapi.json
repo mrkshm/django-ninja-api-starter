@@ -1364,6 +1364,24 @@
         "title": "PolymorphicImageRelationOut",
         "type": "object"
       },
+      "ReauthenticationResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "reauthentication_required": {
+            "default": true,
+            "title": "Reauthentication Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ReauthenticationResponse",
+        "type": "object"
+      },
       "RegisterSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1959,6 +1977,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2049,6 +2074,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2100,6 +2132,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2111,7 +2150,7 @@
     },
     "/api/v1/auth/password-reset/request": {
       "post": {
-        "description": "Initiate password reset: send reset email if user exists (always return generic response).",
+        "description": "Send a reset email when the account exists; always return a generic response.",
         "operationId": "accounts_api_request_password_reset",
         "parameters": [],
         "requestBody": {

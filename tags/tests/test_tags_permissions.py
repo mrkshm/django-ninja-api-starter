@@ -1,11 +1,8 @@
-import io
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
-from organizations.models import Organization, Membership
-from DjangoApiStarter.api import api  # ensure API loads
-from django.core.files.uploadedfile import SimpleUploadedFile
-from PIL import Image as PilImage
+
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 
@@ -38,7 +35,7 @@ def get_access_token(email, password):
 def test_list_tags_requires_membership():
     # org exists but user is not a member
     org = Organization.objects.create(name="TagsOrg", slug="tagsorg")
-    user = User.objects.create_user(
+    User.objects.create_user(
         email="tags1@example.com", password="pw", email_verified=True
     )
     client = Client()
@@ -46,11 +43,11 @@ def test_list_tags_requires_membership():
     resp = client.get(
         f"/api/v1/orgs/{org.slug}/tags/", HTTP_AUTHORIZATION=f"Bearer {access}"
     )
-    assert resp.status_code in (401, 403)
+    assert resp.status_code == 404
 
 
 @pytest.mark.django_db
-def test_assign_tags_wrong_object_org_forbidden():
+def test_assign_tags_wrong_object_org_is_hidden():
     # User is member of org1, but tries to assign tags to an object belonging to org2
     org1 = Organization.objects.create(name="OrgA", slug="orga")
     org2 = Organization.objects.create(name="OrgB", slug="orgb")
@@ -72,11 +69,11 @@ def test_assign_tags_wrong_object_org_forbidden():
         content_type="application/json",
         HTTP_AUTHORIZATION=f"Bearer {access}",
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 @pytest.mark.django_db
-def test_unassign_by_slug_wrong_object_forbidden():
+def test_unassign_by_slug_wrong_object_is_hidden():
     org1 = Organization.objects.create(name="Org1", slug="org1tags")
     org2 = Organization.objects.create(name="Org2", slug="org2tags")
     user = User.objects.create_user(
@@ -91,4 +88,4 @@ def test_unassign_by_slug_wrong_object_forbidden():
     # try to unassign from an object in a different org
     url = f"/api/v1/orgs/{org1.slug}/tags/{app_label}/{model}/{org2.id}/some-slug/"
     resp = client.delete(url, HTTP_AUTHORIZATION=f"Bearer {access}")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
