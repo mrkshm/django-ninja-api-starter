@@ -5,6 +5,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from ninja.errors import HttpError
 
 from contacts.models import Contact
 from images.api import (
@@ -67,9 +68,9 @@ class TestIdempotencyBulk:
         req2 = self._req("POST", path, "key-1")
         req2.FILES = SimpleNamespace(getlist=lambda name: files)
 
-        def fake_upload(file, organization, creator_id=None):
+        def fake_upload(data, organization, original_name, creator_id=None):
             return Image.objects.create(
-                file=f"private/images/{file.name}",
+                file=f"private/images/{original_name}",
                 organization=organization,
                 creator_id=creator_id,
             )
@@ -103,9 +104,9 @@ class TestIdempotencyBulk:
         req2 = self._req("POST", path, "key-B")
         req2.FILES = SimpleNamespace(getlist=lambda name: files)
 
-        def fake_upload(file, organization, creator_id=None):
+        def fake_upload(data, organization, original_name, creator_id=None):
             return Image.objects.create(
-                file=f"private/images/{file.name}",
+                file=f"private/images/{original_name}",
                 organization=organization,
                 creator_id=creator_id,
             )
@@ -128,6 +129,37 @@ class TestIdempotencyBulk:
             second_ids = {r.id for r in second}
             assert first_ids.isdisjoint(second_ids)
 
+    def test_bulk_upload_same_metadata_different_bytes_conflicts(self):
+        first_files = [SimpleUploadedFile("a.jpg", b"AAAA", content_type="image/jpeg")]
+        changed_files = [
+            SimpleUploadedFile("a.jpg", b"BBBB", content_type="image/jpeg")
+        ]
+        path = "/api/v1/orgs/acme/bulk-upload/"
+        req1 = self._req("POST", path, "content-key")
+        req1.FILES = SimpleNamespace(getlist=lambda name: first_files)
+        req2 = self._req("POST", path, "content-key")
+        req2.FILES = SimpleNamespace(getlist=lambda name: changed_files)
+
+        def fake_upload(data, organization, original_name, creator_id=None):
+            return Image.objects.create(
+                file=f"private/images/{original_name}",
+                organization=organization,
+                creator_id=creator_id,
+            )
+
+        with (
+            patch(
+                "images.api.uploads.get_org_scope_for_request",
+                return_value=ScopeStub(org=self.org, user=self.user),
+            ),
+            patch("images.api.uploads.upload_image_file", side_effect=fake_upload),
+        ):
+            bulk_upload_images(req1, self.org.slug)
+            with pytest.raises(HttpError) as conflict:
+                bulk_upload_images(req2, self.org.slug)
+
+        assert conflict.value.status_code == 409
+
     def test_bulk_attach_idempotent_same_key(self):
         # Prepare two images
         img1 = Image.objects.create(
@@ -137,7 +169,10 @@ class TestIdempotencyBulk:
             file="i/2.jpg", organization=self.org, creator=self.user
         )
         data = BulkImageIdsIn(image_ids=[img1.id, img2.id])
-        path = f"/api/v1/orgs/{self.org.slug}/images/contacts/contact/{self.contact.id}/bulk_attach/"
+        path = (
+            f"/api/v1/orgs/{self.org.slug}/images/contacts/contact/"
+            f"{self.contact.id}/bulk_attach/"
+        )
         req1 = self._req("POST", path, "key-2")
         req2 = self._req("POST", path, "key-2")
         first = bulk_attach_images(
@@ -157,7 +192,10 @@ class TestIdempotencyBulk:
         img2 = Image.objects.create(
             file="i/2.jpg", organization=self.org, creator=self.user
         )
-        attach_path = f"/api/v1/orgs/{self.org.slug}/images/contacts/contact/{self.contact.id}/bulk_attach/"
+        attach_path = (
+            f"/api/v1/orgs/{self.org.slug}/images/contacts/contact/"
+            f"{self.contact.id}/bulk_attach/"
+        )
         req_attach = self._req("POST", attach_path, "key-3a")
         bulk_attach_images(
             req_attach,
@@ -168,7 +206,10 @@ class TestIdempotencyBulk:
             BulkImageIdsIn(image_ids=[img1.id, img2.id]),
         )
         # Now detach twice with same key
-        detach_path = f"/api/v1/orgs/{self.org.slug}/images/contacts/contact/{self.contact.id}/bulk_detach/"
+        detach_path = (
+            f"/api/v1/orgs/{self.org.slug}/images/contacts/contact/"
+            f"{self.contact.id}/bulk_detach/"
+        )
         req1 = self._req("POST", detach_path, "key-3b")
         req2 = self._req("POST", detach_path, "key-3b")
         first = bulk_detach_images(

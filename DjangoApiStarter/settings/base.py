@@ -208,6 +208,12 @@ IMAGE_SHARE_LINK_DEFAULT_TTL_SECONDS = env.int(
     default=7 * 24 * 60 * 60,
 )
 UPLOAD_IMAGE_MAX_BYTES = env.int("UPLOAD_IMAGE_MAX_BYTES", default=10 * 1024 * 1024)
+UPLOAD_IMAGE_MAX_FILES_PER_REQUEST = env.int(
+    "UPLOAD_IMAGE_MAX_FILES_PER_REQUEST", default=20
+)
+UPLOAD_IMAGE_MAX_TOTAL_BYTES = env.int(
+    "UPLOAD_IMAGE_MAX_TOTAL_BYTES", default=50 * 1024 * 1024
+)
 UPLOAD_IMAGE_MAX_PIXELS = env.int("UPLOAD_IMAGE_MAX_PIXELS", default=40_000_000)
 UPLOAD_IMAGE_MAX_DIMENSION = env.int("UPLOAD_IMAGE_MAX_DIMENSION", default=12_000)
 EXPORT_RETENTION_DAYS = env.int("EXPORT_RETENTION_DAYS", default=7)
@@ -218,7 +224,10 @@ EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "UserAttributeSimilarityValidator"
+        )
     },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},

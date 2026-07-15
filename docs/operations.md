@@ -54,8 +54,9 @@ idempotent. Never replay a task by editing broker payloads containing user data.
 Bulk image idempotency responses are retained in PostgreSQL for 24 hours and
 expired daily by the maintenance queue. Redis loss does not remove them. A
 rolled-back upload can still leave an unreferenced object because object storage
-is not transactional; use `manage.py audit_media` to find and reconcile those
-objects.
+is not transactional; upload keys contain a logged operation UUID, and
+`manage.py audit_media` finds and reconciles unreferenced objects
+after the configured minimum age.
 
 ## Incident runbooks
 

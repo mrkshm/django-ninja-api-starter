@@ -1,20 +1,23 @@
+import logging
 import mimetypes
 import os
-import logging
-import secrets
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.utils import timezone
 
 from core.utils.image import InvalidImageContent, normalize_image_bytes, resize_images
-from core.utils.storage import generate_private_presigned_storage_url
-from core.utils.storage import delete_storage_keys, upload_to_storage
+from core.utils.storage import (
+    delete_storage_keys,
+    generate_private_presigned_storage_url,
+    upload_to_storage,
+)
 from images.models import Image
-from images.serializers import build_variant_keys
 from images.schemas import ImageSignedUrls, ImageSignedUrlsOut
+from images.serializers import build_variant_keys
 
 DEFAULT_SIGNED_URL_TTL_SECONDS = 15 * 60
 logger = logging.getLogger(__name__)
@@ -41,9 +44,13 @@ def image_variant_keys(image: Image) -> dict[str, str]:
     return build_variant_keys(file_name).model_dump()
 
 
-def upload_image_file(file, organization, *, creator_id=None) -> Image:
-    original_name = file.name or "image"
-    data = file.read()
+def upload_image_file(
+    data: bytes,
+    organization,
+    *,
+    original_name: str = "image",
+    creator_id=None,
+) -> Image:
     try:
         normalized = normalize_image_bytes(data)
         variants_bytes = resize_images(normalized)
@@ -53,8 +60,8 @@ def upload_image_file(file, organization, *, creator_id=None) -> Image:
         logger.exception("images:processing_failed org=%s", organization.id)
         raise ImageUploadFailed("Image processing failed.") from exc
 
-    token = secrets.token_hex(24)
-    filename = f"private/images/{organization.pk}/{token}.webp"
+    operation_id = uuid.uuid4()
+    filename = f"private/images/{organization.pk}/{operation_id}.webp"
     base, _ext = os.path.splitext(filename)
     uploaded_keys: list[str] = []
     try:
@@ -78,7 +85,11 @@ def upload_image_file(file, organization, *, creator_id=None) -> Image:
             raise
     except Exception as exc:
         delete_storage_keys(uploaded_keys)
-        logger.exception("images:storage_write_failed org=%s", organization.id)
+        logger.exception(
+            "images:storage_write_failed org=%s operation=%s",
+            organization.id,
+            operation_id,
+        )
         raise ImageUploadFailed("Image upload failed.") from exc
 
 

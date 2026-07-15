@@ -1,11 +1,12 @@
-import pytest
-from django.test import override_settings
 from types import SimpleNamespace
-from django.core.files.uploadedfile import SimpleUploadedFile
-from ninja.errors import HttpError
 from unittest.mock import patch
 
-from images.api import upload_image, bulk_upload_images
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from ninja.errors import HttpError
+
+from images.api import bulk_upload_images, upload_image
 
 
 class ScopeStub(SimpleNamespace):
@@ -55,8 +56,8 @@ class TestImageUploadValidations:
         assert "Invalid file type" in exc.value.message
 
     @override_settings(UPLOAD_IMAGE_MAX_BYTES=6)
-    def test_bulk_upload_marks_oversize_as_error(self):
-        # Create two files: one oversize (>6 bytes), one small but invalid MIME (<=6 bytes)
+    def test_bulk_upload_rejects_oversize_before_processing(self):
+        # One file is oversized; the other is small but has an invalid MIME type.
         oversize = SimpleUploadedFile("big.jpg", b"x" * 7, content_type="image/jpeg")
         bad_mime = SimpleUploadedFile(
             "doc.pdf", b"abcd", content_type="application/pdf"
@@ -68,10 +69,41 @@ class TestImageUploadValidations:
             "images.api.uploads.get_org_scope_for_request",
             return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
         ):
-            # Expect responses array with error entries, no exceptions
-            resp_list = bulk_upload_images(req, "acme")
-            assert len(resp_list) == 2
-            assert all(r.status == "error" for r in resp_list)
-            errors = [r.error for r in resp_list]
-            assert "File too large" in errors[0]
-            assert "Invalid file type" in errors[1]
+            with pytest.raises(HttpError) as exc:
+                bulk_upload_images(req, "acme")
+        assert exc.value.status_code == 400
+        assert "per-file size" in exc.value.message
+
+    @override_settings(UPLOAD_IMAGE_MAX_FILES_PER_REQUEST=1)
+    def test_bulk_upload_rejects_excessive_file_count(self):
+        files = [
+            SimpleUploadedFile("a.jpg", b"a", content_type="image/jpeg"),
+            SimpleUploadedFile("b.jpg", b"b", content_type="image/jpeg"),
+        ]
+        req = self._req()
+        req.FILES = SimpleNamespace(getlist=lambda name: files)
+        with patch(
+            "images.api.uploads.get_org_scope_for_request",
+            return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
+        ):
+            with pytest.raises(HttpError) as exc:
+                bulk_upload_images(req, "acme")
+        assert exc.value.status_code == 400
+        assert "at most 1" in exc.value.message
+
+    @override_settings(UPLOAD_IMAGE_MAX_TOTAL_BYTES=5)
+    def test_bulk_upload_rejects_declared_aggregate_size(self):
+        files = [
+            SimpleUploadedFile("a.jpg", b"aaa", content_type="image/jpeg"),
+            SimpleUploadedFile("b.jpg", b"bbb", content_type="image/jpeg"),
+        ]
+        req = self._req()
+        req.FILES = SimpleNamespace(getlist=lambda name: files)
+        with patch(
+            "images.api.uploads.get_org_scope_for_request",
+            return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
+        ):
+            with pytest.raises(HttpError) as exc:
+                bulk_upload_images(req, "acme")
+        assert exc.value.status_code == 400
+        assert "aggregate size" in exc.value.message

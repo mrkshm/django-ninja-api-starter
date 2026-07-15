@@ -49,8 +49,12 @@ def _identity_hash(user_id: Any, method: str, path: str, client_key: str) -> str
 def _request_fingerprint(request) -> str:
     try:
         body = getattr(request, "body", b"") or b""
-    except Exception:
-        body = b""
+    except Exception as exc:
+        raise HttpError(
+            400,
+            "Request body cannot be fingerprinted after multipart parsing; "
+            "provide an explicit fingerprint.",
+        ) from exc
     if isinstance(body, str):
         body = body.encode()
     content_type = str(getattr(request, "content_type", "") or "")
@@ -83,7 +87,9 @@ def _request_fingerprint(request) -> str:
     return digest.hexdigest()
 
 
-def _request_identity(request) -> RequestIdentity | None:
+def _request_identity(
+    request, *, request_fingerprint: str | None = None
+) -> RequestIdentity | None:
     client_key = _client_key(request)
     if client_key is None:
         return None
@@ -92,7 +98,11 @@ def _request_identity(request) -> RequestIdentity | None:
     path = str(request.path)
     return RequestIdentity(
         identity_hash=_identity_hash(user.id, method, path, client_key),
-        fingerprint=_request_fingerprint(request),
+        fingerprint=(
+            request_fingerprint
+            if request_fingerprint is not None
+            else _request_fingerprint(request)
+        ),
         user=user,
         method=method,
         path=path,
@@ -139,9 +149,11 @@ def _operation_lock(identity_hash: str) -> Iterator[None]:
 def run_idempotently(
     request,
     operation: Callable[[], tuple[int, Any]],
+    *,
+    request_fingerprint: str | None = None,
 ) -> tuple[int, Any]:
     """Execute and persist a database mutation and its response atomically."""
-    identity = _request_identity(request)
+    identity = _request_identity(request, request_fingerprint=request_fingerprint)
     if identity is None:
         with transaction.atomic():
             return operation()
