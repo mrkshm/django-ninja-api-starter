@@ -2,7 +2,13 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db import transaction
 
-from .models import AuthSession, PendingEmailChange, PendingPasswordReset, User
+from .models import (
+    AuthSession,
+    PendingEmailChange,
+    PendingPasswordReset,
+    PendingRegistration,
+    User,
+)
 from .services import set_user_active_status
 
 # Register your models here.
@@ -103,7 +109,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(PendingEmailChange)
 class PendingEmailChangeAdmin(admin.ModelAdmin):
-    list_display = ("user", "new_email", "created_at", "expires_at")
+    list_display = ("user", "new_email", "auth_version", "created_at", "expires_at")
     search_fields = ("user__email", "new_email")
     list_filter = ("created_at", "expires_at")
 
@@ -112,6 +118,13 @@ class PendingEmailChangeAdmin(admin.ModelAdmin):
 class PendingPasswordResetAdmin(admin.ModelAdmin):
     list_display = ("user", "token", "created_at", "expires_at")
     search_fields = ("user__email", "token")
+    list_filter = ("created_at", "expires_at")
+
+
+@admin.register(PendingRegistration)
+class PendingRegistrationAdmin(admin.ModelAdmin):
+    list_display = ("email", "created_at", "expires_at")
+    search_fields = ("email",)
     list_filter = ("created_at", "expires_at")
 
 

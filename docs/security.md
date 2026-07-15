@@ -31,6 +31,19 @@ Verification, email-change, and password-reset messages place tokens in URL
 fragments so normal server access logs do not receive them. The client submits
 the token to a POST body.
 
+Registration proves email ownership before creating a user: `/auth/register/`
+accepts only the email and creates a short-lived pending identity. The client
+submits the verification token together with the chosen password to
+`/auth/verify-registration`; only then are the user and personal organization
+created. Repeated requests rotate the pending token, and expired pending rows
+can be deleted without leaving orphan accounts.
+
+Requesting an email change requires the current password. The existing address
+receives a security notice, the new address receives the verification link, and
+both addresses are notified after completion. Pending changes are bound to the
+user's `auth_version`, so changing/resetting the password or otherwise revoking
+all sessions invalidates an outstanding email-change token.
+
 ## Tenant roles
 
 - `member`: view and CRUD ordinary contacts, tags, private images, and relations.

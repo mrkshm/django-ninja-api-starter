@@ -21,11 +21,12 @@ def test_cleanup_expired_tokens():
     email_expired = PendingEmailChange.objects.create(
         user=user,
         new_email="new@example.com",
+        auth_version=user.auth_version,
         token="em1",
         expires_at=now - timezone.timedelta(hours=1),
     )
     registration_expired = PendingRegistration.objects.create(
-        user=user,
+        email="pending@example.com",
         token="reg1",
         expires_at=now - timezone.timedelta(hours=1),
     )
@@ -38,9 +39,11 @@ def test_cleanup_expired_tokens():
     pw_valid = PendingPasswordReset.objects.create(
         user=user, token="pw2", expires_at=now + timezone.timedelta(hours=1)
     )
+    other_user = User.objects.create_user(email="other@example.com", password="pw")
     email_valid = PendingEmailChange.objects.create(
-        user=user,
+        user=other_user,
         new_email="new2@example.com",
+        auth_version=other_user.auth_version,
         token="em2",
         expires_at=now + timezone.timedelta(hours=1),
     )

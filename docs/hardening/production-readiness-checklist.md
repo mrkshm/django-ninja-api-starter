@@ -50,6 +50,10 @@ deployment target.
 - [x] Account-existence responses are generic where enumeration is relevant.
 - [x] Verification/reset/email-change tokens are hashed at rest, single-use,
   expiring, delivered asynchronously, and submitted by POST body.
+- [x] Registration creates only a pending email identity; the user and personal
+  organization are created after token verification and password validation.
+- [x] Email changes require the current password, notify the old and new
+  addresses, bind to `auth_version`, and revoke all sessions on completion.
 - [x] Native Keychain guidance and the required separate browser cookie/CSRF
   design are documented.
 

@@ -1,157 +1,164 @@
+from datetime import timedelta
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+
 from accounts.models import PendingRegistration
 from accounts.tokens import hash_token
-from django.utils import timezone
-import datetime
+from organizations.models import Organization
 
 User = get_user_model()
 
 
 @pytest.mark.django_db
-def test_register_creates_unverified_user(api_client):
-    # Arrange
+def test_register_creates_only_pending_registration(api_client):
     email = "newuser@example.com"
-    password = "securepassword123"
 
-    # Act
-    response = api_client.post(
-        "/auth/register/", json={"email": email, "password": password}
-    )
+    response = api_client.post("/auth/register/", json={"email": email})
 
-    # Assert
     assert response.status_code == 200
-    assert "detail" in response.json()
-    assert "Please check your email" in response.json()["detail"]
-
-    # Verify user was created with email_verified=False
-    user = User.objects.get(email=email)
-    assert user.email_verified is False
-
-    # Verify PendingRegistration was created
-    pending = PendingRegistration.objects.get(user=user)
-    assert pending is not None
-    assert pending.token is not None
+    assert "verification email" in response.json()["detail"]
+    assert not User.objects.filter(email=email).exists()
+    assert not Organization.objects.filter(creator__email=email).exists()
+    pending = PendingRegistration.objects.get(email=email)
     assert len(pending.token) == 64
 
 
 @pytest.mark.django_db
-def test_verify_registration_activates_user(api_client):
-    # Arrange
-    email = "verifyuser@example.com"
-    password = "securepassword123"
-    user = User.objects.create_user(
-        email=email, password=password, email_verified=False
-    )
-
-    # Create a pending registration with a known token
+def test_verify_registration_creates_verified_user_and_personal_org(api_client):
     token = "test_verification_token"
-    expires_at = timezone.now() + datetime.timedelta(hours=24)
-    pending = PendingRegistration.objects.create(
-        user=user, token=hash_token(token), expires_at=expires_at
+    PendingRegistration.objects.create(
+        email="verifyuser@example.com",
+        token=hash_token(token),
+        expires_at=timezone.now() + timedelta(hours=1),
     )
 
-    # Act
-    response = api_client.post("/auth/verify-registration", json={"token": token})
+    response = api_client.post(
+        "/auth/verify-registration",
+        json={"token": token, "password": "securepassword123", "device_name": "iPhone"},
+    )
 
-    # Assert
     assert response.status_code == 200
     assert "access" in response.json()
     assert "refresh" in response.json()
-
-    # Verify user is now marked as verified
-    user.refresh_from_db()
+    user = User.objects.get(email="verifyuser@example.com")
     assert user.email_verified is True
-
-    # Verify pending registration is deleted
-    with pytest.raises(PendingRegistration.DoesNotExist):
-        PendingRegistration.objects.get(token=hash_token(token))
+    assert user.check_password("securepassword123")
+    assert Organization.objects.filter(type="personal", creator=user).exists()
+    assert not PendingRegistration.objects.filter(email=user.email).exists()
+    assert user.auth_sessions.get().device_name == "iPhone"
 
 
 @pytest.mark.django_db
-def test_verify_registration_with_expired_token(api_client):
-    # Arrange
-    email = "expireduser@example.com"
-    password = "securepassword123"
-    user = User.objects.create_user(
-        email=email, password=password, email_verified=False
-    )
-
-    # Create an expired pending registration
-    token = "expired_token"
-    expires_at = timezone.now() - datetime.timedelta(hours=1)  # 1 hour in the past
+def test_verification_rejects_weak_password_without_consuming_token(api_client):
+    token = "weak_password_token"
     pending = PendingRegistration.objects.create(
-        user=user, token=hash_token(token), expires_at=expires_at
+        email="weak@example.com",
+        token=hash_token(token),
+        expires_at=timezone.now() + timedelta(hours=1),
     )
 
-    # Act
-    response = api_client.post("/auth/verify-registration", json={"token": token})
+    response = api_client.post(
+        "/auth/verify-registration",
+        json={"token": token, "password": "password"},
+    )
 
-    # Assert
     assert response.status_code == 400
-    assert "expired" in response.json()["detail"]
+    assert PendingRegistration.objects.filter(pk=pending.pk).exists()
+    assert not User.objects.filter(email=pending.email).exists()
 
-    # Verify user is still not verified
-    user.refresh_from_db()
-    assert user.email_verified is False
+
+@pytest.mark.django_db
+def test_verify_registration_with_expired_token_deletes_pending(api_client):
+    token = "expired_token"
+    pending = PendingRegistration.objects.create(
+        email="expireduser@example.com",
+        token=hash_token(token),
+        expires_at=timezone.now() - timedelta(hours=1),
+    )
+
+    response = api_client.post(
+        "/auth/verify-registration",
+        json={"token": token, "password": "securepassword123"},
+    )
+
+    assert response.status_code == 400
+    assert "expired" in response.json()["detail"].lower()
+    assert not PendingRegistration.objects.filter(pk=pending.pk).exists()
+    assert not User.objects.filter(email=pending.email).exists()
+
+
+@pytest.mark.django_db
+def test_register_existing_email_is_generic_and_sends_nothing(api_client):
+    User.objects.create_user(
+        email="existing@example.com", password="securepassword123", email_verified=True
+    )
+
+    with patch("accounts.api.send_verification_email") as send:
+        response = api_client.post(
+            "/auth/register/", json={"email": "Existing@Example.com"}
+        )
+
+    assert response.status_code == 200
+    assert "verification email" in response.json()["detail"]
+    send.assert_not_called()
+    assert not PendingRegistration.objects.filter(
+        email__iexact="existing@example.com"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_repeated_registration_rotates_one_pending_record(api_client):
+    email = "rotate@example.com"
+    with patch("accounts.api.send_verification_email"):
+        first = api_client.post("/auth/register/", json={"email": email})
+        first_token_hash = PendingRegistration.objects.get(email=email).token
+        second = api_client.post("/auth/register/", json={"email": email})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert PendingRegistration.objects.filter(email=email).count() == 1
+    assert PendingRegistration.objects.get(email=email).token != first_token_hash
+
+
+@pytest.mark.django_db
+def test_resend_verification_creates_pending_without_user(api_client):
+    email = "resenduser@example.com"
+
+    response = api_client.post("/auth/resend-verification", json={"email": email})
+
+    assert response.status_code == 200
+    assert PendingRegistration.objects.filter(email=email).exists()
+    assert not User.objects.filter(email=email).exists()
 
 
 @pytest.mark.django_db
 def test_login_with_unverified_user(settings, api_client):
-    # Override the global setting for this specific test
     settings.REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN = True
-
-    # Arrange
     email = "unverifieduser@example.com"
     password = "securepassword123"
     User.objects.create_user(email=email, password=password, email_verified=False)
 
-    # Act
     response = api_client.post(
         "/token/pair", json={"email": email, "password": password}
     )
 
-    # Assert
-    assert response.status_code == 403  # Now returns 403 for unverified users
-    assert "email_verified" in response.json()
+    assert response.status_code == 403
     assert response.json()["email_verified"] is False
-    assert "Please verify your email" in response.json()["detail"]
 
 
 @pytest.mark.django_db
 def test_login_with_verified_user(api_client):
-    # Arrange
     email = "verifieduser@example.com"
     password = "securepassword123"
     User.objects.create_user(email=email, password=password, email_verified=True)
 
-    # Act
     response = api_client.post(
         "/token/pair", json={"email": email, "password": password}
     )
 
-    # Assert
     assert response.status_code == 200
     assert "access" in response.json()
     assert "refresh" in response.json()
-
-
-@pytest.mark.django_db
-def test_resend_verification(api_client):
-    # Arrange
-    email = "resenduser@example.com"
-    password = "securepassword123"
-    user = User.objects.create_user(
-        email=email, password=password, email_verified=False
-    )
-
-    # Act
-    response = api_client.post("/auth/resend-verification", json={"email": email})
-
-    # Assert
-    assert response.status_code == 200
-
-    # Verify a new pending registration was created
-    pending = PendingRegistration.objects.get(user=user)
-    assert pending is not None
-    assert pending.token is not None

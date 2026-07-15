@@ -39,7 +39,13 @@ class TokenPairInputSchema(Schema):
 
 class RegisterSchema(Schema):
     email: str
+    model_config = ConfigDict(extra="forbid")
+
+
+class RegistrationVerificationSchema(Schema):
+    token: str = Field(min_length=8, max_length=128)
     password: str
+    device_name: Optional[str] = Field(None, max_length=120)
     model_config = ConfigDict(extra="forbid")
 
 
@@ -56,6 +62,7 @@ class DeleteAccountSchema(Schema):
 
 class EmailUpdateSchema(Schema):
     email: str
+    current_password: str
     model_config = ConfigDict(extra="forbid")
 
 

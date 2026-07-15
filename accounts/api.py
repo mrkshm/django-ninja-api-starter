@@ -25,6 +25,7 @@ from accounts.schemas import (
     PasswordResetRequestSchema,
     PasswordResetSchema,
     RegisterSchema,
+    RegistrationVerificationSchema,
     LogoutInputSchema,
     TokenRefreshInputSchema,
     TokenRefreshOutputSchema,
@@ -116,24 +117,44 @@ def verify_token(request, data: TokenVerifyInputSchema):
     return data.to_response_schema()
 
 
-def send_verification_email(user, token):
-    display_name = f"{user.first_name} {user.last_name}".strip() or user.email
+def send_verification_email(email: str, token: str) -> None:
     verification_link = f"{settings.FRONTEND_URL}/verify-registration#token={token}"
     try:
         send_templated_email(
             "registration_verification.txt",
             {
                 "project_name": settings.PROJECT_NAME,
-                "user_display_name": display_name,
+                "user_display_name": email,
                 "verification_link": verification_link,
+                "expiry_hours": EMAIL_VERIFICATION_EXPIRY_HOURS,
             },
-            [user.email],
+            [email],
         )
     except Exception as exc:
-        logger.warning(
-            "accounts:verification_email_failed user=%s", getattr(user, "id", None)
-        )
+        logger.warning("accounts:verification_email_failed")
         raise HttpError(500, "Failed to send verification email.") from exc
+
+
+def create_pending_registration(email: str) -> None:
+    if User.objects.filter(email__iexact=email).exists():
+        return
+    token = generate_raw_token()
+    token_hash = hash_token(token)
+    expires_at = timezone.now() + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
+    try:
+        PendingRegistration.objects.update_or_create(
+            email=email,
+            defaults={"token": token_hash, "expires_at": expires_at},
+        )
+    except IntegrityError:
+        # A concurrent registration or account creation won the race. The
+        # endpoint remains intentionally generic.
+        return
+    try:
+        send_verification_email(email, token)
+    except HttpError:
+        PendingRegistration.objects.filter(email=email, token=token_hash).delete()
+        raise
 
 
 @auth_router.post("/register/", throttle=[register_throttle])
@@ -143,56 +164,49 @@ def register(request, data: RegisterSchema):
         validate_email(email)
     except DjangoValidationError as exc:
         raise HttpError(400, "Invalid email address") from exc
-    validate_new_password(data.password)
-    # Check if user already exists
-    if User.objects.filter(email__iexact=email).exists():
-        raise HttpError(400, "User with this email already exists")
-
-    token = generate_raw_token()
-    expires_at = timezone.now() + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
-    try:
-        with transaction.atomic():
-            user = User.objects.create_user(
-                email=email,
-                password=data.password,
-                email_verified=False,
-            )
-            PendingRegistration.objects.create(
-                user=user,
-                token=hash_token(token),
-                expires_at=expires_at,
-            )
-    except IntegrityError as exc:
-        raise HttpError(400, "User with this email already exists") from exc
-
-    # Send verification email
-    send_verification_email(user, token)
+    create_pending_registration(email)
 
     return {
-        "detail": "Registration successful. Please check your email to verify your account."
+        "detail": "If the address can be registered, a verification email has been sent."
     }
 
 
 @auth_router.post("/verify-registration")
-def verify_registration(request, data: TokenInputSchema):
-    token = data.token
+def verify_registration(request, data: RegistrationVerificationSchema):
+    error = None
+    user = None
     try:
-        pending = PendingRegistration.objects.get(token=hash_token(token))
-    except PendingRegistration.DoesNotExist:
-        raise HttpError(400, "Invalid or expired token.")
+        with transaction.atomic():
+            try:
+                pending = PendingRegistration.objects.select_for_update().get(
+                    token=hash_token(data.token)
+                )
+            except PendingRegistration.DoesNotExist:
+                error = "Invalid or expired token."
+            else:
+                if pending.is_expired():
+                    pending.delete()
+                    error = "Token has expired."
+                elif User.objects.filter(email__iexact=pending.email).exists():
+                    pending.delete()
+                    error = "Invalid or expired token."
+                else:
+                    candidate = User(email=pending.email)
+                    validate_new_password(data.password, user=candidate)
+                    user = User.objects.create_user(
+                        email=pending.email,
+                        password=data.password,
+                        email_verified=True,
+                    )
+                    pending.delete()
+    except IntegrityError as exc:
+        raise HttpError(409, "Registration could not be completed.") from exc
 
-    if pending.is_expired():
-        pending.delete()
-        raise HttpError(400, "Token has expired.")
+    if error is not None or user is None:
+        raise HttpError(400, error or "Invalid or expired token.")
 
-    user = pending.user
-    user.email_verified = True
-    user.save()
-
-    pending.delete()
-
-    # Issue tokens
-    access, refresh = issue_token_pair(user)
+    access, refresh = issue_token_pair(user, device_name=data.device_name or "")
+    audit_logger.info("audit:registration_verified user=%s", user.pk)
     return {
         "detail": "Email verified successfully.",
         "access": access,
@@ -202,31 +216,17 @@ def verify_registration(request, data: TokenInputSchema):
 
 @auth_router.post("/resend-verification", throttle=[verification_throttle])
 def resend_verification(request, data: EmailSchema):
-    email = data.email.strip().lower()
-
     try:
-        user = User.objects.get(email=email, email_verified=False)
-    except User.DoesNotExist:
-        # Don't reveal if user exists
+        email = normalize_email(data.email)
+        validate_email(email)
+    except DjangoValidationError:
         return {
-            "detail": "If your account exists and is not verified, a new verification email has been sent."
+            "detail": "If the address can be registered, a verification email has been sent."
         }
-
-    # Remove existing pending registration
-    PendingRegistration.objects.filter(user=user).delete()
-
-    # Create new token
-    token = generate_raw_token()
-    expires_at = timezone.now() + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
-
-    PendingRegistration.objects.create(
-        user=user, token=hash_token(token), expires_at=expires_at
-    )
-
-    send_verification_email(user, token)
+    create_pending_registration(email)
 
     return {
-        "detail": "If your account exists and is not verified, a new verification email has been sent."
+        "detail": "If the address can be registered, a verification email has been sent."
     }
 
 
@@ -261,30 +261,50 @@ def change_password(request, data: ChangePasswordSchema):
 
 @auth_router.patch("/email", auth=JWTAuth(), throttle=[email_change_throttle])
 def request_email_change(request, data: EmailUpdateSchema):
-    """
-    Initiate email change: send verification email to new address.
-    """
     user = get_request_user(request)
-    new_email = data.email.strip().lower()
-    # Validate email format
+    new_email = normalize_email(data.email)
     try:
         validate_email(new_email)
-    except DjangoValidationError:
-        raise HttpError(400, "Invalid email address")
-    # Uniqueness check (case-insensitive)
+    except DjangoValidationError as exc:
+        raise HttpError(400, "Invalid email address") from exc
+    if new_email == normalize_email(user.email):
+        raise HttpError(400, "New email must differ from the current email.")
     if User.objects.filter(email__iexact=new_email).exclude(id=user.id).exists():
         raise HttpError(400, "Email already taken")
-    # Remove any previous pending changes for this user
-    PendingEmailChange.objects.filter(user=user).delete()
-    # Generate token and expiry
+
     token = generate_raw_token()
+    token_hash = hash_token(token)
     expires_at = timezone.now() + timedelta(hours=EMAIL_CHANGE_TOKEN_EXPIRY_HOURS)
-    PendingEmailChange.objects.create(
-        user=user, new_email=new_email, token=hash_token(token), expires_at=expires_at
+    with transaction.atomic():
+        locked_user = User.objects.select_for_update().get(pk=user.pk)
+        if not locked_user.check_password(data.current_password):
+            raise HttpError(400, "Password is incorrect")
+        pending, _ = PendingEmailChange.objects.update_or_create(
+            user=locked_user,
+            defaults={
+                "new_email": new_email,
+                "token": token_hash,
+                "expires_at": expires_at,
+                "auth_version": locked_user.auth_version,
+            },
+        )
+
+    old_email = locked_user.email
+    display_name = (
+        f"{locked_user.first_name} {locked_user.last_name}".strip() or old_email
     )
-    display_name = f"{user.first_name} {user.last_name}".strip() or user.email
     verification_link = f"{settings.FRONTEND_URL}/verify-email-change#token={token}"
     try:
+        send_templated_email(
+            "email_change_requested.txt",
+            {
+                "project_name": settings.PROJECT_NAME,
+                "user_display_name": display_name,
+                "old_email": old_email,
+                "new_email": new_email,
+            },
+            [old_email],
+        )
         send_templated_email(
             "email_change_verification.txt",
             {
@@ -296,38 +316,74 @@ def request_email_change(request, data: EmailUpdateSchema):
             [new_email],
         )
     except Exception as exc:
+        PendingEmailChange.objects.filter(pk=pending.pk, token=token_hash).delete()
         logger.warning(
             "accounts:email_change_verification_failed user=%s",
-            getattr(user, "id", None),
+            locked_user.pk,
         )
         raise HttpError(500, "Failed to send verification email.") from exc
+    audit_logger.info("audit:email_change_requested user=%s", locked_user.pk)
     return {"detail": "Verification email sent. Please check your new address."}
 
 
 @auth_router.post("/email/verify")
 def verify_email_change(request, data: TokenInputSchema):
-    """
-    Verify email change using token.
-    """
+    error = None
+    old_email = None
+    new_email = None
+    changed_user = None
     try:
-        pending = PendingEmailChange.objects.get(token=hash_token(data.token))
-    except PendingEmailChange.DoesNotExist:
-        raise HttpError(400, "Invalid or expired token.")
-    if pending.is_expired():
-        pending.delete()
-        raise HttpError(400, "Token has expired.")
-    # Check uniqueness again (race condition safety)
-    if (
-        User.objects.filter(email__iexact=pending.new_email)
-        .exclude(id=pending.user.id)
-        .exists()
-    ):
-        pending.delete()
-        raise HttpError(400, "Email already taken.")
-    pending.user.email = pending.new_email
-    pending.user.save()
-    revoke_all_sessions(pending.user)
-    pending.delete()
+        with transaction.atomic():
+            try:
+                pending = PendingEmailChange.objects.select_for_update().get(
+                    token=hash_token(data.token)
+                )
+            except PendingEmailChange.DoesNotExist:
+                error = "Invalid or expired token."
+            else:
+                changed_user = User.objects.select_for_update().get(pk=pending.user_id)
+                if pending.is_expired():
+                    pending.delete()
+                    error = "Token has expired."
+                elif pending.auth_version != changed_user.auth_version:
+                    pending.delete()
+                    error = "Invalid or expired token."
+                elif (
+                    User.objects.filter(email__iexact=pending.new_email)
+                    .exclude(id=changed_user.id)
+                    .exists()
+                ):
+                    pending.delete()
+                    error = "Email already taken."
+                else:
+                    old_email = changed_user.email
+                    new_email = pending.new_email
+                    changed_user.email = new_email
+                    changed_user.save(update_fields=["email", "updated_at"])
+                    revoke_all_sessions(changed_user)
+                    pending.delete()
+    except IntegrityError as exc:
+        raise HttpError(400, "Email already taken.") from exc
+
+    if error is not None or changed_user is None or not old_email or not new_email:
+        raise HttpError(400, error or "Invalid or expired token.")
+
+    notification_context = {
+        "project_name": settings.PROJECT_NAME,
+        "old_email": old_email,
+        "new_email": new_email,
+    }
+    for recipient in (old_email, new_email):
+        try:
+            send_templated_email(
+                "email_change_completed.txt", notification_context, [recipient]
+            )
+        except Exception:
+            logger.exception(
+                "accounts:email_change_completion_notice_failed user=%s",
+                changed_user.pk,
+            )
+    audit_logger.info("audit:email_change_completed user=%s", changed_user.pk)
     return {"detail": "Email address updated successfully."}
 
 

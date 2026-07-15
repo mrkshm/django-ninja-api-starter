@@ -21,7 +21,11 @@ def test_pending_email_change_str():
     user = User.objects.create_user(email="test@example.com", password="pw")
     now = timezone.now()
     obj = PendingEmailChange.objects.create(
-        user=user, new_email="new@example.com", token="tok", expires_at=now
+        user=user,
+        new_email="new@example.com",
+        auth_version=user.auth_version,
+        token="tok",
+        expires_at=now,
     )
     s = str(obj)
     assert "PendingEmailChange(user=" in s and "new_email=new@example.com" in s

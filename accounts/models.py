@@ -61,8 +61,9 @@ class UserManager(BaseUserManager):
 
 
 class PendingEmailChange(PendingTokenMixin):
-    user = models.ForeignKey("User", on_delete=models.CASCADE)
+    user = models.OneToOneField("User", on_delete=models.CASCADE)
     new_email = models.EmailField()
+    auth_version = models.PositiveBigIntegerField()
     token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
@@ -88,7 +89,7 @@ class PendingPasswordReset(PendingTokenMixin):
 
 
 class PendingRegistration(PendingTokenMixin):
-    user = models.OneToOneField("User", on_delete=models.CASCADE)
+    email = models.EmailField()
     token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
@@ -97,7 +98,14 @@ class PendingRegistration(PendingTokenMixin):
         return timezone.now() > self.expires_at
 
     def __str__(self):
-        return f"PendingRegistration(user={self.user_id})"
+        return f"PendingRegistration(email={self.email})"
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"), name="accounts_pending_registration_email_ci_uniq"
+            )
+        ]
 
 
 class User(AbstractBaseUser, PermissionsMixin):

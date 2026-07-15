@@ -19,7 +19,7 @@ operations are versioned below `/api/v1`.
 | Purpose | Routes |
 | --- | --- |
 | Sessions | `POST /token/pair`, `/token/refresh`, `/token/verify` |
-| Account lifecycle | `POST /auth/register/`, `/auth/verify-registration`, `/auth/logout/`, `/auth/password-reset/request`, `/auth/password-reset/confirm` |
+| Account lifecycle | `POST /auth/register/` (email only), `/auth/verify-registration` (token plus password), `/auth/logout/`, `/auth/password-reset/request`, `/auth/password-reset/confirm`; `PATCH /auth/email` requires the current password |
 | Current user | `GET/PATCH /users/me`, `PATCH /users/username`, `POST/DELETE /users/avatar` |
 | Contacts | `GET/POST /orgs/{org_slug}/contacts/`, CRUD below `/contacts/{slug}/`, avatar upload/delete |
 | Tags | list/create/search below `/orgs/{org_slug}/tags/`; assignment accepts up to 50 normalized names and targets are allowlisted |

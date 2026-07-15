@@ -563,13 +563,18 @@
       "EmailUpdateSchema": {
         "additionalProperties": false,
         "properties": {
+          "current_password": {
+            "title": "Current Password",
+            "type": "string"
+          },
           "email": {
             "title": "Email",
             "type": "string"
           }
         },
         "required": [
-          "email"
+          "email",
+          "current_password"
         ],
         "title": "EmailUpdateSchema",
         "type": "object"
@@ -1229,17 +1234,45 @@
           "email": {
             "title": "Email",
             "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "RegisterSchema",
+        "type": "object"
+      },
+      "RegistrationVerificationSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
           },
           "password": {
             "title": "Password",
             "type": "string"
+          },
+          "token": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Token",
+            "type": "string"
           }
         },
         "required": [
-          "email",
+          "token",
           "password"
         ],
-        "title": "RegisterSchema",
+        "title": "RegistrationVerificationSchema",
         "type": "object"
       },
       "RemovedCountResponse": {
@@ -1830,7 +1863,6 @@
     },
     "/api/v1/auth/email": {
       "patch": {
-        "description": "Initiate email change: send verification email to new address.",
         "operationId": "accounts_api_request_email_change",
         "parameters": [],
         "requestBody": {
@@ -1861,7 +1893,6 @@
     },
     "/api/v1/auth/email/verify": {
       "post": {
-        "description": "Verify email change using token.",
         "operationId": "accounts_api_verify_email_change",
         "parameters": [],
         "requestBody": {
@@ -2020,7 +2051,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TokenInputSchema"
+                "$ref": "#/components/schemas/RegistrationVerificationSchema"
               }
             }
           },

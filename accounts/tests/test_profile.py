@@ -1,5 +1,7 @@
 import pytest
 from django.contrib.auth import get_user_model
+
+from accounts.models import PendingEmailChange
 from accounts.tests.utils import create_test_user
 
 User = get_user_model()
@@ -103,7 +105,9 @@ def test_email_change_delivery_failure(monkeypatch, settings, api_client):
 
     monkeypatch.setattr(core_tasks.send_email_task, "delay", fail_send_email_task)
     response = api_client.patch(
-        "/auth/email", json={"email": "failmail2@example.com"}, headers=headers
+        "/auth/email",
+        json={"email": "failmail2@example.com", "current_password": "pw"},
+        headers=headers,
     )
     assert response.status_code == 500 or response.status_code == 400
     assert (
@@ -111,6 +115,7 @@ def test_email_change_delivery_failure(monkeypatch, settings, api_client):
         or "error" in response.json()["detail"].lower()
         or "exception" in response.json()["detail"].lower()
     )
+    assert not PendingEmailChange.objects.filter(user=user).exists()
 
 
 @pytest.mark.django_db
