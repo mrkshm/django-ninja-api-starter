@@ -1,3 +1,4 @@
+import hashlib
 from datetime import timedelta
 from threading import Event, Thread
 from types import SimpleNamespace
@@ -10,7 +11,11 @@ from ninja.errors import HttpError
 
 from core.models import IdempotencyRecord
 from core.tasks import cleanup_expired_idempotency_records
-from core.utils.idempotency import _operation_lock, run_idempotently
+from core.utils.idempotency import (
+    _operation_lock,
+    _request_fingerprint,
+    run_idempotently,
+)
 from organizations.models import Organization
 
 
@@ -25,6 +30,23 @@ def request_for(user, *, body: bytes, key: str = "request-key"):
         content_type="application/json",
         FILES=SimpleNamespace(getlist=lambda _field: []),
     )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"ids":[1,',
+        b'{"label":"\xff"}',
+    ],
+)
+def test_invalid_json_fingerprint_falls_back_to_exact_raw_bytes(body):
+    request = request_for(SimpleNamespace(id=1), body=body)
+
+    fingerprint = _request_fingerprint(request)
+
+    expected = hashlib.sha256(body + b"[]").hexdigest()
+    assert fingerprint == expected
+    assert fingerprint == _request_fingerprint(request)
 
 
 @pytest.mark.django_db
