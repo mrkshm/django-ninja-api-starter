@@ -11,6 +11,9 @@ class JWTAuth(NinjaJWTAuth):
     def get_user(self, validated_token):
         user = super().get_user(validated_token)
 
+        if not user.is_active:
+            raise AuthenticationFailed("User is inactive")
+
         if validated_token.get("auth_version") != user.auth_version:
             raise AuthenticationFailed("Session is no longer valid")
 

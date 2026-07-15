@@ -88,6 +88,8 @@ def rotate_token_pair(raw_refresh: str) -> tuple[str, str]:
             pass
         raise HttpError(401, "Invalid or expired refresh token") from exc
 
+    rejected = False
+    token_pair: tuple[str, str] | None = None
     with transaction.atomic():
         try:
             session = (
@@ -106,18 +108,22 @@ def rotate_token_pair(raw_refresh: str) -> tuple[str, str]:
             or not session.is_active
         ):
             session.revoke()
-            raise HttpError(401, "Invalid or expired refresh token")
+            rejected = True
+        else:
+            try:
+                refresh.blacklist()
+            except AttributeError:
+                logger.error("JWT blacklist app is not configured")
+                raise HttpError(500, "Token revocation is unavailable")
 
-        try:
-            refresh.blacklist()
-        except AttributeError:
-            logger.error("JWT blacklist app is not configured")
-            raise HttpError(500, "Token revocation is unavailable")
+            session.last_used_at = timezone.now()
+            session.expires_at = timezone.now() + api_settings.REFRESH_TOKEN_LIFETIME
+            session.save(update_fields=["last_used_at", "expires_at"])
+            token_pair = issue_token_pair(user, session=session)
 
-        session.last_used_at = timezone.now()
-        session.expires_at = timezone.now() + api_settings.REFRESH_TOKEN_LIFETIME
-        session.save(update_fields=["last_used_at", "expires_at"])
-        return issue_token_pair(user, session=session)
+    if rejected or token_pair is None:
+        raise HttpError(401, "Invalid or expired refresh token")
+    return token_pair
 
 
 def revoke_session_from_refresh(raw_refresh: str) -> None:
@@ -141,6 +147,20 @@ def revoke_all_sessions(user) -> None:
     )
     User.objects.filter(pk=user.pk).update(auth_version=F("auth_version") + 1)
     user.refresh_from_db(fields=["auth_version"])
+
+
+@transaction.atomic
+def set_user_active_status(user, *, is_active: bool) -> None:
+    locked_user = User.objects.select_for_update().get(pk=user.pk)
+    User.objects.filter(pk=locked_user.pk).update(is_active=is_active)
+    locked_user.is_active = is_active
+    revoke_all_sessions(locked_user)
+    user.is_active = is_active
+    user.auth_version = locked_user.auth_version
+
+
+def deactivate_user(user) -> None:
+    set_user_active_status(user, is_active=False)
 
 
 @transaction.atomic

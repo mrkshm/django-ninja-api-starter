@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.db import transaction
+
 from .models import AuthSession, PendingEmailChange, PendingPasswordReset, User
+from .services import set_user_active_status
 
 # Register your models here.
 
@@ -72,6 +75,30 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
     readonly_fields = ("created_at", "updated_at", "last_login")
+    actions = ("deactivate_selected_users", "activate_selected_users")
+
+    @transaction.atomic
+    def save_model(self, request, obj, form, change):
+        previous_is_active = None
+        if obj.pk:
+            previous_is_active = (
+                User.objects.filter(pk=obj.pk)
+                .values_list("is_active", flat=True)
+                .first()
+            )
+        super().save_model(request, obj, form, change)
+        if previous_is_active is not None and previous_is_active != obj.is_active:
+            set_user_active_status(obj, is_active=obj.is_active)
+
+    @admin.action(description="Deactivate selected users and revoke their sessions")
+    def deactivate_selected_users(self, request, queryset):
+        for user in queryset.iterator():
+            set_user_active_status(user, is_active=False)
+
+    @admin.action(description="Activate selected users with fresh session state")
+    def activate_selected_users(self, request, queryset):
+        for user in queryset.iterator():
+            set_user_active_status(user, is_active=True)
 
 
 @admin.register(PendingEmailChange)
