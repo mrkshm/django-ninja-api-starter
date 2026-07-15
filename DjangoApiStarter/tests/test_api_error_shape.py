@@ -40,11 +40,11 @@ class TestApiErrorShape:
         assert "detail" in resp.json()
         assert "Invalid ordering" in resp.json()["detail"]
 
-    def test_nonmember_access_returns_normalized_403_detail(self):
+    def test_nonmember_access_returns_normalized_404_detail(self):
         headers = self._get_auth_headers(self.nonmember)
         # Note: Ninja TestClient paths are relative to the API root, not the full URL
         resp = self.client.get(f"/orgs/{self.org.slug}/tags/", headers=headers)
-        assert resp.status_code == 403
+        assert resp.status_code == 404
         assert isinstance(resp.json(), dict)
         assert "detail" in resp.json()
         # message can vary; just ensure detail exists

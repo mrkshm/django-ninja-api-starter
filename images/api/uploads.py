@@ -113,6 +113,16 @@ def _prepare_bulk_uploads(files) -> list[PreparedUpload]:
     return prepared
 
 
+def _request_upload_files(request) -> list:
+    files = request.FILES
+    if hasattr(files, "getlist"):
+        return list(files.getlist("files"))
+    value = files.get("files", [])
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value] if value else []
+
+
 @router.post(
     "/orgs/{org_slug}/images/",
     response=ImageOut,
@@ -152,7 +162,7 @@ def bulk_upload_images(request, org_slug: str):
     scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
-    files = list(request.FILES.getlist("files"))
+    files = _request_upload_files(request)
     if not files:
         return [BulkUploadResponse(status="error", error="No files uploaded")]
     prepared_files = _prepare_bulk_uploads(files)
