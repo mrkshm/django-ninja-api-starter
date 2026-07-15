@@ -77,7 +77,7 @@ def _coerce_validated_image(
 
 def resize_and_save(img, size, quality, format="WEBP"):
     img_copy = img.copy()
-    img_copy.thumbnail(size, Image.LANCZOS)
+    img_copy.thumbnail(size, Image.Resampling.LANCZOS)
     buf = BytesIO()
     img_copy.save(buf, format=format, quality=quality)
     return buf.getvalue()

@@ -2,14 +2,14 @@ from django.utils import timezone
 from ninja_jwt.authentication import JWTAuth as NinjaJWTAuth
 from ninja_jwt.exceptions import AuthenticationFailed
 
-from accounts.models import AuthSession
+from accounts.models import AuthSession, User
 
 
 class JWTAuth(NinjaJWTAuth):
     """JWT authentication bound to an active, revocable device session."""
 
     def get_user(self, validated_token):
-        user = super().get_user(validated_token)
+        user = cast(User, super().get_user(validated_token))
 
         if not user.is_active:
             raise AuthenticationFailed("User is inactive")
@@ -31,3 +31,6 @@ class JWTAuth(NinjaJWTAuth):
             raise AuthenticationFailed("Session is no longer valid")
 
         return user
+
+
+from typing import cast

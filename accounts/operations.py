@@ -199,16 +199,16 @@ def confirm_email_change(*, raw_token: str) -> EmailChangeResult:
     try:
         with transaction.atomic():
             try:
-                user = User.objects.select_for_update().get(pk=user_id)
+                locked_user = User.objects.select_for_update().get(pk=user_id)
             except User.DoesNotExist:
                 user = None
                 pending = None
                 error = "Invalid or expired token."
             else:
+                user = locked_user
                 try:
                     pending = PendingEmailChange.objects.select_for_update().get(
-                        token=token_hash,
-                        user_id=user.pk,
+                        token=token_hash, user_id=locked_user.pk
                     )
                 except PendingEmailChange.DoesNotExist:
                     pending = None

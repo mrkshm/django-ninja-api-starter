@@ -51,6 +51,8 @@ class Command(BaseCommand):
             .values_list("avatar_path", flat=True)
         )
         for avatar_path in avatar_paths:
+            if not avatar_path:
+                continue
             base = avatar_path.removesuffix(".webp")
             for key in (avatar_path, f"{base}_lg.webp"):
                 if not public_storage_exists(key):

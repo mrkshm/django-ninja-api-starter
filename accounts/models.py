@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import string
 import uuid
 
@@ -14,7 +16,7 @@ from django.utils.text import slugify
 from core.utils import make_it_unique
 
 
-class UserManager(BaseUserManager):
+class UserManager(BaseUserManager["User"]):
     def _clean_username(self, username):
         # Allow only alphanumerics, dots, and underscores
         allowed = set(string.ascii_letters + string.digits + "._")

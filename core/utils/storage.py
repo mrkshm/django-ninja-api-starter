@@ -1,12 +1,13 @@
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
-from django.conf import settings
 from functools import lru_cache
+from typing import Any, cast
 from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 
 def upload_to_storage(filename, content, content_type="image/webp", storage=None):
@@ -31,7 +32,8 @@ def delete_storage_keys(keys, *, storage=None):
 
 
 def _default_storage_options():
-    return settings.STORAGES["default"].get("OPTIONS", {})
+    storages = cast(dict[str, dict[str, Any]], settings.STORAGES)
+    return storages["default"].get("OPTIONS", {})
 
 
 def private_storage_options():
