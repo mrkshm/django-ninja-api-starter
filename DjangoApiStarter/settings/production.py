@@ -25,11 +25,22 @@ if JWT_SIGNING_KEY == SECRET_KEY:
     raise ImproperlyConfigured("JWT_SIGNING_KEY must be independent from SECRET_KEY.")
 NINJA_JWT = {**NINJA_JWT, "SIGNING_KEY": JWT_SIGNING_KEY}  # noqa: F405
 
+# Production emits one JSON object per application log record. Django has its
+# own handler and does not propagate, preventing duplicate records at the root.
+production_logging = cast(Any, LOGGING)  # noqa: F405
+production_logging["root"]["handlers"] = ["console"]
+production_logging["loggers"]["django"].update(
+    {
+        "handlers": ["console"],
+        "propagate": False,
+    }
+)
+
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")  # noqa: F405
 FRONTEND_URL = required("FRONTEND_URL")
-CORS_ALLOWED_ORIGINS = env.list(
+CORS_ALLOWED_ORIGINS = env.list(  # noqa: F405
     "CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL]
-)  # noqa: F405
+)
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])  # noqa: F405
 
 DATABASES["default"].update(  # noqa: F405

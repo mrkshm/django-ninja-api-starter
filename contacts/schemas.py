@@ -3,7 +3,10 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core.schemas import DetailResponse as CoreDetailResponse
 from tags.schemas import TagOut
+
+DetailResponse = CoreDetailResponse
 
 
 class ContactIn(BaseModel):

@@ -45,7 +45,10 @@ def unhandled_error_response(
         "method": request.method,
         "path": request.path,
     }
-    logger.error("Unhandled API exception", exc_info=exc)
+    logger.error(
+        "Unhandled API exception",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
     report_exception(exc, context=context)
     payload = {"detail": "Internal server error."}
     if request_id:

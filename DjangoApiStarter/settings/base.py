@@ -278,7 +278,7 @@ LOGGING = {
         "django": {
             "handlers": ["console_plain"],
             "level": LOG_LEVEL,
-            "propagate": True,
+            "propagate": False,
         },
     },
     "root": {"handlers": ["console_plain"], "level": LOG_LEVEL},

@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -6,7 +7,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[1].parent
 
 
-def _import_settings_with_env(extra_env):
+def _import_settings_with_env(
+    extra_env, code="import DjangoApiStarter.settings.production"
+):
     env = os.environ.copy()
     env.update(
         {
@@ -33,7 +36,7 @@ def _import_settings_with_env(extra_env):
     )
     env.update(extra_env)
     return subprocess.run(
-        [sys.executable, "-c", "import DjangoApiStarter.settings.production"],
+        [sys.executable, "-c", code],
         cwd=BASE_DIR,
         env=env,
         capture_output=True,
@@ -63,6 +66,27 @@ def test_production_accepts_explicit_secret_key():
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_production_application_logs_use_json_without_django_duplication():
+    result = _import_settings_with_env(
+        {
+            "DEBUG": "False",
+            "SECRET_KEY": "not-the-default-secret-key",
+        },
+        code=(
+            "import json; "
+            "from DjangoApiStarter.settings.production import LOGGING; "
+            "print(json.dumps(LOGGING))"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    logging_config = json.loads(result.stdout)
+    assert logging_config["root"]["handlers"] == ["console"]
+    assert logging_config["handlers"]["console"]["formatter"] == "json"
+    assert logging_config["loggers"]["django"]["handlers"] == ["console"]
+    assert logging_config["loggers"]["django"]["propagate"] is False
 
 
 def test_compose_uses_only_an_explicit_development_secret_default():
