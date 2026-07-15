@@ -12,8 +12,8 @@ The design principles in [`styleguide.md`](./styleguide.md) guide the work, but
 they are defaults rather than a reason to split files or add infrastructure for
 its own sake.
 
-**Status (2026-07-15): Phases 1–8 are complete.** Phase 9 and the explicitly
-deferred items remain optional future work.
+**Status (2026-07-15): Phases 1–9 are complete.** The explicitly deferred
+items remain optional future work.
 
 ## Working rules
 
@@ -85,8 +85,8 @@ Rules:
 
 ### Do only if the code benefits while being changed
 
-- [ ] Move repeated image/tag mutation algorithms out of HTTP handlers.
-- [ ] Extract export archive construction from the Celery task module.
+- [x] Move repeated image/tag mutation algorithms out of HTTP handlers.
+- [x] Extract export archive construction from the Celery task module.
 - [x] Reorganize test locations where ownership is currently misleading.
 
 ### Defer until a concrete requirement appears
@@ -729,11 +729,11 @@ accounts/
 
 Checklist:
 
-- [ ] Move only coherent transactional use-cases.
-- [ ] Do not pass a Django request into operations.
-- [ ] Keep response serialization at the API boundary.
-- [ ] Keep operations as typed functions, not a service class.
-- [ ] Split `operations.py` further only if it later contains independently
+- [x] Move only coherent transactional use-cases.
+- [x] Do not pass a Django request into operations.
+- [x] Keep response serialization at the API boundary.
+- [x] Keep operations as typed functions, not a service class.
+- [x] Split `operations.py` further only if it later contains independently
   evolving domains that are difficult to navigate.
 
 ### 9.2 Image and tag operations
@@ -743,12 +743,12 @@ mutation algorithms and some duplication.
 
 While modifying those behaviors:
 
-- [ ] Extract repeated attach/order/cover logic into typed functions.
-- [ ] Put complete lock/transaction boundaries around the operation.
-- [ ] Move tag delete/unassignment logic beside create/rename/assign behavior.
-- [ ] Keep query construction separate only when it is reused or costly enough
+- [x] Extract repeated attach/order/cover logic into typed functions.
+- [x] Put complete lock/transaction boundaries around the operation.
+- [x] Move tag delete/unassignment logic beside create/rename/assign behavior.
+- [x] Keep query construction separate only when it is reused or costly enough
   to deserve a name.
-- [ ] Do not create empty `queries.py` modules to satisfy a template.
+- [x] Do not create empty `queries.py` modules to satisfy a template.
 
 ### 9.3 Export archive extraction
 
@@ -764,12 +764,12 @@ organizations/
     api_export.py
 ```
 
-- [ ] Move serialization and archive construction into `export_archive.py`.
-- [ ] Keep Celery entry points, locking, recovery, retention, and state helpers
+- [x] Move serialization and archive construction into `export_archive.py`.
+- [x] Keep Celery entry points, locking, recovery, retention, and state helpers
   together initially.
-- [ ] Extract `export_operations.py` only if API and worker lifecycle logic
-  develops meaningful shared complexity.
-- [ ] Preserve deterministic keys, heartbeats, stale recovery, late ack, and
+- [x] Keep `export_operations.py` absent because API and worker lifecycle logic
+  has not developed meaningful shared complexity.
+- [x] Preserve deterministic keys, heartbeats, stale recovery, late ack, and
   worker-loss behavior.
 
 ### 9.4 Dead code and compatibility cleanup
@@ -778,22 +778,23 @@ Backward compatibility is not required for this starter.
 
 Verify and remove:
 
-- [ ] `tags/views.py` placeholder.
-- [ ] `tags.api.get_tags_router` and redundant router aliases.
-- [ ] Dynamic compatibility re-exports in `images/api/__init__.py` that are no
+- [x] `tags/views.py` placeholder.
+- [x] `tags.api.get_tags_router` and redundant router aliases.
+- [x] Dynamic compatibility re-exports in `images/api/__init__.py` that are no
   longer needed after tests use canonical modules/routes.
-- [ ] Trivial image/tag scope wrappers removed by Phase 5.
-- [ ] Dead authorization helpers and their preservation-only tests.
-- [ ] Redundant `core.utils` barrel exports.
-- [ ] Generic `core/utils/utils.py`; move surviving helpers to descriptive
+- [x] Trivial image/tag scope wrappers removed by Phase 5.
+- [x] Dead authorization helpers and their preservation-only tests.
+- [x] Redundant `core.utils` barrel exports.
+- [x] Generic `core/utils/utils.py`; move surviving helpers to descriptive
   modules such as `identifiers.py` or `filenames.py`.
-- [ ] Duplicate utility tests discovered during deletion.
+- [x] Confirm no duplicate utility tests remain after moving imports to the
+  descriptive modules.
 
 Acceptance criteria for Phase 9:
 
-- [ ] Each moved function has a clearer responsibility and test boundary.
-- [ ] No module split exists solely to reduce line count.
-- [ ] Production imports and OpenAPI remain stable.
+- [x] Each moved function has a clearer responsibility and test boundary.
+- [x] No module split exists solely to reduce line count.
+- [x] Production imports and OpenAPI remain stable.
 
 ---
 

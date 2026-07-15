@@ -38,10 +38,10 @@ def get_access_token(email, password):
 
 def _enable_test_throttling(instance_names):
     """Override throttle instances to test route-level 429 handling."""
-    from images import api as img_api
+    from images import throttles
 
     for name in instance_names:
-        thr = getattr(img_api, name)
+        thr = getattr(throttles, name)
         # track per-instance call count for this test process
         setattr(thr, "_test_calls", 0)
 
