@@ -3,6 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from contacts.validation import ContactEmail, ContactNotes, ContactPhone, ContactText
 from core.schemas import DetailResponse as CoreDetailResponse
 from tags.schemas import TagOut
 
@@ -10,13 +11,13 @@ DetailResponse = CoreDetailResponse
 
 
 class ContactIn(BaseModel):
-    display_name: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-    location: Optional[str] = None
-    phone: Optional[str] = None
-    notes: Optional[str] = None
+    display_name: Optional[ContactText] = None
+    first_name: Optional[ContactText] = None
+    last_name: Optional[ContactText] = None
+    email: Optional[ContactEmail] = None
+    location: Optional[ContactText] = None
+    phone: Optional[ContactPhone] = None
+    notes: Optional[ContactNotes] = None
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
@@ -30,13 +31,13 @@ class ContactIn(BaseModel):
 
 
 class ContactUpdate(BaseModel):
-    display_name: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-    location: Optional[str] = None
-    phone: Optional[str] = None
-    notes: Optional[str] = None
+    display_name: Optional[ContactText] = None
+    first_name: Optional[ContactText] = None
+    last_name: Optional[ContactText] = None
+    email: Optional[ContactEmail] = None
+    location: Optional[ContactText] = None
+    phone: Optional[ContactPhone] = None
+    notes: Optional[ContactNotes] = None
     model_config = ConfigDict(extra="forbid")
 
 

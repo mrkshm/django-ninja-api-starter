@@ -1,9 +1,9 @@
 import datetime
 from unittest.mock import patch
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-import pytest
 
 from accounts.models import PendingPasswordReset
 from accounts.tests.utils import create_test_user
@@ -36,6 +36,7 @@ def test_password_reset_request_invalid_email_format(api_client):
     response = api_client.post(url, json=data)
     assert response.status_code == 200
     assert "reset link has been sent" in response.json()["detail"]
+    assert not PendingPasswordReset.objects.exists()
 
 
 @pytest.mark.django_db
@@ -89,8 +90,9 @@ def test_password_reset_confirm_success(api_client):
         json={"email": user.email, "password": "oldpassword"},
     ).json()
     # Create a valid PendingPasswordReset
-    from django.utils import timezone
     import secrets
+
+    from django.utils import timezone
 
     token = secrets.token_urlsafe(32)
     expires_at = timezone.now() + timezone.timedelta(hours=2)
@@ -137,8 +139,9 @@ def test_password_reset_confirm_invalid_token(api_client):
 @pytest.mark.django_db
 def test_password_reset_confirm_expired_token(api_client):
     user = create_test_user(email="expired@example.com", password="oldpassword")
-    from django.utils import timezone
     import secrets
+
+    from django.utils import timezone
 
     token = secrets.token_urlsafe(32)
     expires_at = timezone.now() - timezone.timedelta(hours=1)  # Already expired

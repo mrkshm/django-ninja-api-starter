@@ -14,6 +14,7 @@ from ninja_jwt.settings import api_settings
 from ninja_jwt.tokens import RefreshToken, UntypedToken
 
 from accounts.models import AuthSession
+from accounts.validation import normalize_and_validate_email
 from core.email_utils import render_email_template
 from core.tasks import send_email_task
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def normalize_email(email: str) -> str:
-    return email.strip().lower()
+    return normalize_and_validate_email(email)
 
 
 def validate_new_password(password: str, user=None) -> None:

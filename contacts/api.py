@@ -1,10 +1,10 @@
 import uuid
-from typing import List
+from typing import Annotated, List, Literal
 
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404
-from ninja import File, Router, UploadedFile
+from ninja import File, Query, Router, UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import LimitOffsetPagination, paginate
 
@@ -22,6 +22,7 @@ from organizations.scope import resolve_org_scope, resolve_write_org_scope
 
 from .models import Contact
 from .schemas import ContactAvatarResponse, ContactIn, ContactOut, ContactUpdate
+from .validation import MAX_CONTACT_SEARCH_LENGTH, MAX_CONTACT_SEARCH_TERMS
 
 contacts_router = Router()
 
@@ -43,9 +44,16 @@ ALLOWED_SORT_FIELDS = {
 def list_contacts(
     request,
     org_slug: str,
-    search: str | None = None,
-    sort_by: str = "display_name",
-    sort_order: str = "asc",
+    search: Annotated[str | None, Query(max_length=MAX_CONTACT_SEARCH_LENGTH)] = None,
+    sort_by: Literal[
+        "display_name",
+        "first_name",
+        "last_name",
+        "email",
+        "created_at",
+        "updated_at",
+    ] = "display_name",
+    sort_order: Literal["asc", "desc"] = "asc",
 ):
     """
     List contacts with optional search and sorting.
@@ -65,6 +73,11 @@ def list_contacts(
     # Apply search if provided
     if search:
         search_terms = search.split()
+        if len(search_terms) > MAX_CONTACT_SEARCH_TERMS:
+            raise HttpError(
+                400,
+                f"Search supports at most {MAX_CONTACT_SEARCH_TERMS} terms.",
+            )
         search_query = Q()
 
         # Build a query that requires all terms to match (AND logic)
@@ -92,14 +105,14 @@ def list_contacts(
         ).filter(search_query)
 
         # If searching, we'll sort by match score first, then by the requested field
-        sort_field = ALLOWED_SORT_FIELDS.get(sort_by, "display_name")
-        sort_prefix = "" if sort_order.lower() == "asc" else "-"
+        sort_field = ALLOWED_SORT_FIELDS[sort_by]
+        sort_prefix = "" if sort_order == "asc" else "-"
         sort_field = f"{sort_prefix}{sort_field}"
         qs = qs.order_by("-match_score", sort_field)
     else:
         # If not searching, just sort by the requested field
-        sort_field = ALLOWED_SORT_FIELDS.get(sort_by, "display_name")
-        if sort_order.lower() == "desc":
+        sort_field = ALLOWED_SORT_FIELDS[sort_by]
+        if sort_order == "desc":
             sort_field = f"-{sort_field}"
         qs = qs.order_by(sort_field)
 

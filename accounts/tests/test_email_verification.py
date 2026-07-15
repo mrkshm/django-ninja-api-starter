@@ -27,6 +27,29 @@ def test_register_creates_only_pending_registration(api_client):
 
 
 @pytest.mark.django_db
+def test_register_normalizes_email_at_schema_boundary(api_client):
+    with patch("accounts.api.send_verification_email"):
+        response = api_client.post(
+            "/auth/register/",
+            json={"email": "  New.User@EXAMPLE.COM  "},
+        )
+
+    assert response.status_code == 200
+    assert PendingRegistration.objects.filter(email="new.user@example.com").exists()
+
+
+@pytest.mark.django_db
+def test_register_rejects_malformed_email_before_persistence(api_client):
+    response = api_client.post(
+        "/auth/register/",
+        json={"email": "not-an-email"},
+    )
+
+    assert response.status_code == 400
+    assert not PendingRegistration.objects.exists()
+
+
+@pytest.mark.django_db
 def test_verify_registration_creates_verified_user_and_personal_org(api_client):
     token = "test_verification_token"
     PendingRegistration.objects.create(
@@ -132,6 +155,18 @@ def test_resend_verification_creates_pending_without_user(api_client):
     assert response.status_code == 200
     assert PendingRegistration.objects.filter(email=email).exists()
     assert not User.objects.filter(email=email).exists()
+
+
+@pytest.mark.django_db
+def test_resend_verification_keeps_malformed_email_response_generic(api_client):
+    response = api_client.post(
+        "/auth/resend-verification",
+        json={"email": "not-an-email"},
+    )
+
+    assert response.status_code == 200
+    assert "verification email" in response.json()["detail"]
+    assert not PendingRegistration.objects.exists()
 
 
 @pytest.mark.django_db

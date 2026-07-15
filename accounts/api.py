@@ -3,8 +3,6 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from ninja import Router, Status
@@ -56,6 +54,7 @@ from accounts.throttles import (
     verification_throttle,
 )
 from accounts.tokens import generate_raw_token, hash_token
+from accounts.validation import normalize_and_validate_email
 from core.authentication import JWTAuth
 from core.utils.auth_utils import get_request_user
 from organizations.services import ActiveOwnerRequiredError
@@ -160,11 +159,7 @@ def create_pending_registration(email: str) -> None:
 
 @auth_router.post("/register/", throttle=[register_throttle])
 def register(request, data: RegisterSchema):
-    email = normalize_email(data.email)
-    try:
-        validate_email(email)
-    except DjangoValidationError as exc:
-        raise HttpError(400, "Invalid email address") from exc
+    email = data.email
     create_pending_registration(email)
 
     return {
@@ -218,9 +213,8 @@ def verify_registration(request, data: RegistrationVerificationSchema):
 @auth_router.post("/resend-verification", throttle=[verification_throttle])
 def resend_verification(request, data: EmailSchema):
     try:
-        email = normalize_email(data.email)
-        validate_email(email)
-    except DjangoValidationError:
+        email = normalize_and_validate_email(data.email)
+    except ValueError:
         return {
             "detail": "If the address can be registered, a verification email has been sent."
         }
@@ -266,11 +260,7 @@ def change_password(request, data: ChangePasswordSchema):
 @auth_router.patch("/email", auth=JWTAuth(), throttle=[email_change_throttle])
 def request_email_change(request, data: EmailUpdateSchema):
     user = get_request_user(request)
-    new_email = normalize_email(data.email)
-    try:
-        validate_email(new_email)
-    except DjangoValidationError as exc:
-        raise HttpError(400, "Invalid email address") from exc
+    new_email = data.email
     if new_email == normalize_email(user.email):
         raise HttpError(400, "New email must differ from the current email.")
     if User.objects.filter(email__iexact=new_email).exclude(id=user.id).exists():
@@ -399,11 +389,9 @@ def request_password_reset(request, data: PasswordResetRequestSchema):
     """
     Initiate password reset: send reset email if user exists (always return generic response).
     """
-    email = data.email.strip().lower()
     try:
-        validate_email(email)
-    except DjangoValidationError:
-        # Always return generic response
+        email = normalize_and_validate_email(data.email)
+    except ValueError:
         return {"detail": "If the email exists, a password reset link has been sent."}
     user = User.objects.filter(email__iexact=email).first()
     if not user:

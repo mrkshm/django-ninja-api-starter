@@ -1,5 +1,6 @@
 import io
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -674,3 +675,125 @@ def test_partial_update_contact_rejects_move_to_inaccessible_organization(
     assert resp.status_code == 400
     contact.refresh_from_db()
     assert contact.organization == org1
+
+
+@pytest.fixture
+def validated_contact_context(make_auth_headers, api_client):
+    user = create_test_user(email="contact-validation@example.com", password="pw")
+    organization = Organization.objects.create(
+        name="Contact validation",
+        slug="contact-validation",
+        type="group",
+        creator=user,
+    )
+    Membership.objects.create(user=user, organization=organization, role="owner")
+    return organization, make_auth_headers(api_client, user)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("display_name", "x" * 256),
+        ("first_name", "x" * 256),
+        ("last_name", "x" * 256),
+        ("email", f"{'x' * 243}@example.com"),
+        ("location", "x" * 256),
+        ("phone", "x" * 21),
+        ("notes", "x" * 10_001),
+    ],
+)
+def test_create_contact_rejects_values_exceeding_storage_limits(
+    api_client, validated_contact_context, field, value
+):
+    organization, headers = validated_contact_context
+    payload = {"display_name": "Valid name", field: value}
+
+    response = api_client.post(
+        f"/orgs/{organization.slug}/contacts/",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert not Contact.objects.filter(
+        organization=organization, display_name="Valid name"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_contact_rejects_malformed_email(api_client, validated_contact_context):
+    organization, headers = validated_contact_context
+
+    response = api_client.post(
+        f"/orgs/{organization.slug}/contacts/",
+        json={"display_name": "Invalid email", "email": "not-an-email"},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert not Contact.objects.filter(
+        organization=organization, display_name="Invalid email"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_contact_patch_uses_the_same_field_limits(
+    api_client, validated_contact_context
+):
+    organization, headers = validated_contact_context
+    contact = Contact.objects.create(
+        organization=organization,
+        display_name="Patch limits",
+        slug="patch-limits",
+    )
+
+    response = api_client.patch(
+        f"/orgs/{organization.slug}/contacts/{contact.slug}/",
+        json={"phone": "x" * 21},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    contact.refresh_from_db()
+    assert contact.phone == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"sort_by": "unknown"},
+        {"sort_order": "sideways"},
+        {"search": "x" * 201},
+    ],
+)
+def test_contact_list_rejects_invalid_or_oversized_query_parameters(
+    api_client, validated_contact_context, params
+):
+    organization, headers = validated_contact_context
+
+    response = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?{urlencode(params)}",
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_contact_search_rejects_excessive_term_count(
+    api_client, validated_contact_context
+):
+    organization, headers = validated_contact_context
+
+    response = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?"
+        + urlencode(
+            {"search": "one two three four five six seven eight nine ten eleven"}
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "at most 10 terms" in response.json()["detail"]

@@ -140,6 +140,12 @@ deployment target.
   transitions; organization policy remains centralized.
 - [x] Global validation/HTTP/unhandled error behavior lives in `core` and never
   echoes submitted values or internal exceptions.
+- [x] Account email normalization/validation is shared; generic recovery and
+  resend endpoints retain indistinguishable malformed/unknown responses.
+- [x] Contact inputs mirror database column limits, validate optional email,
+  and cap free-form notes before persistence.
+- [x] Contact search length/term count and sort field/order are explicit API
+  constraints; invalid query parameters are rejected rather than corrected.
 - [x] Correlation IDs are accepted only in a safe format, generated otherwise,
   returned to clients, and included in logs.
 - [x] Idempotency hashes normalized JSON/file metadata, uses transaction-scoped

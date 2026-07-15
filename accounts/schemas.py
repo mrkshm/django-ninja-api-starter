@@ -1,7 +1,10 @@
-from ninja import Schema, Field
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from ninja import Field, Schema
 from pydantic import ConfigDict
+
+from accounts.validation import AccountEmail, GenericEmailInput
 
 
 class UnverifiedUserSchema(Schema):
@@ -31,14 +34,14 @@ class LogoutInputSchema(Schema):
 
 
 class TokenPairInputSchema(Schema):
-    email: str
+    email: AccountEmail
     password: str
     device_name: Optional[str] = Field(None, max_length=120)
     model_config = ConfigDict(extra="forbid")
 
 
 class RegisterSchema(Schema):
-    email: str
+    email: AccountEmail
     model_config = ConfigDict(extra="forbid")
 
 
@@ -61,13 +64,13 @@ class DeleteAccountSchema(Schema):
 
 
 class EmailUpdateSchema(Schema):
-    email: str
+    email: AccountEmail
     current_password: str
     model_config = ConfigDict(extra="forbid")
 
 
 class EmailSchema(Schema):
-    email: str
+    email: GenericEmailInput
     model_config = ConfigDict(extra="forbid")
 
 
@@ -77,7 +80,7 @@ class TokenInputSchema(Schema):
 
 
 class PasswordResetRequestSchema(Schema):
-    email: str
+    email: GenericEmailInput
     model_config = ConfigDict(extra="forbid")
 
 
