@@ -93,15 +93,17 @@ def rotate_token_pair(raw_refresh: str) -> tuple[str, str]:
     token_pair: tuple[str, str] | None = None
     with transaction.atomic():
         try:
-            session = (
-                AuthSession.objects.select_for_update()
-                .select_related("user")
-                .get(id=session_id, user_id=user_id)
+            user = User.objects.select_for_update().get(pk=user_id)
+        except User.DoesNotExist as exc:
+            raise HttpError(401, "Invalid or expired refresh token") from exc
+        try:
+            session = AuthSession.objects.select_for_update().get(
+                id=session_id,
+                user_id=user.pk,
             )
         except AuthSession.DoesNotExist as exc:
             raise HttpError(401, "Invalid or expired refresh token") from exc
 
-        user = session.user
         if (
             not user.is_active
             or user.auth_version != auth_version

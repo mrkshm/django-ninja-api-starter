@@ -39,11 +39,7 @@ def change_membership_role(membership: Membership, *, role: str) -> Membership:
     organization = Organization.objects.select_for_update().get(
         pk=membership.organization_id
     )
-    locked = (
-        Membership.objects.select_for_update()
-        .select_related("user")
-        .get(pk=membership.pk)
-    )
+    locked = Membership.objects.select_for_update().get(pk=membership.pk)
     if _is_personal_creator_membership(organization, locked) and role != "owner":
         raise ActiveOwnerRequiredError(
             "A personal organization's creator must remain its owner."
@@ -72,11 +68,7 @@ def remove_membership(membership: Membership) -> None:
     organization = Organization.objects.select_for_update().get(
         pk=membership.organization_id
     )
-    locked = (
-        Membership.objects.select_for_update()
-        .select_related("user")
-        .get(pk=membership.pk)
-    )
+    locked = Membership.objects.select_for_update().get(pk=membership.pk)
     if _is_personal_creator_membership(organization, locked):
         raise ActiveOwnerRequiredError(
             "A personal organization's creator membership cannot be removed."
@@ -100,7 +92,7 @@ def assert_user_can_be_deactivated(user) -> None:
     owned_groups = (
         Organization.objects.select_for_update()
         .filter(type="group", memberships__user=user, memberships__role="owner")
-        .distinct()
+        .order_by("pk")
     )
     for organization in owned_groups:
         has_successor = (

@@ -53,7 +53,7 @@ def test_password_reset_request_deletes_previous(settings, api_client):
     user = create_test_user(email="user2@example.com", password="pass1234")
     expires_at = timezone.now() + datetime.timedelta(hours=2)
     PendingPasswordReset.objects.create(
-        user=user, token="oldtoken", expires_at=expires_at
+        user=user, token=hash_token("oldtoken"), expires_at=expires_at
     )
     url = "/auth/password-reset/request"
     data = {"email": "user2@example.com"}
@@ -66,7 +66,7 @@ def test_password_reset_request_deletes_previous(settings, api_client):
 
 @pytest.mark.django_db
 def test_password_reset_request_email_send_failure(monkeypatch, api_client):
-    user = create_test_user(email="failmail@example.com", password="pw")
+    create_test_user(email="failmail@example.com", password="pw")
     url = "/auth/password-reset/request"
     data = {"email": "failmail@example.com"}
     # Patch send_email_task.delay to raise an exception
@@ -106,6 +106,7 @@ def test_password_reset_confirm_success(api_client):
     response = api_client.post(url, json=data)
     assert response.status_code == 200
     assert "Password has been reset successfully" in response.json()["detail"]
+    assert response.json()["reauthentication_required"] is True
     # Password should be changed
     user.refresh_from_db()
     assert user.check_password("newpass123")

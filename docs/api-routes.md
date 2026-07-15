@@ -13,6 +13,8 @@ operations are versioned below `/api/v1`.
   errors use `detail`. Unhandled errors include a request ID, never internals.
 - Conflicting uniqueness writes return `409`; invalid input returns `400`.
 - Breaking contract changes require a new API version and regenerated OpenAPI.
+- Credential responses that revoke existing sessions include
+  `reauthentication_required: true`; clients must discard both token types.
 
 ## Route groups
 

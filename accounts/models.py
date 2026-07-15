@@ -11,18 +11,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.text import slugify
 
-from accounts.tokens import generate_hashed_token, hash_token, is_token_hash
 from core.utils import make_it_unique
-
-
-class PendingTokenMixin(models.Model):
-    class Meta:
-        abstract = True
-
-    def save(self, *args, **kwargs):
-        if self.token and not is_token_hash(self.token):
-            self.token = hash_token(self.token)
-        super().save(*args, **kwargs)
 
 
 class UserManager(BaseUserManager):
@@ -97,11 +86,11 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
-class PendingEmailChange(PendingTokenMixin):
+class PendingEmailChange(models.Model):
     user = models.OneToOneField("User", on_delete=models.CASCADE)
     new_email = models.EmailField()
     auth_version = models.PositiveBigIntegerField()
-    token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
+    token = models.CharField(max_length=64, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -112,9 +101,9 @@ class PendingEmailChange(PendingTokenMixin):
         return f"PendingEmailChange(user={self.user_id}, new_email={self.new_email})"
 
 
-class PendingPasswordReset(PendingTokenMixin):
-    user = models.ForeignKey("User", on_delete=models.CASCADE)
-    token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
+class PendingPasswordReset(models.Model):
+    user = models.OneToOneField("User", on_delete=models.CASCADE)
+    token = models.CharField(max_length=64, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -125,9 +114,9 @@ class PendingPasswordReset(PendingTokenMixin):
         return f"PendingPasswordReset(user={self.user_id})"
 
 
-class PendingRegistration(PendingTokenMixin):
+class PendingRegistration(models.Model):
     email = models.EmailField()
-    token = models.CharField(max_length=64, unique=True, default=generate_hashed_token)
+    token = models.CharField(max_length=64, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -163,7 +152,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    last_login = models.DateTimeField(null=True, blank=True)
+    last_login = None
     auth_version = models.PositiveBigIntegerField(default=1)
 
     USERNAME_FIELD = "email"

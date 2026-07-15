@@ -7,6 +7,9 @@ and a 30-day refresh token. Refresh rotates and blacklists the old token. Replay
 revokes the associated device session. Logout takes the current refresh token
 and revokes it; logout-all, password reset, deactivation, and account deletion
 invalidate relevant sessions through `auth_version` and session state.
+Password change, password-reset confirmation, and completed email change return
+`reauthentication_required: true`. An iOS client must then delete its refresh
+token from Keychain, discard the in-memory access token, and present login.
 
 JWTs use HS256 with an issuer, audience, and a signing key independent from
 Django's `SECRET_KEY`. To rotate normally, deploy support for both old and new

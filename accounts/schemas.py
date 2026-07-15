@@ -58,6 +58,11 @@ class ChangePasswordSchema(Schema):
     model_config = ConfigDict(extra="forbid")
 
 
+class ReauthenticationResponse(Schema):
+    detail: str
+    reauthentication_required: bool = True
+
+
 class DeleteAccountSchema(Schema):
     password: str
     model_config = ConfigDict(extra="forbid")

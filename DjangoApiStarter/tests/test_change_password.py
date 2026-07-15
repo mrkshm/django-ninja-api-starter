@@ -47,6 +47,7 @@ class TestChangePassword:
         )
         assert response.status_code == 200
         assert "successfully" in response.json()["detail"]
+        assert response.json()["reauthentication_required"] is True
         # The password change revokes the session used to perform it.
         old_session = self.client.get(
             "/users/me",

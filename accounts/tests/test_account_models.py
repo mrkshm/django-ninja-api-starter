@@ -1,8 +1,10 @@
 import pytest
-from accounts.models import User, PendingEmailChange, PendingPasswordReset
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from django.contrib.auth.models import Group, Permission
+from django.utils import timezone
+
+from accounts.models import PendingEmailChange, PendingPasswordReset, User
+from accounts.tokens import hash_token
 
 
 @pytest.mark.django_db
@@ -24,7 +26,7 @@ def test_pending_email_change_str():
         user=user,
         new_email="new@example.com",
         auth_version=user.auth_version,
-        token="tok",
+        token=hash_token("tok"),
         expires_at=now,
     )
     s = str(obj)
@@ -35,7 +37,9 @@ def test_pending_email_change_str():
 def test_pending_password_reset_str():
     user = User.objects.create_user(email="reset@example.com", password="pw")
     now = timezone.now()
-    obj = PendingPasswordReset.objects.create(user=user, token="tok", expires_at=now)
+    obj = PendingPasswordReset.objects.create(
+        user=user, token=hash_token("tok"), expires_at=now
+    )
     s = str(obj)
     assert "PendingPasswordReset(user=" in s
 

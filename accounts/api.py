@@ -11,8 +11,21 @@ from ninja_jwt.schema import TokenVerifyInputSchema
 
 from accounts.models import (
     PendingEmailChange,
-    PendingPasswordReset,
     PendingRegistration,
+)
+from accounts.operations import (
+    AccountOperationError,
+)
+from accounts.operations import change_password as change_password_operation
+from accounts.operations import (
+    confirm_email_change,
+)
+from accounts.operations import (
+    confirm_password_reset as confirm_password_reset_operation,
+)
+from accounts.operations import request_email_change as request_email_change_operation
+from accounts.operations import (
+    rotate_password_reset,
 )
 from accounts.schemas import (
     ChangePasswordSchema,
@@ -23,6 +36,7 @@ from accounts.schemas import (
     LogoutInputSchema,
     PasswordResetRequestSchema,
     PasswordResetSchema,
+    ReauthenticationResponse,
     RegisterSchema,
     RegistrationVerificationSchema,
     TokenInputSchema,
@@ -35,8 +49,6 @@ from accounts.services import (
     authenticate_for_token,
     delete_user_account,
     issue_token_pair,
-    normalize_email,
-    revoke_all_sessions,
     revoke_session_from_refresh,
     rotate_token_pair,
     send_templated_email,
@@ -62,6 +74,12 @@ from organizations.services import ActiveOwnerRequiredError
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 2
+REGISTRATION_RESPONSE_DETAIL = (
+    "If the address can be registered, a verification email has been sent."
+)
+PASSWORD_RESET_RESPONSE_DETAIL = (
+    "If the email exists, a password reset link has been sent."
+)
 
 token_router = Router(tags=["token"])
 auth_router = Router()
@@ -162,9 +180,7 @@ def register(request, data: RegisterSchema):
     email = data.email
     create_pending_registration(email)
 
-    return {
-        "detail": "If the address can be registered, a verification email has been sent."
-    }
+    return {"detail": REGISTRATION_RESPONSE_DETAIL}
 
 
 @auth_router.post("/verify-registration")
@@ -215,14 +231,10 @@ def resend_verification(request, data: EmailSchema):
     try:
         email = normalize_and_validate_email(data.email)
     except ValueError:
-        return {
-            "detail": "If the address can be registered, a verification email has been sent."
-        }
+        return {"detail": REGISTRATION_RESPONSE_DETAIL}
     create_pending_registration(email)
 
-    return {
-        "detail": "If the address can be registered, a verification email has been sent."
-    }
+    return {"detail": REGISTRATION_RESPONSE_DETAIL}
 
 
 @auth_router.post("/logout/", throttle=[logout_throttle])
@@ -244,130 +256,86 @@ def delete_account(request, data: DeleteAccountSchema):
     return {"detail": "Account deleted successfully."}
 
 
-@auth_router.post("/change-password/", auth=JWTAuth())
+@auth_router.post(
+    "/change-password/", auth=JWTAuth(), response=ReauthenticationResponse
+)
 def change_password(request, data: ChangePasswordSchema):
     user = get_request_user(request)
-    if not user.check_password(data.old_password):
-        raise HttpError(400, "Old password is incorrect")
-    validate_new_password(data.new_password, user=user)
-    user.set_password(data.new_password)
-    user.save()
-    revoke_all_sessions(user)
-    audit_logger.info("audit:password_changed user=%s", user.pk)
-    return {"detail": "Password changed successfully."}
+    try:
+        change_password_operation(
+            user_id=user.pk,
+            old_password=data.old_password,
+            new_password=data.new_password,
+        )
+    except AccountOperationError as exc:
+        raise HttpError(400, str(exc)) from exc
+    return ReauthenticationResponse(detail="Password changed successfully.")
 
 
 @auth_router.patch("/email", auth=JWTAuth(), throttle=[email_change_throttle])
 def request_email_change(request, data: EmailUpdateSchema):
     user = get_request_user(request)
-    new_email = data.email
-    if new_email == normalize_email(user.email):
-        raise HttpError(400, "New email must differ from the current email.")
-    if User.objects.filter(email__iexact=new_email).exclude(id=user.id).exists():
-        raise HttpError(400, "Email already taken")
-
-    token = generate_raw_token()
-    token_hash = hash_token(token)
-    expires_at = timezone.now() + timedelta(hours=EMAIL_CHANGE_TOKEN_EXPIRY_HOURS)
-    with transaction.atomic():
-        locked_user = User.objects.select_for_update().get(pk=user.pk)
-        if not locked_user.check_password(data.current_password):
-            raise HttpError(400, "Password is incorrect")
-        pending, _ = PendingEmailChange.objects.update_or_create(
-            user=locked_user,
-            defaults={
-                "new_email": new_email,
-                "token": token_hash,
-                "expires_at": expires_at,
-                "auth_version": locked_user.auth_version,
-            },
+    try:
+        delivery = request_email_change_operation(
+            user_id=user.pk,
+            new_email=data.email,
+            current_password=data.current_password,
+            expiry_hours=EMAIL_CHANGE_TOKEN_EXPIRY_HOURS,
         )
+    except AccountOperationError as exc:
+        raise HttpError(400, str(exc)) from exc
 
-    old_email = locked_user.email
-    display_name = (
-        f"{locked_user.first_name} {locked_user.last_name}".strip() or old_email
+    verification_link = (
+        f"{settings.FRONTEND_URL}/verify-email-change#token={delivery.raw_token}"
     )
-    verification_link = f"{settings.FRONTEND_URL}/verify-email-change#token={token}"
     try:
         send_templated_email(
             "email_change_requested.txt",
             {
                 "project_name": settings.PROJECT_NAME,
-                "user_display_name": display_name,
-                "old_email": old_email,
-                "new_email": new_email,
+                "user_display_name": delivery.display_name,
+                "old_email": delivery.old_email,
+                "new_email": delivery.new_email,
             },
-            [old_email],
+            [delivery.old_email],
         )
         send_templated_email(
             "email_change_verification.txt",
             {
                 "project_name": settings.PROJECT_NAME,
-                "user_display_name": display_name,
-                "new_email": new_email,
+                "user_display_name": delivery.display_name,
+                "new_email": delivery.new_email,
                 "verification_link": verification_link,
             },
-            [new_email],
+            [delivery.new_email],
         )
     except Exception as exc:
-        PendingEmailChange.objects.filter(pk=pending.pk, token=token_hash).delete()
+        PendingEmailChange.objects.filter(
+            pk=delivery.pending_id,
+            token=delivery.token_hash,
+        ).delete()
         logger.warning(
             "accounts:email_change_verification_failed user=%s",
-            locked_user.pk,
+            delivery.user_id,
         )
         raise HttpError(500, "Failed to send verification email.") from exc
-    audit_logger.info("audit:email_change_requested user=%s", locked_user.pk)
+    audit_logger.info("audit:email_change_requested user=%s", delivery.user_id)
     return {"detail": "Verification email sent. Please check your new address."}
 
 
-@auth_router.post("/email/verify")
+@auth_router.post("/email/verify", response=ReauthenticationResponse)
 def verify_email_change(request, data: TokenInputSchema):
-    error = None
-    old_email = None
-    new_email = None
-    changed_user = None
     try:
-        with transaction.atomic():
-            try:
-                pending = PendingEmailChange.objects.select_for_update().get(
-                    token=hash_token(data.token)
-                )
-            except PendingEmailChange.DoesNotExist:
-                error = "Invalid or expired token."
-            else:
-                changed_user = User.objects.select_for_update().get(pk=pending.user_id)
-                if pending.is_expired():
-                    pending.delete()
-                    error = "Token has expired."
-                elif pending.auth_version != changed_user.auth_version:
-                    pending.delete()
-                    error = "Invalid or expired token."
-                elif (
-                    User.objects.filter(email__iexact=pending.new_email)
-                    .exclude(id=changed_user.id)
-                    .exists()
-                ):
-                    pending.delete()
-                    error = "Email already taken."
-                else:
-                    old_email = changed_user.email
-                    new_email = pending.new_email
-                    changed_user.email = new_email
-                    changed_user.save(update_fields=["email", "updated_at"])
-                    revoke_all_sessions(changed_user)
-                    pending.delete()
-    except IntegrityError as exc:
-        raise HttpError(400, "Email already taken.") from exc
-
-    if error is not None or changed_user is None or not old_email or not new_email:
-        raise HttpError(400, error or "Invalid or expired token.")
+        result = confirm_email_change(raw_token=data.token)
+    except AccountOperationError as exc:
+        raise HttpError(400, str(exc)) from exc
 
     notification_context = {
         "project_name": settings.PROJECT_NAME,
-        "old_email": old_email,
-        "new_email": new_email,
+        "old_email": result.old_email,
+        "new_email": result.new_email,
     }
-    for recipient in (old_email, new_email):
+    for recipient in (result.old_email, result.new_email):
         try:
             send_templated_email(
                 "email_change_completed.txt", notification_context, [recipient]
@@ -375,10 +343,9 @@ def verify_email_change(request, data: TokenInputSchema):
         except Exception:
             logger.exception(
                 "accounts:email_change_completion_notice_failed user=%s",
-                changed_user.pk,
+                result.user_id,
             )
-    audit_logger.info("audit:email_change_completed user=%s", changed_user.pk)
-    return {"detail": "Email address updated successfully."}
+    return ReauthenticationResponse(detail="Email address updated successfully.")
 
 
 @auth_router.post(
@@ -387,61 +354,50 @@ def verify_email_change(request, data: TokenInputSchema):
 )
 def request_password_reset(request, data: PasswordResetRequestSchema):
     """
-    Initiate password reset: send reset email if user exists (always return generic response).
+    Send a reset email when the account exists; always return a generic response.
     """
     try:
         email = normalize_and_validate_email(data.email)
     except ValueError:
-        return {"detail": "If the email exists, a password reset link has been sent."}
-    user = User.objects.filter(email__iexact=email).first()
-    if not user:
-        return {"detail": "If the email exists, a password reset link has been sent."}
-    # Remove any previous pending resets for this user
-    PendingPasswordReset.objects.filter(user=user).delete()
-    token = generate_raw_token()
-    expires_at = timezone.now() + timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS)
-    PendingPasswordReset.objects.create(
-        user=user, token=hash_token(token), expires_at=expires_at
+        return {"detail": PASSWORD_RESET_RESPONSE_DETAIL}
+    delivery = rotate_password_reset(
+        email=email,
+        expiry_hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS,
     )
-    display_name = f"{user.first_name} {user.last_name}".strip() or user.email
-    reset_link = f"{settings.FRONTEND_URL}/reset-password#token={token}"
+    if delivery is None:
+        return {"detail": PASSWORD_RESET_RESPONSE_DETAIL}
+    reset_link = f"{settings.FRONTEND_URL}/reset-password#token={delivery.raw_token}"
     try:
         send_templated_email(
             "password_reset.txt",
             {
                 "project_name": settings.PROJECT_NAME,
-                "user_display_name": display_name,
+                "user_display_name": delivery.display_name,
                 "reset_link": reset_link,
             },
-            [user.email],
+            [delivery.email],
         )
     except Exception:
-        logger.exception("accounts:password_reset_email_failed user=%s", user.pk)
-    return {"detail": "If the email exists, a password reset link has been sent."}
+        logger.exception(
+            "accounts:password_reset_email_failed user=%s", delivery.user_id
+        )
+    return {"detail": PASSWORD_RESET_RESPONSE_DETAIL}
 
 
 @auth_router.post(
     "/password-reset/confirm",
+    response=ReauthenticationResponse,
     throttle=[password_reset_confirm_throttle],
 )
 def confirm_password_reset(request, data: PasswordResetSchema):
     """
     Reset password using token.
     """
-    token = data.token
-    new_password = data.new_password
     try:
-        pending = PendingPasswordReset.objects.get(token=hash_token(token))
-    except PendingPasswordReset.DoesNotExist:
-        raise HttpError(400, "Invalid or expired token.")
-    if pending.is_expired():
-        pending.delete()
-        raise HttpError(400, "Token has expired.")
-    user = pending.user
-    validate_new_password(new_password, user=user)
-    user.set_password(new_password)
-    user.save()
-    revoke_all_sessions(user)
-    pending.delete()
-    audit_logger.info("audit:password_reset_completed user=%s", user.pk)
-    return {"detail": "Password has been reset successfully."}
+        confirm_password_reset_operation(
+            raw_token=data.token,
+            new_password=data.new_password,
+        )
+    except AccountOperationError as exc:
+        raise HttpError(400, str(exc)) from exc
+    return ReauthenticationResponse(detail="Password has been reset successfully.")

@@ -69,7 +69,7 @@ class UserAdmin(BaseUserAdmin):
                 )
             },
         ),
-        ("Important dates", {"fields": ("last_login", "created_at", "updated_at")}),
+        ("Important dates", {"fields": ("created_at", "updated_at")}),
     )
     add_fieldsets = (
         (
@@ -80,7 +80,7 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
-    readonly_fields = ("created_at", "updated_at", "last_login")
+    readonly_fields = ("created_at", "updated_at")
     actions = ("deactivate_selected_users", "activate_selected_users")
 
     @transaction.atomic
@@ -107,22 +107,32 @@ class UserAdmin(BaseUserAdmin):
             set_user_active_status(user, is_active=True)
 
 
+class PendingTokenAdmin(admin.ModelAdmin):
+    """Pending credentials are inspectable and deletable, never hand-authored."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return tuple(field.name for field in self.model._meta.fields)
+
+
 @admin.register(PendingEmailChange)
-class PendingEmailChangeAdmin(admin.ModelAdmin):
+class PendingEmailChangeAdmin(PendingTokenAdmin):
     list_display = ("user", "new_email", "auth_version", "created_at", "expires_at")
     search_fields = ("user__email", "new_email")
     list_filter = ("created_at", "expires_at")
 
 
 @admin.register(PendingPasswordReset)
-class PendingPasswordResetAdmin(admin.ModelAdmin):
-    list_display = ("user", "token", "created_at", "expires_at")
+class PendingPasswordResetAdmin(PendingTokenAdmin):
+    list_display = ("user", "created_at", "expires_at")
     search_fields = ("user__email", "token")
     list_filter = ("created_at", "expires_at")
 
 
 @admin.register(PendingRegistration)
-class PendingRegistrationAdmin(admin.ModelAdmin):
+class PendingRegistrationAdmin(PendingTokenAdmin):
     list_display = ("email", "created_at", "expires_at")
     search_fields = ("email",)
     list_filter = ("created_at", "expires_at")
