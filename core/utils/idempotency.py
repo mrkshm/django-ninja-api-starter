@@ -10,9 +10,11 @@ from datetime import timedelta
 from typing import Any
 
 from django.db import connection, transaction
+from django.http import HttpRequest
 from django.utils import timezone
 from ninja.errors import HttpError
 
+from accounts.models import User
 from core.models import IdempotencyRecord
 from core.utils.auth_utils import get_request_user
 
@@ -26,12 +28,12 @@ _LOCAL_LOCKS_GUARD = threading.Lock()
 class RequestIdentity:
     identity_hash: str
     fingerprint: str
-    user: Any
+    user: User
     method: str
     path: str
 
 
-def _client_key(request) -> str | None:
+def _client_key(request: HttpRequest) -> str | None:
     value = request.headers.get(HEADER_NAME) or request.META.get("HTTP_IDEMPOTENCY_KEY")
     if not value:
         return None
@@ -41,12 +43,12 @@ def _client_key(request) -> str | None:
     return value
 
 
-def _identity_hash(user_id: Any, method: str, path: str, client_key: str) -> str:
+def _identity_hash(user_id: int, method: str, path: str, client_key: str) -> str:
     identity = f"{user_id}:{method.upper()}:{path}:{client_key}"
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
-def _request_fingerprint(request) -> str:
+def _request_fingerprint(request: HttpRequest) -> str:
     try:
         body = getattr(request, "body", b"") or b""
     except Exception as exc:
@@ -88,7 +90,7 @@ def _request_fingerprint(request) -> str:
 
 
 def _request_identity(
-    request, *, request_fingerprint: str | None = None
+    request: HttpRequest, *, request_fingerprint: str | None = None
 ) -> RequestIdentity | None:
     client_key = _client_key(request)
     if client_key is None:
@@ -147,7 +149,7 @@ def _operation_lock(identity_hash: str) -> Iterator[None]:
 
 
 def run_idempotently(
-    request,
+    request: HttpRequest,
     operation: Callable[[], tuple[int, Any]],
     *,
     request_fingerprint: str | None = None,

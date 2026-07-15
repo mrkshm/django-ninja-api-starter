@@ -9,6 +9,7 @@ from core.utils.auth_utils import get_request_user
 from organizations.models import Organization
 
 from .schemas import UserProfileOut
+from .serializers import serialize_user_profile
 from .username_validation import validate_username_value
 
 
@@ -52,7 +53,4 @@ def update_username(request, data: UsernameUpdateSchema):
     org.name = new_username
     org.save(update_fields=["name", "updated_at"])
 
-    # Add org info to user object for response
-    user.org_name = org.name
-    user.org_slug = org.slug
-    return user
+    return serialize_user_profile(user, org)

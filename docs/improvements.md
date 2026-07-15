@@ -573,16 +573,16 @@ Acceptance criteria:
 
 ## Phase 6: Strengthen typing where it provides assurance
 
-Current behavior:
+Completed state:
 
-- mypy runs with the Django plugin over the six application packages.
-- `DjangoApiStarter` is excluded from the explicit package list, leaving API,
-  settings, middleware, Celery, ASGI, and WSGI bootstrap code outside the main
-  target.
-- `check_untyped_defs = False` means unannotated function bodies are skipped.
-- `disallow_untyped_defs = False` permits public operations without types.
-
-This is meaningful but limited checking—not no checking at all.
+- mypy runs with the Django plugin over every application package and the
+  `DjangoApiStarter` project/bootstrap package.
+- `check_untyped_defs = True` checks bodies globally.
+- `disallow_untyped_defs = True` is enforced for account operations and profile
+  serialization, image operations, organization scope, tag services,
+  authentication helpers, idempotency, and polymorphic organization resolution.
+- Django/Ninja route modules remain on the global incremental setting; strict
+  definition checking can expand to them as their boundaries are touched.
 
 Incremental implementation:
 

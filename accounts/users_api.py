@@ -1,10 +1,10 @@
 import uuid
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from ninja import File, Router, Schema, UploadedFile
 from ninja.errors import HttpError
 
+from accounts.models import User
 from core.authentication import JWTAuth
 from core.utils.auth_utils import get_request_user
 from core.utils.avatar import schedule_avatar_file_deletion
@@ -14,11 +14,10 @@ from core.utils.uploads import UploadTooLarge, read_uploaded_file_bounded
 from organizations.models import Organization
 
 from .schemas import UsernameCheckResponse, UserProfileOut, UserProfileUpdate
+from .serializers import serialize_user_profile
 from .throttles import username_check_throttle
 from .username import router as username_router
 from .username_validation import validate_username_value
-
-User = get_user_model()
 
 # You can add more user/profile endpoints here as needed
 users_router = Router()
@@ -31,7 +30,7 @@ class AvatarUploadResponse(Schema):
     avatar_large_url: str
 
 
-def attach_personal_org_fields(user):
+def serialize_profile_with_personal_org(user: User) -> UserProfileOut:
     org = (
         Organization.objects.filter(
             memberships__user=user,
@@ -41,9 +40,7 @@ def attach_personal_org_fields(user):
         .order_by("id")
         .first()
     )
-    user.org_name = org.name if org else ""
-    user.org_slug = org.slug if org else ""
-    return user
+    return serialize_user_profile(user, org)
 
 
 @users_router.post("/avatar", response=AvatarUploadResponse, auth=JWTAuth())
@@ -106,7 +103,7 @@ def delete_avatar(request):
 @users_router.get("/me", response=UserProfileOut, auth=JWTAuth())
 def get_me(request):
     user = get_request_user(request)
-    return attach_personal_org_fields(user)
+    return serialize_profile_with_personal_org(user)
 
 
 @users_router.patch("/me", response=UserProfileOut, auth=JWTAuth())
@@ -115,7 +112,7 @@ def update_me(request, data: UserProfileUpdate):
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     user.save()
-    return attach_personal_org_fields(user)
+    return serialize_profile_with_personal_org(user)
 
 
 @users_router.get(

@@ -2,20 +2,18 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
+from django.http import HttpRequest
 from ninja.errors import HttpError
 
+from accounts.models import User
 from core.utils.auth_utils import get_request_user
 from organizations.models import Membership, Organization
-
-if TYPE_CHECKING:
-    from accounts.models import User
 
 audit_logger = logging.getLogger("audit")
 
 
-def is_platform_admin(user) -> bool:
+def is_platform_admin(user: User) -> bool:
     """Staff status alone never grants cross-tenant application access."""
     return bool(getattr(user, "is_superuser", False))
 
@@ -51,7 +49,7 @@ class OrgScope:
         return self
 
 
-def resolve_org_scope(request, org_slug: str) -> OrgScope:
+def resolve_org_scope(request: HttpRequest, org_slug: str) -> OrgScope:
     user = get_request_user(request)
     membership = (
         Membership.objects.select_related("organization")
@@ -90,9 +88,9 @@ def resolve_org_scope(request, org_slug: str) -> OrgScope:
     return OrgScope(user=user, org=org)
 
 
-def resolve_write_org_scope(request, org_slug: str) -> OrgScope:
+def resolve_write_org_scope(request: HttpRequest, org_slug: str) -> OrgScope:
     return resolve_org_scope(request, org_slug).require_write()
 
 
-def resolve_admin_org_scope(request, org_slug: str) -> OrgScope:
+def resolve_admin_org_scope(request: HttpRequest, org_slug: str) -> OrgScope:
     return resolve_org_scope(request, org_slug).require_admin()

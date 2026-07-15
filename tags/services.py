@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
 from django.utils.text import slugify
 from ninja.errors import HttpError
 
+from organizations.models import Organization
 from tags.models import Tag, TaggedItem
 from tags.validation import MAX_TAGS_PER_ASSIGNMENT, normalize_tag_name
 
@@ -36,7 +38,7 @@ def _slug_collision() -> HttpError:
 
 
 @transaction.atomic
-def create_tag(organization, name: str) -> Tag:
+def create_tag(organization: Organization, name: str) -> Tag:
     clean_name, slug = _canonical_name(name)
     try:
         return Tag.objects.create(
@@ -73,7 +75,11 @@ def delete_tag(tag: Tag) -> int:
 
 @transaction.atomic
 def unassign_tags_from_object(
-    *, organization, content_type, object_id: int, tag_ids: list[int]
+    *,
+    organization: Organization,
+    content_type: ContentType,
+    object_id: int,
+    tag_ids: list[int],
 ) -> TagUnassignmentResult:
     deleted, _ = TaggedItem.objects.filter(
         tag_id__in=tag_ids,
@@ -86,7 +92,11 @@ def unassign_tags_from_object(
 
 @transaction.atomic
 def unassign_tag_from_object_by_slug(
-    *, organization, content_type, object_id: int, slug: str
+    *,
+    organization: Organization,
+    content_type: ContentType,
+    object_id: int,
+    slug: str,
 ) -> TagUnassignmentResult:
     tag = Tag.objects.filter(organization=organization, slug=slug).first()
     if tag is None:
@@ -101,8 +111,8 @@ def unassign_tag_from_object_by_slug(
 
 @transaction.atomic
 def assign_tags_to_object(
-    organization,
-    content_type,
+    organization: Organization,
+    content_type: ContentType,
     object_id: int,
     names: list[str],
 ) -> TagAssignmentResult:
