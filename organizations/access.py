@@ -1,15 +1,7 @@
-from django.core.cache import cache
 from django.db.models import Q
 from ninja.errors import HttpError
 
 from organizations.models import Membership, Organization
-
-MEMBERSHIP_ROLE_CACHE_TIMEOUT = 3600
-NO_MEMBERSHIP_ROLE = "__none__"
-
-
-def membership_role_cache_key(user_id, organization_id):
-    return f"membership_role_{user_id}_{organization_id}"
 
 
 def is_platform_admin(user) -> bool:
@@ -26,20 +18,11 @@ def get_membership_role(user, organization) -> str | None:
     if user_id is None or organization_id is None:
         return None
 
-    cache_key = membership_role_cache_key(user_id, organization_id)
-    cached_role = cache.get(cache_key)
-    if cached_role is not None:
-        return None if cached_role == NO_MEMBERSHIP_ROLE else cached_role
-
-    role = (
+    return (
         Membership.objects.filter(user_id=user_id, organization_id=organization_id)
         .values_list("role", flat=True)
         .first()
     )
-    cache.set(
-        cache_key, role or NO_MEMBERSHIP_ROLE, timeout=MEMBERSHIP_ROLE_CACHE_TIMEOUT
-    )
-    return role
 
 
 def member_org_ids(user):
