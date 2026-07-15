@@ -1,11 +1,8 @@
 import hashlib
-import json
 import logging
-import shutil
 import tempfile
 import threading
 import time
-import zipfile
 from contextlib import contextmanager
 from datetime import timedelta
 from typing import Callable
@@ -18,11 +15,9 @@ from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from contacts.models import Contact
 from core.tasks import send_email_task
-from images.models import Image, PolymorphicImageRelation
-from organizations.models import ExportJob, Membership
-from tags.models import Tag, TaggedItem
+from organizations.export_archive import build_export_archive
+from organizations.models import ExportJob
 
 logger = logging.getLogger(__name__)
 EXPORT_PREFIX = "private/exports/"
@@ -132,128 +127,6 @@ def export_job_lock(job_id: str):
             lock.release()
 
 
-def serialize_org_data(job: ExportJob) -> dict:
-    org = job.organization
-    memberships = Membership.objects.filter(organization=org).select_related("user")
-    contacts = Contact.objects.filter(organization=org).prefetch_related(
-        "tagged_items__tag"
-    )
-    tags = Tag.objects.filter(organization=org)
-    images = Image.objects.filter(organization=org)
-    tagged_items = TaggedItem.objects.filter(tag__organization=org).select_related(
-        "tag", "content_type"
-    )
-    image_relations = PolymorphicImageRelation.objects.filter(
-        image__organization=org
-    ).select_related("image", "content_type")
-    return {
-        "format": "django-ninja-api-starter-portability-export",
-        "version": 1,
-        "generated_at": timezone.now().isoformat(),
-        "organization": {
-            "id": org.id,
-            "name": org.name,
-            "slug": org.slug,
-            "type": org.type,
-            "created_at": org.created_at.isoformat(),
-            "updated_at": org.updated_at.isoformat(),
-        },
-        "memberships": [
-            {
-                "user_id": membership.user_id,
-                "email": membership.user.email,
-                "username": membership.user.username,
-                "role": membership.role,
-            }
-            for membership in memberships
-        ],
-        "contacts": [
-            {
-                "id": contact.id,
-                "slug": contact.slug,
-                "display_name": contact.display_name,
-                "first_name": contact.first_name,
-                "last_name": contact.last_name,
-                "email": contact.email,
-                "location": contact.location,
-                "phone": contact.phone,
-                "notes": contact.notes,
-                "avatar_path": contact.avatar_path,
-                "creator_id": contact.creator_id,
-                "created_at": contact.created_at.isoformat(),
-                "updated_at": contact.updated_at.isoformat(),
-            }
-            for contact in contacts
-        ],
-        "tags": [{"id": tag.id, "name": tag.name, "slug": tag.slug} for tag in tags],
-        "tag_relations": [
-            {
-                "tag_id": item.tag_id,
-                "app_label": item.content_type.app_label,
-                "model": item.content_type.model,
-                "object_id": item.object_id,
-            }
-            for item in tagged_items
-        ],
-        "images": [
-            {
-                "id": image.id,
-                "object_key": image.file.name,
-                "title": image.title,
-                "description": image.description,
-                "alt_text": image.alt_text,
-                "creator_id": image.creator_id,
-                "created_at": image.created_at.isoformat(),
-                "updated_at": image.updated_at.isoformat(),
-            }
-            for image in images
-        ],
-        "image_relations": [
-            {
-                "image_id": relation.image_id,
-                "app_label": relation.content_type.app_label,
-                "model": relation.content_type.model,
-                "object_id": relation.object_id,
-                "is_cover": relation.is_cover,
-                "order": relation.order,
-            }
-            for relation in image_relations
-        ],
-    }
-
-
-def build_export_archive(
-    job: ExportJob,
-    destination,
-    heartbeat: Callable[[], None] | None = None,
-) -> None:
-    with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(
-            "data.json",
-            json.dumps(serialize_org_data(job), ensure_ascii=False, indent=2),
-        )
-        if heartbeat:
-            heartbeat()
-        for image in Image.objects.filter(organization=job.organization).iterator():
-            if not image.file:
-                continue
-            try:
-                image_name = image.file.name or str(image.file)
-                with (
-                    image.file.open("rb") as source,
-                    archive.open(
-                        f"media/{image.pk}/{image_name.rsplit('/', 1)[-1]}", "w"
-                    ) as target,
-                ):
-                    shutil.copyfileobj(source, target, length=1024 * 1024)
-            except FileNotFoundError:
-                logger.warning(
-                    "exports:source_media_missing job=%s image=%s", job.pk, image.pk
-                )
-            if heartbeat:
-                heartbeat()
-
-
 def _heartbeat(job_id) -> Callable[[], None]:
     last_heartbeat = 0.0
 
@@ -329,7 +202,11 @@ def export_org_data_task(self, job_id: str):
         saved_key = ""
         try:
             with tempfile.NamedTemporaryFile(suffix=".zip") as temporary:
-                build_export_archive(job, temporary, heartbeat=_heartbeat(job.pk))
+                build_export_archive(
+                    job,
+                    temporary.file,
+                    heartbeat=_heartbeat(job.pk),
+                )
                 temporary.seek(0)
                 for stale_key in {job.object_key, object_key} - {""}:
                     default_storage.delete(stale_key)
