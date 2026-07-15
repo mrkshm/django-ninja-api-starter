@@ -1,23 +1,24 @@
-import pytest
 from types import SimpleNamespace
-from ninja.errors import HttpError
-from django.contrib.auth import get_user_model
 
-from tags.api import (
-    list_tags,
-    search_tags,
-    get_tag_by_slug,
-    list_tags_for_object,
-    assign_tags,
-    update_tag,
-    delete_tag,
-    unassign_tags,
-    unassign_tag_by_slug,
-)
-from tags.schemas import TagUpdate
-from tags.models import Tag
+import pytest
+from django.contrib.auth import get_user_model
+from ninja.errors import HttpError
+
 from contacts.models import Contact
 from organizations.models import Organization
+from tags.api import (
+    assign_tags,
+    delete_tag,
+    get_tag_by_slug,
+    list_tags,
+    list_tags_for_object,
+    search_tags,
+    unassign_tag_by_slug,
+    unassign_tags,
+    update_tag,
+)
+from tags.models import Tag
+from tags.schemas import TagAssignment, TagUpdate
 
 
 @pytest.mark.django_db
@@ -80,7 +81,12 @@ class TestTagPermissions:
         req = self._req(self.nonmember, method="POST")
         with pytest.raises(HttpError) as ctx:
             assign_tags(
-                req, self.org.slug, "contacts", "contact", self.contact.id, ["vip"]
+                req,
+                self.org.slug,
+                "contacts",
+                "contact",
+                self.contact.id,
+                TagAssignment(["vip"]),
             )
         assert getattr(ctx.value, "status_code", 403) == 403
 

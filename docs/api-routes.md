@@ -22,7 +22,7 @@ operations are versioned below `/api/v1`.
 | Account lifecycle | `POST /auth/register/`, `/auth/verify-registration`, `/auth/logout/`, `/auth/password-reset/request`, `/auth/password-reset/confirm` |
 | Current user | `GET/PATCH /users/me`, `PATCH /users/username`, `POST/DELETE /users/avatar` |
 | Contacts | `GET/POST /orgs/{org_slug}/contacts/`, CRUD below `/contacts/{slug}/`, avatar upload/delete |
-| Tags | list/create/search below `/orgs/{org_slug}/tags/`; attachable targets are allowlisted |
+| Tags | list/create/search below `/orgs/{org_slug}/tags/`; assignment accepts up to 50 normalized names and targets are allowlisted |
 | Images | media library and relation operations below `/orgs/{org_slug}/images/` |
 | Public shares | `POST /shared/images/resolve/` with the raw token in the body |
 | Exports | `GET/POST /orgs/{org_slug}/exports/`, status/download and retry by job UUID |

@@ -1,27 +1,34 @@
-from ninja import Router
 import logging
+
 from django.shortcuts import get_object_or_404
+from ninja import Router
+from ninja.errors import HttpError
+from ninja.pagination import LimitOffsetPagination, paginate
+
+from core.authentication import JWTAuth
+from core.utils.polymorphic import resolve_org_scoped_content_object
+from organizations.scope import resolve_org_scope
 from tags.models import Tag, TaggedItem
 from tags.schemas import (
     DetailResponse,
     RemovedCountResponse,
+    TagAssignment,
     TagCreate,
     TagOut,
     TagUpdate,
 )
-from django.utils.text import slugify
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
-from ninja.pagination import LimitOffsetPagination, paginate
-from core.utils.polymorphic import resolve_org_scoped_content_object
-from organizations.scope import resolve_org_scope
-from tags.services import create_tag as create_tag_service, rename_tag
+from tags.services import assign_tags_to_object
+from tags.services import create_tag as create_tag_service
+from tags.services import rename_tag
 
 # Module-level router and logger
 router = Router(tags=["tags"])
 logger = logging.getLogger("audit")
 
-TAG_ASSIGN_DESCRIPTION = "Assign tag names to an organization-scoped object. Missing tags are created in that organization."
+TAG_ASSIGN_DESCRIPTION = (
+    "Assign up to 50 tag names to an organization-scoped object. "
+    "Missing tags are created in that organization."
+)
 TAG_OBJECT_DESCRIPTION = "Manage tags attached to a polymorphic object identified by app label, model name, and object id."
 
 
@@ -158,7 +165,12 @@ def list_tags_for_object(
     description=TAG_ASSIGN_DESCRIPTION,
 )
 def assign_tags(
-    request, org_slug: str, app_label: str, model: str, obj_id: int, data: list[str]
+    request,
+    org_slug: str,
+    app_label: str,
+    model: str,
+    obj_id: int,
+    data: TagAssignment,
 ):
     """Assign tags by name to an object. Creates tags if missing within the organization.
 
@@ -173,32 +185,19 @@ def assign_tags(
     ct = resolved.content_type
     user = resolved.scope.user
 
-    out: list[Tag] = []
-    for name in data:
-        slug = slugify(name)
-        tag, _created = Tag.objects.get_or_create(
-            organization=org, slug=slug, defaults={"name": name}
+    result = assign_tags_to_object(org, ct, obj_id, data.root)
+    for tag_id in result.newly_assigned_tag_ids:
+        logger.info(
+            "audit:tag_assign org=%s user=%s app=%s model=%s obj=%s tag_id=%s",
+            org.id,
+            getattr(user, "id", None),
+            app_label,
+            model,
+            obj_id,
+            tag_id,
         )
-        # Ensure name stays in sync with slug if the tag existed but had different casing
-        if tag.name != name and not _created:
-            tag.name = name
-            tag.save(update_fields=["name"])
-        ti, created = TaggedItem.objects.get_or_create(
-            tag=tag, content_type=ct, object_id=obj_id
-        )
-        if created:
-            logger.info(
-                "audit:tag_assign org=%s user=%s app=%s model=%s obj=%s tag_id=%s",
-                org.id,
-                getattr(user, "id", None),
-                app_label,
-                model,
-                obj_id,
-                tag.id,
-            )
-        out.append(tag)
 
-    return [TagOut.model_validate(tag) for tag in out]
+    return [TagOut.model_validate(tag) for tag in result.tags]
 
 
 @router.patch(
@@ -212,7 +211,7 @@ def update_tag(request, org_slug: str, tag_id: int, data: TagUpdate):
     scope = get_org_scope_for_request(request, org_slug).require_write()
     org = scope.org
     tag = get_object_or_404(Tag, id=tag_id, organization=org)
-    if data.name:
+    if data.name is not None:
         tag = rename_tag(tag, data.name)
     return TagOut.model_validate(
         {

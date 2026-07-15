@@ -1312,6 +1312,17 @@
         "title": "SetCoverIn",
         "type": "object"
       },
+      "TagAssignment": {
+        "items": {
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "title": "TagAssignment",
+        "type": "array"
+      },
       "TagCreate": {
         "additionalProperties": false,
         "examples": [
@@ -1321,6 +1332,8 @@
         ],
         "properties": {
           "name": {
+            "maxLength": 50,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -1370,6 +1383,8 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 50,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4178,7 +4193,7 @@
         ]
       },
       "post": {
-        "description": "Assign tag names to an organization-scoped object. Missing tags are created in that organization.",
+        "description": "Assign up to 50 tag names to an organization-scoped object. Missing tags are created in that organization.",
         "operationId": "tags_api_assign_tags",
         "parameters": [
           {
@@ -4222,11 +4237,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Data",
-                "type": "array"
+                "$ref": "#/components/schemas/TagAssignment"
               }
             }
           },

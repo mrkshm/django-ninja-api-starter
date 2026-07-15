@@ -1,11 +1,13 @@
-# tags/schemas.py
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from core.schemas import DetailResponse
+from tags.validation import MAX_TAGS_PER_ASSIGNMENT, TagName
 
 
 class TagCreate(BaseModel):
-    name: str
+    name: TagName
     model_config = ConfigDict(
         from_attributes=True,
         extra="forbid",
@@ -14,7 +16,7 @@ class TagCreate(BaseModel):
 
 
 class TagUpdate(BaseModel):
-    name: str | None = None
+    name: TagName | None = None
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={"examples": [{"name": "priority"}]},
@@ -39,3 +41,10 @@ class TaggedItemOut(BaseModel):
 class RemovedCountResponse(BaseModel):
     removed_count: int
     model_config = ConfigDict(json_schema_extra={"examples": [{"removed_count": 2}]})
+
+
+class TagAssignment(RootModel):
+    root: Annotated[
+        list[TagName],
+        Field(min_length=1, max_length=MAX_TAGS_PER_ASSIGNMENT),
+    ]
