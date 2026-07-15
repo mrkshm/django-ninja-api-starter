@@ -1,9 +1,10 @@
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
-from organizations.models import Organization, Membership
-from tags.models import Tag
+
 from DjangoApiStarter.api import api  # ensure API loads
+from organizations.models import Membership, Organization
+from tags.models import Tag
 
 User = get_user_model()
 

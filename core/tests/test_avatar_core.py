@@ -1,6 +1,8 @@
-import pytest
-from unittest.mock import patch
 from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+
 from core.utils.avatar import delete_existing_avatar
 
 

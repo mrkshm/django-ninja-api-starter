@@ -1,6 +1,8 @@
+import logging
+
 from celery import shared_task
-from django.utils import timezone
 from django.core.management import call_command
+from django.utils import timezone
 
 from accounts.models import (
     AuthSession,
@@ -8,7 +10,6 @@ from accounts.models import (
     PendingPasswordReset,
     PendingRegistration,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 

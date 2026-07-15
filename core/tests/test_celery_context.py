@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 
+from core.utils.logging import request_id_context
 from DjangoApiStarter.celery import (
     add_request_id_header,
     bind_task_request_id,
     clear_task_request_id,
 )
-from core.utils.logging import request_id_context
 
 
 def test_request_id_propagates_through_celery_headers():

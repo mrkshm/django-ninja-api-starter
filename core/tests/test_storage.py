@@ -1,3 +1,6 @@
+import types
+from unittest.mock import MagicMock, patch
+
 from core.utils import (
     delete_existing_avatar,
     generate_presigned_storage_url,
@@ -5,8 +8,6 @@ from core.utils import (
     upload_to_public_storage,
     upload_to_storage,
 )
-from unittest.mock import patch, MagicMock
-import types
 
 
 def test_upload_to_storage_calls_save_and_url():

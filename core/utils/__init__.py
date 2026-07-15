@@ -1,6 +1,5 @@
-from .utils import make_it_unique, generate_upload_filename
-from .image import resize_avatar_images
 from .avatar import delete_existing_avatar
+from .image import resize_avatar_images
 from .storage import (
     generate_presigned_storage_url,
     generate_private_presigned_storage_url,
@@ -8,3 +7,4 @@ from .storage import (
     upload_to_public_storage,
     upload_to_storage,
 )
+from .utils import generate_upload_filename, make_it_unique

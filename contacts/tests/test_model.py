@@ -1,7 +1,8 @@
 import pytest
 from django.contrib.auth import get_user_model
-from organizations.models import Organization
+
 from contacts.models import Contact
+from organizations.models import Organization
 
 # Create your tests here.
 

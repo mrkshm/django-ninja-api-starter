@@ -1,6 +1,8 @@
 import pytest
-from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
+
+from accounts.tests.utils import create_test_user
+
 from ..api import api
 
 

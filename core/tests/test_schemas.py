@@ -19,14 +19,16 @@ from core.schemas import DetailResponse
 from images.api_schemas import BulkImageIdsIn, ImageIdsIn, ReorderIn
 from images.schemas import (
     CreateImageShareIn,
+)
+from images.schemas import DetailResponse as ImageDetailResponse
+from images.schemas import (
     ImageCreate,
     ImagePatchIn,
     ImageUpdate,
     SetCoverIn,
 )
-from images.schemas import DetailResponse as ImageDetailResponse
-from tags.schemas import TagCreate, TagUpdate
 from tags.schemas import DetailResponse as TagDetailResponse
+from tags.schemas import TagCreate, TagUpdate
 
 
 def test_detail_response_is_shared_schema():

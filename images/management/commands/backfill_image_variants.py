@@ -1,11 +1,13 @@
-from django.core.management.base import BaseCommand
-from django.core.files.storage import default_storage
-from django.db.models import Q
-from images.models import Image
-from core.utils.image import resize_images
-from core.utils.storage import upload_to_storage
 import os
 import sys
+
+from django.core.files.storage import default_storage
+from django.core.management.base import BaseCommand
+from django.db.models import Q
+
+from core.utils.image import resize_images
+from core.utils.storage import upload_to_storage
+from images.models import Image
 
 
 class Command(BaseCommand):

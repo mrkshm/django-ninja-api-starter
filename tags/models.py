@@ -1,8 +1,9 @@
-from django.db import models
-from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
-from organizations.models import Organization
+from django.contrib.contenttypes.models import ContentType
+from django.db import models
 from django.db.models.functions import Lower
+
+from organizations.models import Organization
 
 
 class Tag(models.Model):

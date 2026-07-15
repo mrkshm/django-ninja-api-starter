@@ -1,10 +1,12 @@
 import io
+
 import pytest
 from django.contrib.auth import get_user_model
-from accounts.tests.utils import create_test_user
-from django.utils.datastructures import MultiValueDict
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils.datastructures import MultiValueDict
 from PIL import Image
+
+from accounts.tests.utils import create_test_user
 
 User = get_user_model()
 

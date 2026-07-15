@@ -1,6 +1,7 @@
 import pytest
 from django.contrib.auth import get_user_model
-from organizations.models import Organization, Membership
+
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 

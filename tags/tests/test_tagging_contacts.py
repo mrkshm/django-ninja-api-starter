@@ -1,10 +1,11 @@
 import pytest
-from django.urls import reverse
 from django.contrib.auth import get_user_model
-from tags.models import Tag, TaggedItem
-from contacts.models import Contact
-from organizations.models import Organization, Membership
 from django.db import IntegrityError
+from django.urls import reverse
+
+from contacts.models import Contact
+from organizations.models import Membership, Organization
+from tags.models import Tag, TaggedItem
 
 User = get_user_model()
 

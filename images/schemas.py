@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, field_serializer, ConfigDict
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from core.schemas import DetailResponse
 

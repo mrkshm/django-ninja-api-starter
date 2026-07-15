@@ -1,19 +1,20 @@
-import pytest
-from django.test import override_settings
-from unittest.mock import patch, call
+import io
+import os
 from types import SimpleNamespace
-from django.core.files.uploadedfile import SimpleUploadedFile
+from unittest.mock import call, patch
+
+import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from PIL import Image as PillowImage
 
 from images.api import (
-    upload_image,
     bulk_upload_images,
     delete_image,
     list_images_for_org,
+    upload_image,
 )
-import os
-import io
-from PIL import Image as PillowImage
 from images.models import Image
 from organizations.models import Organization
 

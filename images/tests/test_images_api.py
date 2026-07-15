@@ -1,14 +1,16 @@
+import io
+
 import pytest
 from django.contrib.auth import get_user_model
-from organizations.models import Organization, Membership
-from images.models import Image
-from DjangoApiStarter.api import api
-from django.test import Client
-from django.core.files.uploadedfile import SimpleUploadedFile
-import io
-from PIL import Image as PilImage
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client
+from PIL import Image as PilImage
+
 from accounts.tests.utils import create_test_user
+from DjangoApiStarter.api import api
+from images.models import Image
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 

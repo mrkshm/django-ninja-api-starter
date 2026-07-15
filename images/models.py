@@ -1,14 +1,14 @@
 import hashlib
 
-from django.db import models
-from django.db.models import Q
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from organizations.models import Organization
-from django.conf import settings
+from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from core.utils.utils import generate_upload_filename
+from organizations.models import Organization
 
 # Create your models here.
 

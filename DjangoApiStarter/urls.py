@@ -17,8 +17,10 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
-from images.views import media_serve
+
 from core.health import live, ready
+from images.views import media_serve
+
 from .api import api
 
 urlpatterns = [

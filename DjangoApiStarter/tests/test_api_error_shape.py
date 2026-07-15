@@ -1,7 +1,9 @@
 import pytest
-from ninja.testing import TestClient
 from django.contrib.auth import get_user_model
-from organizations.models import Organization, Membership
+from ninja.testing import TestClient
+
+from organizations.models import Membership, Organization
+
 from ..api import api
 
 

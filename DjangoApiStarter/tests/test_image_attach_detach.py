@@ -1,19 +1,20 @@
-import pytest
 from types import SimpleNamespace
+
+import pytest
 from django.contrib.auth import get_user_model
 
+from contacts.models import Contact
 from images.api import (
+    BulkImageIdsIn,
+    ImageIdsIn,
     attach_images,
     bulk_attach_images,
     bulk_detach_images,
-    remove_image_from_object,
     list_images_for_object,
-    ImageIdsIn,
-    BulkImageIdsIn,
+    remove_image_from_object,
 )
 from images.models import Image, PolymorphicImageRelation
 from organizations.models import Membership, Organization
-from contacts.models import Contact
 
 
 def unwrap_status(response):

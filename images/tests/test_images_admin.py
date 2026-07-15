@@ -1,8 +1,9 @@
 import pytest
+from django.contrib.admin.sites import AdminSite
 from django.utils.html import format_html
+
 from images.admin import ImageAdmin
 from images.models import Image
-from django.contrib.admin.sites import AdminSite
 
 
 class DummyFile:

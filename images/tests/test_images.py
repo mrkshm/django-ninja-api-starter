@@ -1,11 +1,13 @@
+from io import BytesIO
+
 import pytest
-from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image as PilImage
+
 from images.models import Image, PolymorphicImageRelation
 from organizations.models import Organization
-from io import BytesIO
-from PIL import Image as PilImage
 
 
 @pytest.mark.django_db

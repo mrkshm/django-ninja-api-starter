@@ -1,12 +1,14 @@
 import io
+
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import Client
-from organizations.models import Organization, Membership
-from images.models import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client
 from PIL import Image as PilImage
+
 from DjangoApiStarter.api import api  # noqa: F401 - ensure API is loaded once
+from images.models import Image
+from organizations.models import Membership, Organization
 
 
 def create_test_image_file(color=(100, 200, 50), size=(300, 300), name="testimg.png"):

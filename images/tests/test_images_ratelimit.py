@@ -1,10 +1,12 @@
-import pytest
-from django.test import Client
-from django.contrib.auth import get_user_model
-from organizations.models import Organization, Membership
-from django.core.files.uploadedfile import SimpleUploadedFile
 import io
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client
 from PIL import Image as PilImage
+
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 

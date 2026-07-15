@@ -1,9 +1,9 @@
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from django.contrib.auth import get_user_model
 
 from contacts.models import Contact
 from core.utils.storage import public_storage_exists

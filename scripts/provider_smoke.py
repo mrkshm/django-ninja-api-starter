@@ -4,6 +4,7 @@ import os
 import time
 import urllib.request
 import uuid
+
 import boto3
 from botocore.config import Config
 from django.core.mail import EmailMessage

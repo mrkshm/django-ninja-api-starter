@@ -1,16 +1,17 @@
 # NOTE: Auth utility tests have moved to core/tests/test_auth_utils.py for clarity and maintainability.
 # Please add new tests for core/utils/auth_utils.py there.
 
+import re
+from datetime import datetime, timezone
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from organizations.models import Organization
-from core.utils import make_it_unique, generate_upload_filename
-import re
-from datetime import datetime, timezone
-import pytest
 from ninja.errors import HttpError
+
+from core.utils import generate_upload_filename, make_it_unique
 from core.utils.auth_utils import require_authenticated_user
+from organizations.models import Organization
 
 
 class DummyUser:
@@ -144,14 +145,14 @@ def test_require_authenticated_user_true():
     require_authenticated_user(user)
 
 
-import types
-import sys
 import builtins
+import sys
 import types
-import types
+
 import pytest
 from django.conf import settings
 from django.core import mail
+
 from core.tasks import _send_email_task
 
 

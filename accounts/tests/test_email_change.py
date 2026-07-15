@@ -273,6 +273,7 @@ def test_reusing_token_after_success(settings, api_client):
 @pytest.mark.django_db
 def test_verify_email_change_email_taken(api_client):
     from django.utils import timezone
+
     from accounts.models import PendingEmailChange
 
     # Create two users
