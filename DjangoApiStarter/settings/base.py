@@ -1,7 +1,8 @@
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -126,6 +127,18 @@ CELERY_TIMEZONE = "UTC"
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=25 * 60)
 CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=30 * 60)
+EXPORT_STALE_AFTER_SECONDS = env.int(
+    "EXPORT_STALE_AFTER_SECONDS", default=CELERY_TASK_TIME_LIMIT + 5 * 60
+)
+EXPORT_RECOVERY_INTERVAL_SECONDS = env.int(
+    "EXPORT_RECOVERY_INTERVAL_SECONDS", default=5 * 60
+)
+if EXPORT_STALE_AFTER_SECONDS <= CELERY_TASK_TIME_LIMIT:
+    raise ImproperlyConfigured(
+        "EXPORT_STALE_AFTER_SECONDS must exceed CELERY_TASK_TIME_LIMIT."
+    )
+if EXPORT_RECOVERY_INTERVAL_SECONDS <= 0:
+    raise ImproperlyConfigured("EXPORT_RECOVERY_INTERVAL_SECONDS must be positive.")
 CELERY_RESULT_EXPIRES = env.int("CELERY_RESULT_EXPIRES", default=60 * 60)
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
@@ -134,6 +147,7 @@ CELERY_TASK_ROUTES = {
     "core.tasks.send_email_task": {"queue": "email"},
     "core.tasks.cleanup_expired_idempotency_records": {"queue": "maintenance"},
     "organizations.export_tasks.export_org_data_task": {"queue": "exports"},
+    "organizations.export_tasks.recover_stale_exports": {"queue": "maintenance"},
     "organizations.export_tasks.cleanup_expired_exports": {"queue": "maintenance"},
     "accounts.tasks.cleanup_expired_tokens": {"queue": "maintenance"},
 }
@@ -146,6 +160,10 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup_expired_exports": {
         "task": "organizations.export_tasks.cleanup_expired_exports",
         "schedule": 24 * 60 * 60,
+    },
+    "recover_stale_exports": {
+        "task": "organizations.export_tasks.recover_stale_exports",
+        "schedule": EXPORT_RECOVERY_INTERVAL_SECONDS,
     },
     "cleanup_expired_idempotency_records": {
         "task": "core.tasks.cleanup_expired_idempotency_records",

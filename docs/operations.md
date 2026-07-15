@@ -42,10 +42,14 @@ run mode. Test retrieval of versioned objects. Record duration and evidence.
 ## Failed work
 
 Inspect worker logs and the persistent domain record first. Export jobs expose a
-safe failure state and an admin retry endpoint. Email tasks retry transient
-exceptions three times; replay only after checking provider status and avoiding
-duplicate user-facing actions. Maintenance tasks are idempotent. Never replay a
-task by editing broker payloads containing user data.
+safe failure state, activity heartbeat, attempt count, and admin retry endpoint.
+Beat automatically requeues pending or processing jobs after
+`EXPORT_STALE_AFTER_SECONDS`; keep that value longer than the Celery hard task
+limit. A PostgreSQL advisory lock prevents concurrent workers from generating
+the same export, and each attempt replaces the same object key. Email tasks
+retry transient exceptions three times; replay only after checking provider
+status and avoiding duplicate user-facing actions. Maintenance tasks are
+idempotent. Never replay a task by editing broker payloads containing user data.
 
 Bulk image idempotency responses are retained in PostgreSQL for 24 hours and
 expired daily by the maintenance queue. Redis loss does not remove them. A

@@ -1,6 +1,7 @@
-from django.db import models
-from django.conf import settings
 import uuid
+
+from django.conf import settings
+from django.db import models
 
 # Create your models here.
 
@@ -101,9 +102,12 @@ class ExportJob(models.Model):
     object_key = models.CharField(max_length=512, blank=True)
     error_message = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    queued_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
+    heartbeat_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         indexes = [
@@ -114,5 +118,9 @@ class ExportJob(models.Model):
             models.Index(
                 fields=("status", "expires_at"),
                 name="organizations_export_status_exp_idx",
+            ),
+            models.Index(
+                fields=("status", "heartbeat_at"),
+                name="organizations_export_status_hb_idx",
             ),
         ]

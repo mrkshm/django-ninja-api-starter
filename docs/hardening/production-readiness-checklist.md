@@ -111,6 +111,12 @@ deployment target.
   task deletes expired export objects.
 - [x] Failed exports are visible and safely retryable; exports are explicitly
   portability archives, not database backups.
+- [x] Export execution holds a whole-job PostgreSQL advisory lock, replaces a
+  deterministic object key, compensates failed finalization, and records worker
+  heartbeats and attempt counts.
+- [x] Beat requeues stale pending/processing exports; failed or stale jobs may be
+  retried, fresh active jobs retain ownership, and terminal jobs are no-ops on
+  duplicate delivery.
 
 ## API structure and reliability
 
@@ -132,7 +138,8 @@ deployment target.
   with Redis-backed cache/throttling support.
 - [x] Regression coverage includes tenant isolation, deletion invariants, token
   rotation/replay/revocation, password validation, publication failures, upload
-  rollback, media reconciliation, idempotency mismatch, and export lifecycle.
+  rollback, media reconciliation, idempotency mismatch, and export
+  locking/recovery lifecycle.
 - [x] CI runs Black, high-signal Flake8, mypy, pytest, migration checks, Django
   checks, OpenAPI diff, dependency audit, production `check --deploy`, image
   build/scan, and a container liveness smoke test.

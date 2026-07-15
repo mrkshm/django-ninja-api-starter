@@ -1,7 +1,7 @@
-import logging
 from datetime import datetime
 from uuid import UUID
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router, Schema, Status
@@ -9,11 +9,14 @@ from ninja.errors import HttpError
 
 from core.authentication import JWTAuth
 from core.utils.storage import generate_private_presigned_storage_url
-from organizations.export_tasks import export_org_data_task
+from organizations.export_tasks import (
+    enqueue_export_job,
+    is_export_job_stale,
+    reset_export_for_retry,
+)
 from organizations.models import ExportJob
 from organizations.scope import resolve_admin_org_scope
 
-logger = logging.getLogger(__name__)
 export_router = Router(tags=["organization", "export"])
 
 
@@ -56,13 +59,8 @@ def serialize_export_job(job: ExportJob) -> ExportJobOut:
 
 def publish_export(job: ExportJob) -> None:
     try:
-        export_org_data_task.delay(str(job.pk))
+        enqueue_export_job(job)
     except Exception as exc:
-        job.status = ExportJob.Status.FAILED
-        job.error_message = "Export could not be queued."
-        job.completed_at = timezone.now()
-        job.save(update_fields=["status", "error_message", "completed_at"])
-        logger.exception("exports:task_publish_failed job=%s", job.pk)
         raise HttpError(503, "Export could not be queued.") from exc
 
 
@@ -110,13 +108,14 @@ def get_export(request, org_slug: str, job_id: UUID):
 )
 def retry_export(request, org_slug: str, job_id: UUID):
     scope = resolve_admin_org_scope(request, org_slug)
-    job = get_object_or_404(ExportJob, pk=job_id, organization=scope.org)
-    if job.status != ExportJob.Status.FAILED:
-        raise HttpError(409, "Only failed exports can be retried.")
-    job.status = ExportJob.Status.PENDING
-    job.started_at = None
-    job.completed_at = None
-    job.error_message = ""
-    job.save(update_fields=["status", "started_at", "completed_at", "error_message"])
+    with transaction.atomic():
+        job = get_object_or_404(
+            ExportJob.objects.select_for_update(),
+            pk=job_id,
+            organization=scope.org,
+        )
+        if job.status != ExportJob.Status.FAILED and not is_export_job_stale(job):
+            raise HttpError(409, "Only failed or stale exports can be retried.")
+        reset_export_for_retry(job)
     publish_export(job)
     return Status(202, serialize_export_job(job))
