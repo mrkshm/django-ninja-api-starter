@@ -16,3 +16,4 @@ password_reset_confirm_throttle = ScopedRateThrottle("auth_reset_confirm", "10/h
 email_change_throttle = ScopedRateThrottle("auth_email_change", "3/h")
 logout_throttle = ScopedRateThrottle("auth_logout", "30/h")
 token_verify_throttle = ScopedRateThrottle("auth_token_verify", "60/m")
+username_check_throttle = ScopedRateThrottle("users_username_check", "30/m")

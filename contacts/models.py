@@ -1,6 +1,8 @@
-from django.db import models
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
+from django.db import models
+
+from core.utils.storage import public_storage_url
 from tags.models import TaggedItem
 
 
@@ -56,6 +58,17 @@ class Contact(models.Model):
     @property
     def creator_slug(self):
         return self.creator.slug if self.creator else None
+
+    @property
+    def avatar_url(self):
+        return public_storage_url(self.avatar_path) if self.avatar_path else None
+
+    @property
+    def large_avatar_url(self):
+        if not self.avatar_path:
+            return None
+        stem, extension = self.avatar_path.rsplit(".", 1)
+        return public_storage_url(f"{stem}_lg.{extension}")
 
     def __str__(self):
         return self.display_name

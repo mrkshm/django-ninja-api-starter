@@ -36,6 +36,13 @@ Signals are limited to local cache invalidation and narrowly defined lifecycle
 safety. Critical onboarding and deletion flows use explicit transactional
 services so callers can see and test the behavior.
 
+Membership role changes and removals also go through `organizations.services`.
+Groups allow multiple owners for operational resilience, while service checks
+and PostgreSQL deferred triggers prevent the last active owner from being
+demoted, removed, deleted, or deactivated. Group creation uses
+`create_group_organization` so the organization and initial owner commit
+atomically.
+
 ## Extension rules
 
 New tenant resources must carry an organization foreign key, use the common

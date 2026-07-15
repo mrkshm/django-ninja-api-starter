@@ -51,6 +51,8 @@ class ContactOut(BaseModel):
     phone: Optional[str] = None
     notes: Optional[str] = None
     avatar_path: Optional[str] = None
+    avatar_url: Optional[str] = None
+    large_avatar_url: Optional[str] = None
     # Map model attributes to the public organization and creator fields.
     organization: str = Field(validation_alias="organization_slug")
     creator: Optional[str] = Field(default=None, validation_alias="creator_slug")

@@ -1,4 +1,3 @@
-import os
 import uuid
 from typing import List
 
@@ -18,11 +17,7 @@ from core.utils.image import (
     resize_avatar_images,
     validate_image_content,
 )
-from core.utils.storage import (
-    delete_from_public_storage,
-    public_storage_url,
-    upload_to_public_storage,
-)
+from core.utils.storage import delete_from_public_storage, upload_to_public_storage
 from organizations.scope import resolve_org_scope, resolve_write_org_scope
 
 from .models import Contact
@@ -230,28 +225,3 @@ def delete_contact(request, org_slug: str, slug: str):
     contact = get_object_or_404(Contact, organization=scope.org, slug=slug)
     contact.delete()
     return DetailResponse(detail="Contact deleted.")
-
-
-@contacts_router.get("/avatars/{path:path}", auth=None)
-def get_contact_avatar_url(request, path: str):
-    """
-    Generate a presigned URL for a contact's avatar image.
-    For large version, append '_lg' before the file extension.
-    Example: /api/v1/contacts/avatars/avatar-user123-20240529.webp
-             /api/v1/contacts/avatars/avatar-user123-20240529_lg.webp
-    """
-    # Validate path to prevent directory traversal
-    if ".." in path or path.startswith("/"):
-        raise HttpError(400, "Invalid path")
-
-    # Get the base filename without extension
-    base, ext = os.path.splitext(path)
-
-    # Check if requesting large version
-    is_large = base.endswith("_lg")
-    if is_large:
-        base = base[:-3]  # Remove _lg suffix
-
-    if not (base.startswith("public/avatars/contacts/") and ext.lower() == ".webp"):
-        raise HttpError(400, "Invalid avatar filename format")
-    return {"url": public_storage_url(path)}

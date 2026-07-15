@@ -71,6 +71,15 @@ deployment target.
   tenants are supported.
 - [x] Request schemas cannot move a resource to another organization.
 - [x] Member/admin/owner/platform-admin behavior is centralized and tested.
+- [x] Members are explicitly editor-level collaborators; creator ownership does
+  not silently restrict ordinary organization content.
+- [x] Group organizations retain at least one active owner through transactional
+  membership/account services and deferred PostgreSQL constraint triggers.
+- [x] Cross-tenant platform-admin access emits structured audit events without
+  tenant payload data.
+- [x] Username availability requires authentication and has a dedicated throttle.
+- [x] Contact resource responses expose public avatar URLs directly; redundant
+  unauthenticated avatar URL helper routes have been removed.
 - [x] Platform administration requires superuser; staff is not a tenant bypass.
 - [x] Named constraints enforce tenant uniqueness, role/type values, and relation
   invariants; tenant query paths have indexes.

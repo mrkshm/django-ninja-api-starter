@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,8 @@ from organizations.models import Membership, Organization
 
 if TYPE_CHECKING:
     from accounts.models import User
+
+audit_logger = logging.getLogger("audit")
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,22 @@ def resolve_org_scope(request, org_slug: str) -> OrgScope:
     )
     if membership is None and not is_platform_admin(user):
         raise HttpError(403, "You do not have access to this organization.")
+    if membership is None:
+        audit_logger.info(
+            "audit:platform_admin_tenant_access",
+            extra={
+                "event": "platform_admin_tenant_access",
+                "org": org.pk,
+                "user": user.pk,
+                "method": getattr(request, "method", "UNKNOWN"),
+                "path": getattr(request, "path", ""),
+                "access": (
+                    "read"
+                    if getattr(request, "method", "GET") in {"GET", "HEAD", "OPTIONS"}
+                    else "write"
+                ),
+            },
+        )
     return OrgScope(user=user, org=org, membership=membership)
 
 

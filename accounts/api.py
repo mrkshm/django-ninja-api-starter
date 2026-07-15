@@ -5,8 +5,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
-from django.utils import timezone
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
 from ninja_jwt.schema import TokenVerifyInputSchema
@@ -22,15 +22,15 @@ from accounts.schemas import (
     DeleteAccountSchema,
     EmailSchema,
     EmailUpdateSchema,
+    LogoutInputSchema,
     PasswordResetRequestSchema,
     PasswordResetSchema,
     RegisterSchema,
     RegistrationVerificationSchema,
-    LogoutInputSchema,
+    TokenInputSchema,
+    TokenPairInputSchema,
     TokenRefreshInputSchema,
     TokenRefreshOutputSchema,
-    TokenPairInputSchema,
-    TokenInputSchema,
     UnverifiedUserSchema,
 )
 from accounts.services import (
@@ -52,12 +52,13 @@ from accounts.throttles import (
     password_reset_request_throttle,
     refresh_throttle,
     register_throttle,
-    verification_throttle,
     token_verify_throttle,
+    verification_throttle,
 )
 from accounts.tokens import generate_raw_token, hash_token
 from core.authentication import JWTAuth
 from core.utils.auth_utils import get_request_user
+from organizations.services import ActiveOwnerRequiredError
 
 EMAIL_VERIFICATION_EXPIRY_HOURS = 12
 EMAIL_CHANGE_TOKEN_EXPIRY_HOURS = 24
@@ -242,7 +243,10 @@ def delete_account(request, data: DeleteAccountSchema):
     user = get_request_user(request)
     if not user.check_password(data.password):
         raise HttpError(400, "Password is incorrect")
-    delete_user_account(user)
+    try:
+        delete_user_account(user)
+    except ActiveOwnerRequiredError as exc:
+        raise HttpError(409, str(exc)) from exc
     return {"detail": "Account deleted successfully."}
 
 

@@ -412,17 +412,38 @@ def test_delete_contact_avatar_no_avatar(make_auth_headers, api_client):
 
 
 @pytest.mark.django_db
-def test_get_contact_avatar_url_is_public(monkeypatch, api_client):
-    def fake_public_storage_url(key):
-        return f"https://storage.example/{key}"
-
-    monkeypatch.setattr("contacts.api.public_storage_url", fake_public_storage_url)
-
+def test_contact_reads_include_public_avatar_urls(
+    settings, make_auth_headers, api_client
+):
+    settings.IMAGE_PUBLIC_BASE_URL = "https://storage.example"
+    user = create_test_user(email="avatar-reader@example.com", password="pw")
+    org = Organization.objects.create(name="Avatar org", slug="avatar-org")
+    Membership.objects.create(user=user, organization=org, role="owner")
     key = "public/avatars/contacts/0123456789abcdef0123456789abcdef.webp"
-    resp = api_client.get(f"/avatars/{key}")
+    contact = Contact.objects.create(
+        display_name="Avatar",
+        slug="avatar",
+        organization=org,
+        creator=user,
+        avatar_path=key,
+    )
+
+    resp = api_client.get(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/",
+        headers=make_auth_headers(api_client, user),
+    )
 
     assert resp.status_code == 200
-    assert resp.json() == {"url": f"https://storage.example/{key}"}
+    assert resp.json()["avatar_url"] == f"https://storage.example/{key}"
+    assert resp.json()["large_avatar_url"].endswith(
+        "/0123456789abcdef0123456789abcdef_lg.webp"
+    )
+
+
+def test_contact_avatar_url_helper_route_is_removed(api_client):
+    key = "public/avatars/contacts/0123456789abcdef0123456789abcdef.webp"
+    with pytest.raises(Exception, match="Cannot resolve"):
+        api_client.get(f"/avatars/{key}")
 
 
 @pytest.mark.django_db

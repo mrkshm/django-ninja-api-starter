@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -167,9 +168,14 @@ def test_platform_admin_scope_without_membership():
     org = Organization.objects.create(
         name="ScopeStaff", slug="scope-staff", type="group"
     )
-    request = SimpleNamespace(auth=superuser)
+    request = SimpleNamespace(
+        auth=superuser,
+        method="DELETE",
+        path=f"/orgs/{org.slug}/contacts/example/",
+    )
 
-    scope = resolve_org_scope(request, org.slug)
+    with patch("organizations.scope.audit_logger.info") as audit_info:
+        scope = resolve_org_scope(request, org.slug)
 
     assert scope.user == superuser
     assert scope.org == org
@@ -177,6 +183,34 @@ def test_platform_admin_scope_without_membership():
     assert scope.role == "platform_admin"
     assert scope.can_admin is True
     assert scope.can_write is True
+    audit_info.assert_called_once_with(
+        "audit:platform_admin_tenant_access",
+        extra={
+            "event": "platform_admin_tenant_access",
+            "org": org.pk,
+            "user": superuser.pk,
+            "method": "DELETE",
+            "path": f"/orgs/{org.slug}/contacts/example/",
+            "access": "write",
+        },
+    )
+
+
+@pytest.mark.django_db
+def test_platform_admin_membership_does_not_log_cross_tenant_access():
+    User = get_user_model()
+    superuser = User.objects.create_superuser(
+        email="scope-member-super@example.com", password="pw"
+    )
+    org = Organization.objects.create(
+        name="ScopeMemberSuper", slug="scope-member-super", type="group"
+    )
+    Membership.objects.create(user=superuser, organization=org, role="owner")
+
+    with patch("organizations.scope.audit_logger.info") as audit_info:
+        resolve_org_scope(SimpleNamespace(auth=superuser), org.slug)
+
+    audit_info.assert_not_called()
 
 
 @pytest.mark.django_db

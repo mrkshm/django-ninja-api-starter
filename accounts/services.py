@@ -151,6 +151,10 @@ def revoke_all_sessions(user) -> None:
 
 @transaction.atomic
 def set_user_active_status(user, *, is_active: bool) -> None:
+    if not is_active:
+        from organizations.services import assert_user_can_be_deactivated
+
+        assert_user_can_be_deactivated(user)
     locked_user = User.objects.select_for_update().get(pk=user.pk)
     User.objects.filter(pk=locked_user.pk).update(is_active=is_active)
     locked_user.is_active = is_active
@@ -166,7 +170,9 @@ def deactivate_user(user) -> None:
 @transaction.atomic
 def delete_user_account(user) -> None:
     from organizations.models import Organization
+    from organizations.services import assert_user_can_be_deactivated
 
+    assert_user_can_be_deactivated(user)
     Organization.objects.filter(type="personal", creator=user).delete()
     user.delete()
 

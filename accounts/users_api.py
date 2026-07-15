@@ -1,4 +1,3 @@
-import os
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -11,14 +10,11 @@ from core.utils import resize_avatar_images
 from core.utils.auth_utils import get_request_user
 from core.utils.avatar import schedule_avatar_file_deletion
 from core.utils.image import InvalidImageContent, validate_image_content
-from core.utils.storage import (
-    delete_from_public_storage,
-    public_storage_url,
-    upload_to_public_storage,
-)
+from core.utils.storage import delete_from_public_storage, upload_to_public_storage
 from organizations.models import Organization
 
 from .schemas import UsernameCheckResponse, UserProfileOut, UserProfileUpdate
+from .throttles import username_check_throttle
 from .username import router as username_router
 from .username_validation import validate_username_value
 
@@ -122,7 +118,12 @@ def update_me(request, data: UserProfileUpdate):
     return attach_personal_org_fields(user)
 
 
-@users_router.get("/check_username", response=UsernameCheckResponse)
+@users_router.get(
+    "/check_username",
+    response=UsernameCheckResponse,
+    auth=JWTAuth(),
+    throttle=[username_check_throttle],
+)
 def check_username(request, username: str = ""):
     username = username.strip()
     is_valid, reason = validate_username_value(username)
@@ -131,28 +132,3 @@ def check_username(request, username: str = ""):
     if User.objects.filter(username__iexact=username).exists():
         return UsernameCheckResponse(available=False, reason="Username already taken.")
     return UsernameCheckResponse(available=True)
-
-
-@users_router.get("/avatars/{path:path}", auth=None)
-def get_avatar_url(request, path: str):
-    """
-    Generate a presigned URL for an avatar image.
-    For large version, append '_lg' before the file extension.
-    Example: /api/v1/avatars/avatar-user123-20240529.webp
-             /api/v1/avatars/avatar-user123-20240529_lg.webp
-    """
-    # Validate path to prevent directory traversal
-    if ".." in path or path.startswith("/"):
-        raise HttpError(400, "Invalid path")
-
-    # Get the base filename without extension
-    base, ext = os.path.splitext(path)
-
-    # Check if requesting large version
-    is_large = base.endswith("_lg")
-    if is_large:
-        base = base[:-3]  # Remove _lg suffix
-
-    if not (base.startswith("public/avatars/users/") and ext.lower() == ".webp"):
-        raise HttpError(400, "Invalid avatar filename format")
-    return {"url": public_storage_url(path)}

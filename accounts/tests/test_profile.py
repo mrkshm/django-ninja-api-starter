@@ -119,9 +119,11 @@ def test_email_change_delivery_failure(monkeypatch, settings, api_client):
 
 
 @pytest.mark.django_db
-def test_check_username_length_and_uniqueness(api_client):
+def test_check_username_length_and_uniqueness(api_client, make_auth_headers):
+    checker = create_test_user(email="checker@example.com", password="pw")
+    headers = make_auth_headers(api_client, checker)
     # Missing username param
-    response = api_client.get("/users/check_username")
+    response = api_client.get("/users/check_username", headers=headers)
     assert response.status_code == 200
     data = response.json()
     print("[TEST LOG] Missing username response:", response.status_code, data)
@@ -131,7 +133,7 @@ def test_check_username_length_and_uniqueness(api_client):
     # Too long
     long_username = "x" * 51
     response = api_client.get(
-        "/users/check_username", params={"username": long_username}
+        "/users/check_username", params={"username": long_username}, headers=headers
     )
     assert response.status_code == 200
     data = response.json()
@@ -142,7 +144,9 @@ def test_check_username_length_and_uniqueness(api_client):
     # Uniqueness (case-insensitive)
     create_test_user(email="taken@example.com", username="TestUser", password="pw")
     username = "testuser"
-    response = api_client.get(f"/users/check_username?username={username}")
+    response = api_client.get(
+        f"/users/check_username?username={username}", headers=headers
+    )
     print("[TEST LOG] Uniqueness response:", response.status_code, response.json())
     assert response.status_code == 200
     data = response.json()
@@ -151,7 +155,9 @@ def test_check_username_length_and_uniqueness(api_client):
 
     # Available
     username = "uniquename"
-    response = api_client.get(f"/users/check_username?username={username}")
+    response = api_client.get(
+        f"/users/check_username?username={username}", headers=headers
+    )
     print(
         "[TEST LOG] Available username response:", response.status_code, response.json()
     )
@@ -159,7 +165,9 @@ def test_check_username_length_and_uniqueness(api_client):
     assert response.json()["available"] is True
 
     # Invalid characters
-    response = api_client.get("/users/check_username?username=bad%20name!")
+    response = api_client.get(
+        "/users/check_username?username=bad%20name!", headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["available"] is False

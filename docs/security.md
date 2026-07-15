@@ -61,6 +61,22 @@ upstream/provider abuse protection when product risk warrants it.
 - platform admin: Django superuser only; `is_staff` alone does not bypass tenant
   policy.
 
+`member` is deliberately an editor role, not a read-only role: ordinary
+organization content is collaborative rather than creator-owned. Add a separate
+`viewer` role if a product needs read-only membership instead of weakening the
+meaning of `member` inconsistently across resources.
+
+Group organizations may have multiple owners but must retain at least one active
+owner. Role changes, membership removal, account deactivation, and account
+deletion must use the transactional domain services in `organizations.services`;
+PostgreSQL deferred constraint triggers provide a final database guard against
+raw ORM or administrative mutations that would orphan a group.
+
+Superusers may enter any tenant as platform administrators. Cross-tenant scope
+resolution emits a structured `platform_admin_tenant_access` audit event with
+the administrator, organization, request method/path, read/write classification,
+and request ID. It never includes request bodies or tenant data.
+
 Cross-tenant object access is hidden as `404`. Every polymorphic target is
 allowlisted; arbitrary Django models cannot be resolved from client input.
 
@@ -75,6 +91,10 @@ User and contact avatars are public to everyone by design. They are normalized
 WebP files with stripped metadata and unguessable keys under
 `public/avatars/users/` or `public/avatars/contacts/` in a dedicated public
 bucket. Public bucket permissions must never include private image/export keys.
+API resource responses return their public URLs directly; there is no public URL
+construction endpoint. Deletion removes the source objects, but browsers and
+intermediary caches may retain a copy until their cache lifetime expires. Do not
+use public avatars when immediate revocation is a product requirement.
 
 ## Logging
 

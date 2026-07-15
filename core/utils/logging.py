@@ -26,8 +26,12 @@ class JSONFormatter(logging.Formatter):
         # Include common audit context keys if found in the message via extra fields
         # If developers pass extra={"org": ..., "user": ...}, include them
         for key in (
+            "event",
             "org",
             "user",
+            "method",
+            "path",
+            "access",
             "app",
             "model",
             "obj",
