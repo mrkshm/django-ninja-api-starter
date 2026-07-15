@@ -11,6 +11,7 @@ from ninja.pagination import LimitOffsetPagination, paginate
 
 from contacts.services import create_contact_record, update_contact_record
 from core.authentication import JWTAuth
+from core.schemas import DetailResponse
 from core.utils.avatar import schedule_avatar_file_deletion
 from core.utils.image import (
     InvalidImageContent,
@@ -25,13 +26,7 @@ from core.utils.storage import (
 from organizations.scope import resolve_org_scope, resolve_write_org_scope
 
 from .models import Contact
-from .schemas import (
-    ContactAvatarResponse,
-    ContactIn,
-    ContactOut,
-    ContactUpdate,
-    DetailResponse,
-)
+from .schemas import ContactAvatarResponse, ContactIn, ContactOut, ContactUpdate
 
 contacts_router = Router()
 

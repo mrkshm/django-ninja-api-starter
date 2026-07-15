@@ -106,6 +106,74 @@ def test_update_contact_display_name_and_slug(make_auth_headers, api_client):
 
 
 @pytest.mark.django_db
+def test_partial_update_contact_location_and_notes(make_auth_headers, api_client):
+    user = create_test_user(email="patch-contact-fields@example.com", password="pw")
+    org = Organization.objects.create(
+        name="Patch Contact Fields",
+        slug="patch-contact-fields",
+        type="group",
+        creator=user,
+    )
+    Membership.objects.create(user=user, organization=org, role="owner")
+    contact = Contact.objects.create(
+        display_name="Patch Fields",
+        slug="patch-fields",
+        organization=org,
+        creator=user,
+    )
+    headers = make_auth_headers(api_client, user, password="pw")
+
+    response = api_client.patch(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/",
+        json={"location": "Paris", "notes": "Met at DjangoCon"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["location"] == "Paris"
+    assert response.json()["notes"] == "Met at DjangoCon"
+    contact.refresh_from_db()
+    assert contact.location == "Paris"
+    assert contact.notes == "Met at DjangoCon"
+
+
+@pytest.mark.django_db
+def test_partial_update_contact_clears_location_and_notes(
+    make_auth_headers, api_client
+):
+    user = create_test_user(email="clear-contact-fields@example.com", password="pw")
+    org = Organization.objects.create(
+        name="Clear Contact Fields",
+        slug="clear-contact-fields",
+        type="group",
+        creator=user,
+    )
+    Membership.objects.create(user=user, organization=org, role="owner")
+    contact = Contact.objects.create(
+        display_name="Clear Fields",
+        slug="clear-fields",
+        location="Paris",
+        notes="Remove me",
+        organization=org,
+        creator=user,
+    )
+    headers = make_auth_headers(api_client, user, password="pw")
+
+    response = api_client.patch(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/",
+        json={"location": None, "notes": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["location"] == ""
+    assert response.json()["notes"] == ""
+    contact.refresh_from_db()
+    assert contact.location == ""
+    assert contact.notes == ""
+
+
+@pytest.mark.django_db
 def test_list_contacts(make_auth_headers, api_client):
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
