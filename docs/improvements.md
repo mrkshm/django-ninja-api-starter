@@ -22,8 +22,39 @@ its own sake.
 - Keep database transactions short and external storage/network calls visible.
 - Add concurrency tests against PostgreSQL where correctness depends on locks,
   constraints, deferred triggers, or advisory locks.
+- Follow the canonical database lock hierarchy defined below; do not let each
+  operation invent its own row-lock order.
 - Regenerate and review OpenAPI after every intentional contract change.
 - Update this checklist when a decision changes.
+
+### Canonical database lock order
+
+Operations that lock more than one aggregate or row type must acquire locks in
+this order:
+
+```text
+Organization → User → dependent rows
+```
+
+Dependent rows include memberships, auth sessions, and pending registration,
+password-reset, and email-change records.
+
+Rules:
+
+- [ ] Lock organizations first when an operation enforces an organization
+  invariant.
+- [ ] Lock organizations in ascending primary-key order when more than one is
+  involved.
+- [ ] Lock the user next when user state or credentials are involved.
+- [ ] Lock user-dependent rows only after the user.
+- [ ] Lock multiple rows of one type in ascending primary-key order.
+- [ ] If an operation needs a dependent row to discover the user or
+  organization, perform an unlocked identity lookup, acquire canonical locks,
+  then refetch and fully revalidate the dependent row under lock.
+- [ ] Prefer separate explicit locking queries over a `select_for_update()`
+  join whose cross-table lock acquisition is difficult to see.
+- [ ] Document any unavoidable exception next to the operation and cover it
+  with a PostgreSQL concurrency test.
 
 ## Priority summary
 
@@ -35,6 +66,7 @@ its own sake.
 - [ ] Make password changes atomic with session revocation.
 - [ ] Make password-reset tokens concurrency-safe and single-use.
 - [ ] Enforce one coherent pending password-reset state per user.
+- [ ] Remove the unused and misleading `last_login` field.
 - [ ] Make inaccessible and nonexistent organization slugs indistinguishable.
 - [ ] Remove hidden pending-token hashing and unusable token defaults.
 
@@ -219,6 +251,11 @@ Acceptance criteria for Phase 1:
 Credential operations should own their complete transaction, including token
 consumption and session invalidation.
 
+Phase 2 introduces `accounts/operations.py` as the home for these use-cases.
+Phase 9.1 later formalizes the boundary and moves other transaction workflows
+only when doing so improves their implementation; Phase 9.1 is not a
+prerequisite for this phase.
+
 ### 2.1 Atomic password change
 
 Current behavior:
@@ -261,8 +298,12 @@ Implementation:
 
 - [ ] Add `confirm_password_reset` to `accounts/operations.py`.
 - [ ] Hash the supplied token before lookup.
-- [ ] Open one transaction and lock the pending reset row.
-- [ ] Lock the associated user row.
+- [ ] Read the pending row's `user_id` without locking only to discover lock
+  identity.
+- [ ] Open one transaction and lock the user row first.
+- [ ] Refetch and lock the pending reset row after the user lock.
+- [ ] Revalidate the token hash, user relationship, and current pending state
+  under lock.
 - [ ] Recheck expiry while holding the lock.
 - [ ] Validate and save the password.
 - [ ] Revoke all sessions and increment `auth_version`.
@@ -323,11 +364,57 @@ Tests:
 - [ ] The caller's access and refresh tokens are rejected afterward.
 - [ ] Failed operations leave the caller's session active.
 
+### 2.5 Apply the lock order to adjacent account workflows
+
+The password changes introduce an explicit lock convention, but existing
+account workflows must not retain the inverse order.
+
+Audit and update:
+
+- [ ] Email-change confirmation, which currently locks the pending email row
+  before the user. Use discovery lookup → user lock → pending-row lock and
+  revalidation.
+- [ ] Refresh-token rotation, which currently uses `select_for_update()` with
+  a joined user. Decode `user_id`, lock the user explicitly, then lock and
+  validate the auth session.
+- [ ] User deactivation. Keep organization locks before the user, order all
+  affected organizations by primary key, then revoke dependent sessions after
+  the user lock.
+- [ ] Membership role/removal operations. Preserve organization → membership
+  ordering and use deterministic ordering if a bulk form is introduced.
+- [ ] Account deletion and admin deletion. Preserve organization invariants
+  before user/dependent-row teardown.
+
+Tests:
+
+- [ ] PostgreSQL concurrency tests exercise password reset versus password
+  change, email confirmation versus password change, refresh rotation versus
+  session revocation, and deactivation of users sharing owned organizations.
+- [ ] Tests use bounded waits/timeouts so a deadlock fails clearly instead of
+  hanging CI.
+
+### 2.6 Remove dead `last_login` state
+
+JWT login never updates `User.last_login`, while `AuthSession.created_at` and
+`last_used_at` already provide more useful session activity. Leaving
+`last_login` visible in admin presents misleading data.
+
+Implementation:
+
+- [ ] Set `last_login = None` on the custom user model.
+- [ ] Create the field-removal migration.
+- [ ] Remove `last_login` from admin fieldsets and readonly fields.
+- [ ] Verify Django admin/forms and token login do not assume the field exists.
+- [ ] Document `AuthSession.created_at` and `last_used_at` as the operational
+  source for login/session activity.
+
 Acceptance criteria for Phase 2:
 
 - [ ] Credential writes are serialized and atomic.
 - [ ] Reset tokens have one coherent lifecycle.
 - [ ] Session UX is an explicit client contract.
+- [ ] All touched account workflows follow the canonical lock hierarchy.
+- [ ] `last_login` no longer exposes misleading dead state.
 - [ ] HTTP handlers no longer contain transaction orchestration.
 
 ---
@@ -360,6 +447,10 @@ Tests:
 
 - [ ] Unknown slug and inaccessible existing slug have identical status and
   response shape through the real API.
+- [ ] Query-count tests prove the ordinary-user resolver performs exactly one
+  database query for an accessible organization.
+- [ ] Query-count tests prove unknown and inaccessible slugs each perform
+  exactly one database query.
 - [ ] A member still resolves their organization and role.
 - [ ] A platform administrator still resolves and audits cross-tenant access.
 - [ ] Cross-tenant contact, tag, image, and export routes do not reveal whether
@@ -369,8 +460,8 @@ Acceptance criteria:
 
 - [ ] No authenticated tenant route distinguishes nonexistent from inaccessible
   organization slugs.
-- [ ] The ordinary-member path does not add a query and ideally uses one fewer
-  query than the current implementation.
+- [ ] The ordinary-user resolver performs exactly one query by resolving the
+  membership and related organization together.
 
 ---
 
@@ -445,24 +536,26 @@ Target structure:
 
 ```text
 organizations/
-    scope.py       # authenticated tenant resolution
-    policies.py    # reusable context-dependent decisions, if needed
+    scope.py       # tenant resolution and currently reused access decisions
 ```
+
+Do not create `policies.py` speculatively. `is_platform_admin` belongs in
+`scope.py` after consolidation. Add another module only when a concrete group
+of reusable policy functions no longer has a coherent existing home.
 
 Implementation:
 
 - [ ] Implement the non-enumerating canonical scope resolver from Phase 3.
 - [ ] Inventory production imports with `rg` before deletion.
 - [ ] Keep `OrgScope` as an immutable typed request context.
-- [ ] Move `is_platform_admin` and any genuinely reused policy functions to the
-  canonical module.
+- [ ] Move `is_platform_admin` into `scope.py`.
 - [ ] Remove access helpers used only by their own tests.
 - [ ] Remove `get_org_scope_for_request`/`get_org_for_request` wrappers in
   images and tags.
 - [ ] Remove unused `get_org_or_404` and `resolve_org_for_request` variants.
 - [ ] Keep polymorphic model allowlisting and object-to-org verification
   explicit.
-- [ ] Update tests to target the canonical resolver and policies.
+- [ ] Update tests to target the canonical resolver.
 - [ ] Delete tests whose only purpose was preserving dead compatibility APIs.
 
 Acceptance criteria:
@@ -504,7 +597,7 @@ Incremental implementation:
 
 Suggested order:
 
-1. `organizations.scope` and policies
+1. `organizations.scope`
 2. `accounts.operations` and account services
 3. Core idempotency/upload utilities
 4. Image/tag operations touched by the refactor
@@ -612,6 +705,10 @@ modified. They should not delay the demonstrated fixes above.
 
 `accounts/api.py` is large because it owns multiple transaction workflows. The
 correctness fixes in Phases 2 and 4 create a natural extraction point.
+
+Phase 2 creates `accounts/operations.py` for credential mutations. This phase
+formalizes what belongs there and opportunistically moves the remaining
+transactional account workflows; it does not introduce a second abstraction.
 
 Use a modest structure:
 
@@ -749,11 +846,7 @@ If organization-scoped support staff becomes a requirement, scope all of:
 Partial scoping is worse than an explicit superuser-only policy because it
 creates a false sense of isolation.
 
-### Profile metadata decisions
-
-`last_login` is currently not updated by JWT login, while `AuthSession` already
-records session activity. Decide later whether to remove `last_login` or update
-it only on new token-pair login. Do not leave it as misleading admin data.
+### Notification preference schema
 
 `notification_preferences` is currently returned but not writable through the
 profile update schema. Before exposing writes, define known keys, defaults,
@@ -797,7 +890,7 @@ Do not introduce these without a separate concrete requirement:
 8. `chore: strengthen mypy coverage`
 9. `test: exercise routed security boundaries`
 10. `fix: make admin account deletion ownership-aware`
-11. `refactor: extract account operations`
+11. `refactor: formalize the account operations boundary`
 12. `refactor: isolate export archive construction`
 
 The last two are opportunistic and can be combined with the behavioral slice
@@ -821,8 +914,13 @@ that motivates them. Every commit should leave the full suite green.
 - [ ] Image storage failure and DB rollback scenarios have focused tests.
 - [ ] Credential concurrency and token single-use behavior have PostgreSQL
   tests.
+- [ ] Multi-row account and organization workflows follow the documented
+  organization → user → dependent-row lock hierarchy.
 - [ ] Unknown and inaccessible organization slugs have identical routed
   responses.
+- [ ] The ordinary-user organization resolver uses exactly one query for
+  accessible, inaccessible, and unknown slugs.
+- [ ] `last_login` is removed from the model, database schema, and admin.
 - [ ] Admin direct and bulk deletion behavior is explicitly tested.
 - [ ] Environment, security, and operations documentation reflects new limits
   and client reauthentication behavior.
