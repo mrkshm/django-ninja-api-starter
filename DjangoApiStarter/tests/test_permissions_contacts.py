@@ -55,7 +55,7 @@ class TestContactPermissions:
         req = self._req(self.nonmember)
         with pytest.raises(HttpError) as ctx:
             get_contact(req, self.org.slug, self.contact.slug)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_update_contact(self):
         req = self._req(self.nonmember, method="PUT")
@@ -68,7 +68,7 @@ class TestContactPermissions:
         )
         with pytest.raises(HttpError) as ctx:
             update_contact(req, self.org.slug, self.contact.slug, data)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_partial_update_contact(self):
         req = self._req(self.nonmember, method="PATCH")
@@ -78,13 +78,13 @@ class TestContactPermissions:
         patch = ContactUpdate(display_name="Johnny 2")
         with pytest.raises(HttpError) as ctx:
             partial_update_contact(req, self.org.slug, self.contact.slug, patch)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_delete_contact(self):
         req = self._req(self.nonmember, method="DELETE")
         with pytest.raises(HttpError) as ctx:
             delete_contact(req, self.org.slug, self.contact.slug)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_upload_avatar(self):
         req = self._req(self.nonmember, method="POST")
@@ -94,13 +94,13 @@ class TestContactPermissions:
         )
         with pytest.raises(HttpError) as ctx:
             upload_contact_avatar(req, self.org.slug, self.contact.slug, file)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_delete_avatar(self):
         req = self._req(self.nonmember, method="DELETE")
         with pytest.raises(HttpError) as ctx:
             delete_contact_avatar(req, self.org.slug, self.contact.slug)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_create_contact_in_other_org(self):
         req = self._req(self.nonmember, method="POST")
@@ -113,4 +113,4 @@ class TestContactPermissions:
         )
         with pytest.raises(HttpError) as ctx:
             create_contact(req, self.org.slug, data)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404

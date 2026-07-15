@@ -54,20 +54,20 @@ class TestTagPermissions:
         with pytest.raises(HttpError) as ctx:
             # Bypass pagination
             list_tags.__wrapped__(req, self.org.slug, None)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_search_tags(self):
         req = self._req(self.nonmember)
         with pytest.raises(HttpError) as ctx:
             search_tags.__wrapped__(req, self.org.slug, q=None)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_get_tag_by_slug(self):
         tag = Tag.objects.create(organization=self.org, name="vip", slug="vip")
         req = self._req(self.nonmember)
         with pytest.raises(HttpError) as ctx:
             get_tag_by_slug(req, self.org.slug, tag.slug)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_list_tags_for_object(self):
         req = self._req(self.nonmember)
@@ -75,7 +75,7 @@ class TestTagPermissions:
             list_tags_for_object.__wrapped__(
                 req, self.org.slug, "contacts", "contact", self.contact.id, None
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_assign_tags(self):
         req = self._req(self.nonmember, method="POST")
@@ -88,21 +88,21 @@ class TestTagPermissions:
                 self.contact.id,
                 TagAssignment(["vip"]),
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_update_tag(self):
         tag = Tag.objects.create(organization=self.org, name="vip", slug="vip")
         req = self._req(self.nonmember, method="PATCH")
         with pytest.raises(HttpError) as ctx:
             update_tag(req, self.org.slug, tag.id, TagUpdate(name="vip2"))
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_delete_tag(self):
         tag = Tag.objects.create(organization=self.org, name="vip", slug="vip")
         req = self._req(self.nonmember, method="DELETE")
         with pytest.raises(HttpError) as ctx:
             delete_tag(req, self.org.slug, tag.id)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_unassign_tags_bulk(self):
         tag = Tag.objects.create(organization=self.org, name="vip", slug="vip")
@@ -111,7 +111,7 @@ class TestTagPermissions:
             unassign_tags(
                 req, self.org.slug, "contacts", "contact", self.contact.id, [tag.id]
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_unassign_tag_by_slug(self):
         tag = Tag.objects.create(organization=self.org, name="vip", slug="vip")
@@ -120,4 +120,4 @@ class TestTagPermissions:
             unassign_tag_by_slug(
                 req, self.org.slug, "contacts", "contact", self.contact.id, tag.slug
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404

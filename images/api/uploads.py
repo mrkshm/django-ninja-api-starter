@@ -11,12 +11,13 @@ from core.authentication import JWTAuth
 from core.utils.idempotency import run_idempotently
 from core.utils.image import InvalidImageContent
 from core.utils.uploads import UploadTooLarge, read_uploaded_file_bounded
-from images.api.common import get_org_scope_for_request, router
+from images.api.common import router
 from images.api_schemas import BulkUploadResponse
 from images.schemas import ImageOut
 from images.serializers import serialize_image
 from images.services import ImageUploadFailed, upload_image_file
 from images.throttles import bulk_upload_throttle, upload_throttle
+from organizations.scope import resolve_org_scope
 
 
 @dataclass(frozen=True)
@@ -119,7 +120,7 @@ def _prepare_bulk_uploads(files) -> list[PreparedUpload]:
     throttle=[upload_throttle],
 )
 def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     error = validate_image_upload(file)
@@ -148,7 +149,7 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
     throttle=[bulk_upload_throttle],
 )
 def bulk_upload_images(request, org_slug: str):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     files = list(request.FILES.getlist("files"))

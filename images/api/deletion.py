@@ -6,17 +6,18 @@ from ninja.errors import HttpError
 
 from core.authentication import JWTAuth
 from core.utils.idempotency import run_idempotently
-from images.api.common import get_org_scope_for_request, logger, router
+from images.api.common import logger, router
 from images.models import Image
 from images.services import delete_image_record
 from images.throttles import bulk_delete_throttle
+from organizations.scope import resolve_org_scope
 
 
 @router.delete(
     "/orgs/{org_slug}/images/{image_id}/", auth=JWTAuth(), response={204: None}
 )
 def delete_image(request, org_slug: str, image_id: int):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     image = get_object_or_404(Image, id=image_id, organization=org)
@@ -37,7 +38,7 @@ def delete_image(request, org_slug: str, image_id: int):
     throttle=[bulk_delete_throttle],
 )
 def bulk_delete_images(request, org_slug: str):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
 

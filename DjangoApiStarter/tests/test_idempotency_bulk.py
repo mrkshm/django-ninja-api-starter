@@ -77,7 +77,7 @@ class TestIdempotencyBulk:
 
         with (
             patch(
-                "images.api.uploads.get_org_scope_for_request",
+                "images.api.uploads.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ),
             patch(
@@ -113,7 +113,7 @@ class TestIdempotencyBulk:
 
         with (
             patch(
-                "images.api.uploads.get_org_scope_for_request",
+                "images.api.uploads.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ),
             patch(
@@ -149,7 +149,7 @@ class TestIdempotencyBulk:
 
         with (
             patch(
-                "images.api.uploads.get_org_scope_for_request",
+                "images.api.uploads.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ),
             patch("images.api.uploads.upload_image_file", side_effect=fake_upload),
@@ -248,7 +248,7 @@ class TestIdempotencyBulk:
         req2 = self._req("POST", path, "key-4")
         req2.body = body
         with patch(
-            "images.api.deletion.get_org_scope_for_request",
+            "images.api.deletion.resolve_org_scope",
             return_value=ScopeStub(org=self.org, user=self.user),
         ):
             status1, _ = unwrap_status(bulk_delete_images(req1, self.org.slug))
@@ -272,7 +272,7 @@ class TestIdempotencyBulk:
         req2.body = body
 
         with patch(
-            "images.api.deletion.get_org_scope_for_request",
+            "images.api.deletion.resolve_org_scope",
             return_value=ScopeStub(org=self.org, user=self.user),
         ):
             status1, body1 = unwrap_status(bulk_delete_images(req1, self.org.slug))

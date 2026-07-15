@@ -1,6 +1,6 @@
 from importlib import import_module
 
-from images.api.common import get_org_for_request, logger, router
+from images.api.common import logger, router
 from images.api_schemas import (
     BulkDeleteResponse,
     BulkImageIdsIn,
@@ -65,7 +65,6 @@ __all__ = [
     "delete_image",
     "edit_image_metadata",
     "get_image_signed_urls",
-    "get_org_for_request",
     "get_shared_image_signed_urls",
     "list_images_for_object",
     "list_images_for_org",

@@ -32,10 +32,6 @@ TAG_ASSIGN_DESCRIPTION = (
 TAG_OBJECT_DESCRIPTION = "Manage tags attached to a polymorphic object identified by app label, model name, and object id."
 
 
-def get_org_scope_for_request(request, org_slug):
-    return resolve_org_scope(request, org_slug)
-
-
 @router.get(
     "/orgs/{org_slug}/tags/",
     response=list[TagOut],
@@ -45,7 +41,7 @@ def get_org_scope_for_request(request, org_slug):
 )
 @paginate(LimitOffsetPagination)
 def list_tags(request, org_slug: str, ordering: str | None = None):
-    scope = get_org_scope_for_request(request, org_slug)
+    scope = resolve_org_scope(request, org_slug)
     ordering_map = {
         None: "name",
         "name": "name",
@@ -70,7 +66,7 @@ def search_tags(request, org_slug: str, q: str | None = None):
     """
     Search for tags in an organization by name.
     """
-    scope = get_org_scope_for_request(request, org_slug)
+    scope = resolve_org_scope(request, org_slug)
     queryset = Tag.objects.filter(organization=scope.org)
     if q:
         queryset = queryset.filter(name__icontains=q)
@@ -85,7 +81,7 @@ def search_tags(request, org_slug: str, q: str | None = None):
     description="Return one tag from an organization by its slug.",
 )
 def get_tag_by_slug(request, org_slug: str, slug: str):
-    scope = get_org_scope_for_request(request, org_slug)
+    scope = resolve_org_scope(request, org_slug)
     tag = get_object_or_404(Tag, slug=slug, organization=scope.org)
     return TagOut.model_validate(tag)
 
@@ -98,7 +94,7 @@ def get_tag_by_slug(request, org_slug: str, slug: str):
     description="Create a tag in an organization. Tag names must be unique within that organization.",
 )
 def create_tag(request, org_slug: str, data: TagCreate):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     name = data.name
@@ -208,7 +204,7 @@ def assign_tags(
     description="Rename an organization tag and regenerate its slug.",
 )
 def update_tag(request, org_slug: str, tag_id: int, data: TagUpdate):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     tag = get_object_or_404(Tag, id=tag_id, organization=org)
     if data.name is not None:
@@ -231,7 +227,7 @@ def update_tag(request, org_slug: str, tag_id: int, data: TagUpdate):
     description="Delete one organization tag by id.",
 )
 def delete_tag(request, org_slug: str, tag_id: int):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     tag = get_object_or_404(Tag, id=tag_id, organization=org)

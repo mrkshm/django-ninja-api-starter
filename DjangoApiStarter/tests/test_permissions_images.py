@@ -65,7 +65,7 @@ class TestImagePermissions:
         with pytest.raises(HttpError) as ctx:
             # Bypass @paginate decorator
             list_images_for_org.__wrapped__(req, self.org.slug, None)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_bulk_upload(self):
         req = self._req(
@@ -78,7 +78,7 @@ class TestImagePermissions:
         req.FILES = SimpleNamespace(getlist=lambda name: files)
         with pytest.raises(HttpError) as ctx:
             bulk_upload_images(req, self.org.slug)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_bulk_attach_rejects_cross_org_image_ids(self):
         # Member of self.org tries to attach an image from other_org
@@ -95,7 +95,7 @@ class TestImagePermissions:
             bulk_attach_images(
                 req, self.org.slug, "contacts", "contact", self.contact.id, data
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_list_images_for_object(self):
         req = self._req(
@@ -108,10 +108,10 @@ class TestImagePermissions:
             list_images_for_object.__wrapped__(
                 req, self.org.slug, "contacts", "contact", self.contact.id, None
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_list_images_for_object_wrong_org_slug(self):
-        # Object belongs to self.org but we pass other_org slug -> 403
+        # Object belongs to self.org but we pass other_org slug -> 404
         req = self._req(
             self.member,
             method="GET",
@@ -121,7 +121,7 @@ class TestImagePermissions:
             list_images_for_object.__wrapped__(
                 req, self.other_org.slug, "contacts", "contact", self.contact.id, None
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_attach_images(self):
         img = Image.objects.create(
@@ -137,7 +137,7 @@ class TestImagePermissions:
             attach_images(
                 req, self.org.slug, "contacts", "contact", self.contact.id, data
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_remove_image_from_object(self):
         img = Image.objects.create(
@@ -158,7 +158,7 @@ class TestImagePermissions:
             remove_image_from_object(
                 req, self.org.slug, "contacts", "contact", self.contact.id, img.id
             )
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_edit_image_metadata(self):
         img = Image.objects.create(
@@ -172,7 +172,7 @@ class TestImagePermissions:
         data = ImagePatchIn(title="New Title")
         with pytest.raises(HttpError) as ctx:
             edit_image_metadata(req, self.org.slug, img.id, data)
-        assert getattr(ctx.value, "status_code", "") == 403
+        assert getattr(ctx.value, "status_code", "") == 404
 
     def test_non_member_cannot_delete_image(self):
         img = Image.objects.create(
@@ -185,7 +185,7 @@ class TestImagePermissions:
         )
         with pytest.raises(HttpError) as ctx:
             delete_image(req, self.org.slug, img.id)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404
 
     def test_non_member_cannot_bulk_delete(self):
         img = Image.objects.create(
@@ -203,4 +203,4 @@ class TestImagePermissions:
         req.body = _json.dumps({"ids": [img.id]}).encode("utf-8")
         with pytest.raises(HttpError) as ctx:
             bulk_delete_images(req, self.org.slug)
-        assert getattr(ctx.value, "status_code", 403) == 403
+        assert getattr(ctx.value, "status_code", 404) == 404

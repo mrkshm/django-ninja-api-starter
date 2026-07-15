@@ -4,7 +4,10 @@ from datetime import timedelta
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from images.api.common import get_org_scope_for_request, router
+from ninja.errors import HttpError
+
+from core.authentication import JWTAuth
+from images.api.common import router
 from images.models import Image, ImageShareLink, hash_share_token
 from images.schemas import (
     CreateImageShareIn,
@@ -14,9 +17,8 @@ from images.schemas import (
     ResolveImageShareIn,
 )
 from images.services import sign_image_variant_urls
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
 from images.throttles import share_link_throttle
+from organizations.scope import resolve_org_scope
 
 
 def serialize_share_link(share_link: ImageShareLink, raw_token: str) -> ImageShareOut:
@@ -36,7 +38,7 @@ def serialize_share_link(share_link: ImageShareLink, raw_token: str) -> ImageSha
     auth=JWTAuth(),
 )
 def get_image_signed_urls(request, org_slug: str, image_id: int):
-    scope = get_org_scope_for_request(request, org_slug)
+    scope = resolve_org_scope(request, org_slug)
     image = get_object_or_404(Image, id=image_id, organization=scope.org)
     return sign_image_variant_urls(image)
 
@@ -45,7 +47,7 @@ def get_image_signed_urls(request, org_slug: str, image_id: int):
     "/orgs/{org_slug}/images/{image_id}/shares", response=ImageShareOut, auth=JWTAuth()
 )
 def create_image_share(request, org_slug: str, image_id: int, data: CreateImageShareIn):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     image = get_object_or_404(Image, id=image_id, organization=org)
@@ -71,7 +73,7 @@ def create_image_share(request, org_slug: str, image_id: int, data: CreateImageS
     auth=JWTAuth(),
 )
 def revoke_image_share(request, org_slug: str, image_id: int, share_id: int):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     image = get_object_or_404(Image, id=image_id, organization=scope.org)
     share_link = get_object_or_404(ImageShareLink, id=share_id, image=image)
     share_link.revoke()

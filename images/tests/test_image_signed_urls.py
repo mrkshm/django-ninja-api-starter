@@ -87,7 +87,7 @@ def test_non_member_cannot_get_signed_image_urls(monkeypatch):
         HTTP_AUTHORIZATION=f"Bearer {access}",
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 @pytest.mark.django_db

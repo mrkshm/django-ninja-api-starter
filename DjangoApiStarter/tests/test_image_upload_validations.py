@@ -34,7 +34,7 @@ class TestImageUploadValidations:
         content = b"x" * (tiny_limit + 1)
         f = SimpleUploadedFile("test.png", content, content_type="image/png")
         with patch(
-            "images.api.uploads.get_org_scope_for_request",
+            "images.api.uploads.resolve_org_scope",
             return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
         ):
             with pytest.raises(HttpError) as exc:
@@ -47,7 +47,7 @@ class TestImageUploadValidations:
         req = self._req()
         f = SimpleUploadedFile("doc.pdf", b"%PDF-1.4", content_type="application/pdf")
         with patch(
-            "images.api.uploads.get_org_scope_for_request",
+            "images.api.uploads.resolve_org_scope",
             return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
         ):
             with pytest.raises(HttpError) as exc:
@@ -66,7 +66,7 @@ class TestImageUploadValidations:
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
         with patch(
-            "images.api.uploads.get_org_scope_for_request",
+            "images.api.uploads.resolve_org_scope",
             return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
         ):
             with pytest.raises(HttpError) as exc:
@@ -83,7 +83,7 @@ class TestImageUploadValidations:
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
         with patch(
-            "images.api.uploads.get_org_scope_for_request",
+            "images.api.uploads.resolve_org_scope",
             return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
         ):
             with pytest.raises(HttpError) as exc:
@@ -100,7 +100,7 @@ class TestImageUploadValidations:
         req = self._req()
         req.FILES = SimpleNamespace(getlist=lambda name: files)
         with patch(
-            "images.api.uploads.get_org_scope_for_request",
+            "images.api.uploads.resolve_org_scope",
             return_value=ScopeStub(org=SimpleNamespace(slug="acme"), user=req.auth),
         ):
             with pytest.raises(HttpError) as exc:

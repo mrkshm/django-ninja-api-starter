@@ -1,19 +1,21 @@
 from typing import List
 
+from ninja.errors import HttpError
+from ninja.pagination import LimitOffsetPagination, paginate
+
+from core.authentication import JWTAuth
 from core.utils.polymorphic import resolve_org_scoped_content_object
-from images.api.common import get_org_scope_for_request, router
+from images.api.common import router
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImageOut, PolymorphicImageRelationOut
 from images.serializers import serialize_image, serialize_image_relation
-from ninja.errors import HttpError
-from ninja.pagination import LimitOffsetPagination, paginate
-from core.authentication import JWTAuth
+from organizations.scope import resolve_org_scope
 
 
 @router.get("/orgs/{org_slug}/images/", response=List[ImageOut], auth=JWTAuth())
 @paginate(LimitOffsetPagination)
 def list_images_for_org(request, org_slug: str, ordering: str | None = None):
-    scope = get_org_scope_for_request(request, org_slug)
+    scope = resolve_org_scope(request, org_slug)
     ordering_map = {
         None: "-created_at",
         "created_at": "created_at",

@@ -3,10 +3,7 @@ from django.contrib.auth import get_user_model
 from ninja.errors import HttpError
 
 from contacts.models import Contact
-from core.utils.polymorphic import (
-    resolve_org_for_request,
-    resolve_org_scoped_content_object,
-)
+from core.utils.polymorphic import resolve_org_scoped_content_object
 from organizations.models import Membership, Organization
 
 
@@ -38,19 +35,6 @@ def org(member_user):
         user=member_user, organization=organization, role="member"
     )
     return organization
-
-
-@pytest.mark.django_db
-def test_resolve_org_for_request_allows_members(member_user, org):
-    assert resolve_org_for_request(DummyRequest(member_user), org.slug) == org
-
-
-@pytest.mark.django_db
-def test_resolve_org_for_request_rejects_non_members(nonmember_user, org):
-    with pytest.raises(HttpError) as exc_info:
-        resolve_org_for_request(DummyRequest(nonmember_user), org.slug)
-
-    assert exc_info.value.status_code == 403
 
 
 @pytest.mark.django_db
@@ -89,7 +73,7 @@ def test_resolve_org_scoped_content_object_rejects_cross_org_object(member_user,
             contact.id,
         )
 
-    assert exc_info.value.status_code == 403
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.django_db
@@ -107,7 +91,7 @@ def test_resolve_org_scoped_content_object_rejects_non_member(nonmember_user, or
             contact.id,
         )
 
-    assert exc_info.value.status_code == 403
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.django_db

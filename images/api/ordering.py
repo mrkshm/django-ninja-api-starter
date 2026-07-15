@@ -1,12 +1,13 @@
-from core.utils.polymorphic import resolve_org_scoped_content_object
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from ninja.errors import HttpError
+
+from core.authentication import JWTAuth
+from core.utils.polymorphic import resolve_org_scoped_content_object
 from images.api.common import logger, router
 from images.api_schemas import ReorderIn
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import DetailResponse, SetCoverIn
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
 
 
 @router.post(

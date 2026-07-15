@@ -7,7 +7,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
-from core.utils.auth_utils import check_object_belongs_to_org
+from organizations.models import Organization
 from organizations.scope import OrgScope, resolve_org_scope
 
 ATTACHABLE_MODELS = frozenset(
@@ -25,10 +25,6 @@ class OrgScopedContentObject:
     content_type: ContentType
     model_class: type
     obj: Any
-
-
-def resolve_org_for_request(request, org_slug: str):
-    return resolve_org_scope(request, org_slug).org
 
 
 def resolve_content_type(app_label: str, model: str) -> ContentType:
@@ -63,7 +59,9 @@ def resolve_org_scoped_content_object(
         obj = get_object_or_404(model_class, pk=obj_id)
     except Http404 as exc:
         raise HttpError(404, "Object not found") from exc
-    check_object_belongs_to_org(obj, org)
+    object_org_id = obj.pk if isinstance(obj, Organization) else obj.organization_id
+    if object_org_id != org.pk:
+        raise HttpError(404, "Object not found")
     return OrgScopedContentObject(
         scope=scope,
         organization=org,

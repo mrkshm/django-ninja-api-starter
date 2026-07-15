@@ -4,17 +4,20 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
 from core.utils.auth_utils import get_request_user
-from organizations.access import is_platform_admin
 from organizations.models import Membership, Organization
 
 if TYPE_CHECKING:
     from accounts.models import User
 
 audit_logger = logging.getLogger("audit")
+
+
+def is_platform_admin(user) -> bool:
+    """Staff status alone never grants cross-tenant application access."""
+    return bool(getattr(user, "is_superuser", False))
 
 
 @dataclass(frozen=True)
@@ -50,15 +53,25 @@ class OrgScope:
 
 def resolve_org_scope(request, org_slug: str) -> OrgScope:
     user = get_request_user(request)
-    org = get_object_or_404(Organization, slug=org_slug)
     membership = (
         Membership.objects.select_related("organization")
-        .filter(user=user, organization=org)
+        .filter(
+            user=user,
+            organization__slug=org_slug,
+        )
         .first()
     )
-    if membership is None and not is_platform_admin(user):
-        raise HttpError(403, "You do not have access to this organization.")
-    if membership is None:
+    if membership is not None:
+        return OrgScope(user=user, org=membership.organization, membership=membership)
+
+    if not is_platform_admin(user):
+        raise HttpError(404, "Organization not found")
+
+    try:
+        org = Organization.objects.get(slug=org_slug)
+    except Organization.DoesNotExist as exc:
+        raise HttpError(404, "Organization not found") from exc
+    else:
         audit_logger.info(
             "audit:platform_admin_tenant_access",
             extra={
@@ -74,7 +87,7 @@ def resolve_org_scope(request, org_slug: str) -> OrgScope:
                 ),
             },
         )
-    return OrgScope(user=user, org=org, membership=membership)
+    return OrgScope(user=user, org=org)
 
 
 def resolve_write_org_scope(request, org_slug: str) -> OrgScope:

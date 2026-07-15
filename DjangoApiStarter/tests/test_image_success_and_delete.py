@@ -64,7 +64,7 @@ class TestImageSuccessAndDeletion:
         f = valid_image_file("cat.png")
         with (
             patch(
-                "images.api.uploads.get_org_scope_for_request",
+                "images.api.uploads.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ),
             patch("images.services.upload_to_storage") as mock_upload,
@@ -97,7 +97,7 @@ class TestImageSuccessAndDeletion:
         req.FILES = SimpleNamespace(getlist=lambda name: files)
         with (
             patch(
-                "images.api.uploads.get_org_scope_for_request",
+                "images.api.uploads.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ),
             patch("images.services.upload_to_storage") as mock_upload,
@@ -113,7 +113,7 @@ class TestImageSuccessAndDeletion:
             list_req = self._req()
             # Call undecorated function to bypass @paginate wrapper
             with patch(
-                "images.api.listing.get_org_scope_for_request",
+                "images.api.listing.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ):
                 images_out = list_images_for_org.__wrapped__(
@@ -139,7 +139,7 @@ class TestImageSuccessAndDeletion:
         req = self._req()
         with (
             patch(
-                "images.api.deletion.get_org_scope_for_request",
+                "images.api.deletion.resolve_org_scope",
                 return_value=ScopeStub(org=self.org, user=self.user),
             ),
             patch("images.services.default_storage.delete") as mock_delete,

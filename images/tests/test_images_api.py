@@ -307,14 +307,14 @@ def test_list_images_for_object():
     assert data["count"] == 1
     assert data["items"][0]["image"]["id"] == img.id
 
-    # 403 if object belongs to another org
+    # Cross-organization objects are hidden as not found.
     org2 = Organization.objects.create(name="OtherOrg", slug="otherorg")
     object_id2 = org2.id
     response = client.get(
         f"/api/v1/orgs/{org.slug}/images/{app_label}/{model}/{object_id2}/",
         HTTP_AUTHORIZATION=f"Bearer {access}",
     )
-    assert response.status_code == 403
+    assert response.status_code == 404
 
     # 404 if object does not exist
     response = client.get(
