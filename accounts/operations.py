@@ -4,20 +4,35 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
-from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from accounts.models import PendingEmailChange, PendingPasswordReset
+from accounts.models import (
+    PendingEmailChange,
+    PendingPasswordReset,
+    PendingRegistration,
+    User,
+)
 from accounts.services import revoke_all_sessions, validate_new_password
 from accounts.tokens import generate_raw_token, hash_token
 
-User = get_user_model()
 audit_logger = logging.getLogger("audit")
 
 
 class AccountOperationError(ValueError):
     pass
+
+
+class AccountOperationConflict(AccountOperationError):
+    pass
+
+
+@dataclass(frozen=True)
+class RegistrationDelivery:
+    pending_id: int
+    email: str
+    raw_token: str
+    token_hash: str
 
 
 @dataclass(frozen=True)
@@ -44,6 +59,80 @@ class EmailChangeDelivery:
     display_name: str
     raw_token: str
     token_hash: str
+
+
+def rotate_pending_registration(
+    *, email: str, expiry_hours: int
+) -> RegistrationDelivery | None:
+    """Create or rotate the sole pending registration for an available email."""
+    if User.objects.filter(email__iexact=email).exists():
+        return None
+
+    raw_token = generate_raw_token()
+    token_hash = hash_token(raw_token)
+    expires_at = timezone.now() + timedelta(hours=expiry_hours)
+    try:
+        with transaction.atomic():
+            pending, _ = PendingRegistration.objects.update_or_create(
+                email=email,
+                defaults={"token": token_hash, "expires_at": expires_at},
+            )
+    except IntegrityError:
+        # A concurrent account creation or registration rotation won. Keep the
+        # public registration response enumeration-resistant.
+        return None
+    return RegistrationDelivery(
+        pending_id=pending.pk,
+        email=pending.email,
+        raw_token=raw_token,
+        token_hash=token_hash,
+    )
+
+
+def cancel_pending_registration(*, pending_id: int, token_hash: str) -> None:
+    """Remove only the pending registration whose delivery failed."""
+    PendingRegistration.objects.filter(pk=pending_id, token=token_hash).delete()
+
+
+def confirm_registration(*, raw_token: str, password: str) -> User:
+    """Consume a pending registration and provision its verified account."""
+    token_hash = hash_token(raw_token)
+    error: str | None = None
+    user = None
+    try:
+        with transaction.atomic():
+            try:
+                pending = PendingRegistration.objects.select_for_update().get(
+                    token=token_hash
+                )
+            except PendingRegistration.DoesNotExist:
+                pending = None
+                error = "Invalid or expired token."
+            if pending is not None:
+                if pending.is_expired():
+                    pending.delete()
+                    error = "Token has expired."
+                elif User.objects.filter(email__iexact=pending.email).exists():
+                    pending.delete()
+                    error = "Invalid or expired token."
+                else:
+                    candidate = User(email=pending.email)
+                    validate_new_password(password, user=candidate)
+                    user = User.objects.create_user(
+                        email=pending.email,
+                        password=password,
+                        email_verified=True,
+                    )
+                    pending.delete()
+    except IntegrityError as exc:
+        raise AccountOperationConflict("Registration could not be completed.") from exc
+
+    if error is not None or user is None:
+        raise AccountOperationError(error or "Invalid or expired token.")
+    transaction.on_commit(
+        lambda: audit_logger.info("audit:registration_verified user=%s", user.pk)
+    )
+    return user
 
 
 @transaction.atomic

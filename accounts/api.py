@@ -1,20 +1,15 @@
 import logging
-from datetime import timedelta
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
-from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
 from ninja_jwt.schema import TokenVerifyInputSchema
 
-from accounts.models import (
-    PendingEmailChange,
-    PendingRegistration,
-)
+from accounts.models import PendingEmailChange
 from accounts.operations import (
+    AccountOperationConflict,
     AccountOperationError,
+    cancel_pending_registration,
 )
 from accounts.operations import change_password as change_password_operation
 from accounts.operations import (
@@ -23,9 +18,13 @@ from accounts.operations import (
 from accounts.operations import (
     confirm_password_reset as confirm_password_reset_operation,
 )
+from accounts.operations import (
+    confirm_registration,
+)
 from accounts.operations import request_email_change as request_email_change_operation
 from accounts.operations import (
     rotate_password_reset,
+    rotate_pending_registration,
 )
 from accounts.schemas import (
     ChangePasswordSchema,
@@ -52,7 +51,6 @@ from accounts.services import (
     revoke_session_from_refresh,
     rotate_token_pair,
     send_templated_email,
-    validate_new_password,
 )
 from accounts.throttles import (
     email_change_throttle,
@@ -65,7 +63,6 @@ from accounts.throttles import (
     token_verify_throttle,
     verification_throttle,
 )
-from accounts.tokens import generate_raw_token, hash_token
 from accounts.validation import normalize_and_validate_email
 from core.authentication import JWTAuth
 from core.utils.auth_utils import get_request_user
@@ -83,7 +80,6 @@ PASSWORD_RESET_RESPONSE_DETAIL = (
 
 token_router = Router(tags=["token"])
 auth_router = Router()
-User = get_user_model()
 logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("audit")
 
@@ -154,24 +150,19 @@ def send_verification_email(email: str, token: str) -> None:
 
 
 def create_pending_registration(email: str) -> None:
-    if User.objects.filter(email__iexact=email).exists():
-        return
-    token = generate_raw_token()
-    token_hash = hash_token(token)
-    expires_at = timezone.now() + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS)
-    try:
-        PendingRegistration.objects.update_or_create(
-            email=email,
-            defaults={"token": token_hash, "expires_at": expires_at},
-        )
-    except IntegrityError:
-        # A concurrent registration or account creation won the race. The
-        # endpoint remains intentionally generic.
+    delivery = rotate_pending_registration(
+        email=email,
+        expiry_hours=EMAIL_VERIFICATION_EXPIRY_HOURS,
+    )
+    if delivery is None:
         return
     try:
-        send_verification_email(email, token)
+        send_verification_email(delivery.email, delivery.raw_token)
     except HttpError:
-        PendingRegistration.objects.filter(email=email, token=token_hash).delete()
+        cancel_pending_registration(
+            pending_id=delivery.pending_id,
+            token_hash=delivery.token_hash,
+        )
         raise
 
 
@@ -185,40 +176,14 @@ def register(request, data: RegisterSchema):
 
 @auth_router.post("/verify-registration")
 def verify_registration(request, data: RegistrationVerificationSchema):
-    error = None
-    user = None
     try:
-        with transaction.atomic():
-            try:
-                pending = PendingRegistration.objects.select_for_update().get(
-                    token=hash_token(data.token)
-                )
-            except PendingRegistration.DoesNotExist:
-                error = "Invalid or expired token."
-            else:
-                if pending.is_expired():
-                    pending.delete()
-                    error = "Token has expired."
-                elif User.objects.filter(email__iexact=pending.email).exists():
-                    pending.delete()
-                    error = "Invalid or expired token."
-                else:
-                    candidate = User(email=pending.email)
-                    validate_new_password(data.password, user=candidate)
-                    user = User.objects.create_user(
-                        email=pending.email,
-                        password=data.password,
-                        email_verified=True,
-                    )
-                    pending.delete()
-    except IntegrityError as exc:
-        raise HttpError(409, "Registration could not be completed.") from exc
-
-    if error is not None or user is None:
-        raise HttpError(400, error or "Invalid or expired token.")
+        user = confirm_registration(raw_token=data.token, password=data.password)
+    except AccountOperationConflict as exc:
+        raise HttpError(409, str(exc)) from exc
+    except AccountOperationError as exc:
+        raise HttpError(400, str(exc)) from exc
 
     access, refresh = issue_token_pair(user, device_name=data.device_name or "")
-    audit_logger.info("audit:registration_verified user=%s", user.pk)
     return {
         "detail": "Email verified successfully.",
         "access": access,
