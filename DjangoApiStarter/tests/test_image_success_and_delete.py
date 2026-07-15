@@ -9,12 +9,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from PIL import Image as PillowImage
 
-from images.api import (
-    bulk_upload_images,
-    delete_image,
-    list_images_for_org,
-    upload_image,
-)
+from images.api.deletion import delete_image
+from images.api.listing import list_images_for_org
+from images.api.uploads import bulk_upload_images, upload_image
 from images.models import Image
 from organizations.models import Organization
 

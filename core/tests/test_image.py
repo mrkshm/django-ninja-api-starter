@@ -3,8 +3,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from core.utils import resize_avatar_images
-from core.utils.image import InvalidImageContent, resize_images
+from core.utils.image import InvalidImageContent, resize_avatar_images, resize_images
 
 
 def test_resize_avatar_images_basic():

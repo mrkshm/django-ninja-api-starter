@@ -8,13 +8,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from ninja.errors import HttpError
 
 from contacts.models import Contact
-from images.api import (
-    BulkImageIdsIn,
-    bulk_attach_images,
-    bulk_delete_images,
-    bulk_detach_images,
-    bulk_upload_images,
-)
+from images.api.deletion import bulk_delete_images
+from images.api.relations import bulk_attach_images, bulk_detach_images
+from images.api.uploads import bulk_upload_images
+from images.api_schemas import BulkImageIdsIn
 from images.models import Image
 from organizations.models import Membership, Organization
 

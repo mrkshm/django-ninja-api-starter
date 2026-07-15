@@ -13,7 +13,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.text import slugify
 
-from core.utils import make_it_unique
+from core.utils.identifiers import make_it_unique
 
 
 class UserManager(BaseUserManager["User"]):

@@ -2,7 +2,7 @@ import uuid
 
 from django.db import IntegrityError, transaction
 
-from core.utils import make_it_unique
+from core.utils.identifiers import make_it_unique
 from organizations.models import Membership, Organization
 
 

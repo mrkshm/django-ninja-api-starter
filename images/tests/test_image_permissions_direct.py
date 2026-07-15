@@ -7,19 +7,16 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from ninja.errors import HttpError
 
 from contacts.models import Contact
-from images.api import (
-    BulkImageIdsIn,
-    ImageIdsIn,
+from images.api.deletion import bulk_delete_images, delete_image
+from images.api.listing import list_images_for_object, list_images_for_org
+from images.api.metadata import edit_image_metadata
+from images.api.relations import (
     attach_images,
     bulk_attach_images,
-    bulk_delete_images,
-    bulk_upload_images,
-    delete_image,
-    edit_image_metadata,
-    list_images_for_object,
-    list_images_for_org,
     remove_image_from_object,
 )
+from images.api.uploads import bulk_upload_images
+from images.api_schemas import BulkImageIdsIn, ImageIdsIn
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import ImagePatchIn
 from organizations.models import Organization

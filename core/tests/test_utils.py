@@ -9,8 +9,9 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from ninja.errors import HttpError
 
-from core.utils import generate_upload_filename, make_it_unique
 from core.utils.auth_utils import require_authenticated_user
+from core.utils.filenames import generate_upload_filename
+from core.utils.identifiers import make_it_unique
 from organizations.models import Organization
 
 

@@ -14,7 +14,7 @@ from core.api_errors import (
 )
 from images.api import router as images_router
 from organizations.api_export import export_router
-from tags.api import get_tags_router
+from tags.api import router as tags_router
 
 
 # Custom ORJSON Renderer
@@ -38,7 +38,7 @@ api.add_router("/token", token_router, tags=["token"])
 api.add_router("/auth/", auth_router, tags=["auth"])
 api.add_router("/users/", users_router, tags=["users"])
 api.add_router("/", contacts_router, tags=["contacts"])
-api.add_router("/", get_tags_router(), tags=["tags"])
+api.add_router("/", tags_router, tags=["tags"])
 api.add_router("/", images_router)
 api.add_router("/", export_router, tags=["organization", "export"])
 # Register error handlers (especially for validation errors)

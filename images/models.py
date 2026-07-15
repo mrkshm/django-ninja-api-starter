@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
-from core.utils.utils import generate_upload_filename
+from core.utils.filenames import generate_upload_filename
 from organizations.models import Organization
 
 # Create your models here.

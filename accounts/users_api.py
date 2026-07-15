@@ -6,10 +6,9 @@ from ninja import File, Router, Schema, UploadedFile
 from ninja.errors import HttpError
 
 from core.authentication import JWTAuth
-from core.utils import resize_avatar_images
 from core.utils.auth_utils import get_request_user
 from core.utils.avatar import schedule_avatar_file_deletion
-from core.utils.image import InvalidImageContent
+from core.utils.image import InvalidImageContent, resize_avatar_images
 from core.utils.storage import delete_from_public_storage, upload_to_public_storage
 from core.utils.uploads import UploadTooLarge, read_uploaded_file_bounded
 from organizations.models import Organization

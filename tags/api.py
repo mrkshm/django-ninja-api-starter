@@ -326,11 +326,3 @@ def unassign_tag_by_slug(
             result.tag_id,
         )
     return DetailResponse(detail="removed")
-
-
-# Back-compat factory and exports
-def get_tags_router():
-    return router
-
-
-tags_router = router

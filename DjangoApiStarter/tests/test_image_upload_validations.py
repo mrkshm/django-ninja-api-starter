@@ -6,7 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from ninja.errors import HttpError
 
-from images.api import bulk_upload_images, upload_image
+from images.api.uploads import bulk_upload_images, upload_image
 
 
 class ScopeStub(SimpleNamespace):

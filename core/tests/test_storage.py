@@ -1,8 +1,8 @@
 import types
 from unittest.mock import MagicMock, patch
 
-from core.utils import (
-    delete_existing_avatar,
+from core.utils.avatar import delete_existing_avatar
+from core.utils.storage import (
     generate_presigned_storage_url,
     public_storage_url,
     upload_to_public_storage,

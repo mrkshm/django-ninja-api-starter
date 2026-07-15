@@ -4,15 +4,14 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from contacts.models import Contact
-from images.api import (
-    BulkImageIdsIn,
-    ImageIdsIn,
+from images.api.listing import list_images_for_object
+from images.api.relations import (
     attach_images,
     bulk_attach_images,
     bulk_detach_images,
-    list_images_for_object,
     remove_image_from_object,
 )
+from images.api_schemas import BulkImageIdsIn, ImageIdsIn
 from images.models import Image, PolymorphicImageRelation
 from organizations.models import Membership, Organization
 
