@@ -75,7 +75,7 @@ class Membership(models.Model):
         indexes = [
             models.Index(
                 fields=("organization", "role"),
-                name="organizations_member_org_role_idx",
+                name="org_membership_org_role_idx",
             )
         ]
 
@@ -121,14 +121,14 @@ class ExportJob(models.Model):
         indexes = [
             models.Index(
                 fields=("organization", "created_at"),
-                name="organizations_export_org_created_idx",
+                name="org_export_org_created_idx",
             ),
             models.Index(
                 fields=("status", "expires_at"),
-                name="organizations_export_status_exp_idx",
+                name="org_export_status_exp_idx",
             ),
             models.Index(
                 fields=("status", "heartbeat_at"),
-                name="organizations_export_status_hb_idx",
+                name="org_export_status_hb_idx",
             ),
         ]

@@ -45,7 +45,7 @@ uv run black --check .
 uv run flake8 --select=E9,F63,F7,F82 .
 uv run mypy .
 uv run python manage.py makemigrations --check --dry-run
-uv run python manage.py check
+uv run python manage.py check --database default
 uv run pip-audit
 ```
 

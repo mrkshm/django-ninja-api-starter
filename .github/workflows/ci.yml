@@ -66,7 +66,7 @@ jobs:
       - run: uv run black --check .
       - name: Lint for invalid syntax and undefined names
         run: uv run flake8 --select=E9,F63,F7,F82 --exclude=.venv,migrations .
-      - run: uv run python manage.py check
+      - run: uv run python manage.py check --database default
       - name: Verify OpenAPI contract
         run: uv run python scripts/export_openapi.py > /tmp/openapi.json && diff -u docs/openapi.json /tmp/openapi.json
       - name: Audit Python dependencies
@@ -91,7 +91,7 @@ jobs:
           R2_PRIVATE_BUCKET_NAME: private
           R2_PUBLIC_BUCKET_NAME: public
           IMAGE_PUBLIC_BASE_URL: https://media.example.com
-        run: uv run python manage.py check --deploy --settings=DjangoApiStarter.settings.production
+        run: uv run python manage.py check --deploy --database default --settings=DjangoApiStarter.settings.production
       - name: Build production image
         run: docker build --tag starter-ci:${{ github.sha }} .
       - name: Scan production image

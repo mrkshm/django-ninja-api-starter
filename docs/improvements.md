@@ -920,7 +920,8 @@ that motivates them. Every commit should leave the full suite green.
   `check_untyped_defs = True`.
 - [x] Black, isort, the CI Flake8 fatal-error selection, and
   `git diff --check` pass.
-- [x] `manage.py check` passes under test and production settings.
+- [x] `manage.py check --database default` passes under test and production
+  settings, including database-dependent model checks.
 - [x] `makemigrations --check --dry-run` reports no missing migrations.
 - [x] Production Compose renders successfully with representative environment
   variables.
