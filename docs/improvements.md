@@ -622,7 +622,7 @@ Acceptance criteria:
 Direct function tests remain useful for operation logic. They are not proof
 that the HTTP security boundary works.
 
-Current gap:
+Problem addressed:
 
 - Several permission and idempotency tests call router functions with
   `SimpleNamespace` requests.
@@ -633,7 +633,12 @@ Current gap:
 
 Implementation:
 
-- [x] Keep fast direct tests after moving logic into operations.
+- [x] Keep fast direct tests only for operation and adapter logic; do not use
+  direct router-function calls as the sole proof of authentication,
+  authorization, parsing, throttling, or idempotency behavior.
+- [x] Replace the synthetic-request contact, tag, image-permission, and bulk
+  idempotency suites with routed tests, retaining each distinct security and
+  replay scenario.
 - [x] Add TestClient tests for every permission-sensitive route family:
   contacts, tags, images, exports, and organization scope.
 - [x] Prove missing, malformed, expired, and revoked JWT behavior through the
@@ -655,6 +660,10 @@ Acceptance criteria:
 - [x] Every security-critical decorator stack has routed coverage.
 - [x] Direct endpoint tests are no longer the only proof of permission or
   idempotency behavior.
+- [x] The routed suite covers missing, malformed, expired, revoked, stale
+  authorization-version, and inactive-user access tokens.
+- [x] Platform-administrator access and its audit event are exercised through
+  the real API router; ordinary staff remains tenant-scoped.
 - [x] Test location communicates domain ownership where practical.
 
 ---

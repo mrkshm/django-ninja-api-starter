@@ -45,7 +45,8 @@ def bulk_delete_images(request, org_slug: str):
     def perform_delete() -> tuple[int, dict | None]:
         data = request.POST.dict() if request.POST else {}
         if not data and request.body:
-            data = json.loads(request.body.decode("utf-8"))
+            body = request.body
+            data = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
 
         ids = data.get("ids", [])
         if not ids:
