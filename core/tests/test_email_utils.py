@@ -1,6 +1,12 @@
 import pytest
 from django.conf import settings
-from core.email_utils import render_email_template, send_email
+
+from core.email_utils import (
+    EmailTemplateFormatError,
+    _load_email_template,
+    render_email_template,
+    send_email,
+)
 
 
 def test_render_email_template_returns_subject_and_body(settings):
@@ -19,6 +25,33 @@ def test_render_email_template_returns_subject_and_body(settings):
     assert "Subject:" not in subject
     assert "Ada" in body
     assert "https://example.test/verify" in body
+
+
+def test_render_email_template_rejects_missing_subject_line(settings, tmp_path):
+    template_dir = tmp_path / "core" / "email_templates"
+    template_dir.mkdir(parents=True)
+    (template_dir / "invalid.txt").write_text("Body without a subject")
+    settings.BASE_DIR = tmp_path
+    _load_email_template.cache_clear()
+
+    with pytest.raises(EmailTemplateFormatError, match="Subject: line"):
+        render_email_template("invalid.txt", {})
+
+
+def test_render_email_template_caches_compiled_template(settings, tmp_path):
+    template_dir = tmp_path / "core" / "email_templates"
+    template_dir.mkdir(parents=True)
+    template_path = template_dir / "cached.txt"
+    template_path.write_text("Subject: First\nFirst body")
+    settings.BASE_DIR = tmp_path
+    _load_email_template.cache_clear()
+
+    assert render_email_template("cached.txt", {}) == ("First", "First body")
+    template_path.write_text("Subject: Second\nSecond body")
+    assert render_email_template("cached.txt", {}) == ("First", "First body")
+
+    _load_email_template.cache_clear()
+    assert render_email_template("cached.txt", {}) == ("Second", "Second body")
 
 
 def test_send_email_uses_configured_backend(monkeypatch):

@@ -1,5 +1,4 @@
 import pytest
-from ninja.main import NinjaAPI
 from ninja.testing import TestClient
 
 from accounts.models import PendingRegistration, User
@@ -10,7 +9,6 @@ from DjangoApiStarter.api import api
 @pytest.mark.django_db
 class TestRegister:
     def setup_method(self):
-        NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_register_requires_email_and_forbids_password(self):

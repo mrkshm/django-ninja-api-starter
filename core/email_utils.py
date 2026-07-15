@@ -1,14 +1,34 @@
-from django.core.mail import EmailMultiAlternatives
+from functools import lru_cache
+from pathlib import Path
+
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 from django.template import Context, Template
+
+
+class EmailTemplateFormatError(ValueError):
+    pass
+
+
+@lru_cache(maxsize=32)
+def _load_email_template(template_path: str) -> Template:
+    return Template(Path(template_path).read_text(encoding="utf-8"))
 
 
 def render_email_template(template_name, context):
     template_path = settings.BASE_DIR / "core" / "email_templates" / template_name
-    template = Template(template_path.read_text())
+    template = _load_email_template(str(template_path))
     rendered = template.render(Context(context))
-    subject, body_text = rendered.split("\n", 1)
-    subject = subject.replace("Subject: ", "").strip()
+    subject_line, separator, body_text = rendered.partition("\n")
+    if not separator or not subject_line.startswith("Subject:"):
+        raise EmailTemplateFormatError(
+            f"Email template {template_name!r} must begin with a Subject: line."
+        )
+    subject = subject_line.removeprefix("Subject:").strip()
+    if not subject:
+        raise EmailTemplateFormatError(
+            f"Email template {template_name!r} has an empty subject."
+        )
     return subject, body_text.strip()
 
 

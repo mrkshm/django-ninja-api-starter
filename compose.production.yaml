@@ -42,7 +42,7 @@ services:
 
   worker:
     <<: *app
-    command: celery -A DjangoApiStarter worker --loglevel=INFO --queues=celery,email,exports,maintenance --time-limit=1800 --soft-time-limit=1740
+    command: celery -A DjangoApiStarter worker --loglevel=INFO --queues=celery,email,exports,maintenance
     depends_on:
       db:
         condition: service_healthy

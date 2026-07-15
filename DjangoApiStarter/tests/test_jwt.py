@@ -2,13 +2,11 @@ import pytest
 from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
-from ninja.main import NinjaAPI
 
 
 @pytest.mark.django_db
 class TestJWT:
     def setup_method(self):
-        NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_token_pair_endpoint_exists(self):

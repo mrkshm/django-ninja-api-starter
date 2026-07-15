@@ -1,16 +1,8 @@
-from types import SimpleNamespace
-
 import pytest
 from django.core.cache import cache
-from ninja import NinjaAPI
 from ninja.testing import TestClient
 
 from DjangoApiStarter.api import api as project_api
-
-
-def pytest_configure():
-    if not hasattr(NinjaAPI, "_registry"):
-        NinjaAPI._registry = SimpleNamespace(clear=lambda: None)
 
 
 @pytest.fixture(autouse=True)
@@ -30,11 +22,6 @@ def bypass_throttles(monkeypatch):
 
 @pytest.fixture(scope="function")
 def api_client():
-    # Use the main project API to prevent re-attaching shared routers
-    try:
-        NinjaAPI._registry.clear()
-    except Exception:
-        pass
     return TestClient(project_api)
 
 

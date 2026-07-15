@@ -80,7 +80,10 @@ class Membership(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user.email} in {self.organization.name} as {self.role}"
+        return (
+            f"Membership(user={self.user_id}, organization={self.organization_id}, "
+            f"role={self.role})"
+        )
 
 
 class ExportJob(models.Model):

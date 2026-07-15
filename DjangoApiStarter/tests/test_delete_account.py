@@ -2,13 +2,11 @@ import pytest
 from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
 from ..api import api
-from ninja.main import NinjaAPI
 
 
 @pytest.mark.django_db
 class TestDeleteAccount:
     def setup_method(self):
-        NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_delete_account_requires_auth(self):
