@@ -68,6 +68,36 @@ def test_production_accepts_explicit_secret_key():
     assert result.returncode == 0, result.stderr
 
 
+def test_supported_caddy_proxy_count_is_explicit():
+    result = _import_settings_with_env(
+        {
+            "DEBUG": "False",
+            "SECRET_KEY": "not-the-default-secret-key",
+        },
+        code=(
+            "from DjangoApiStarter.settings.production import NINJA_NUM_PROXIES; "
+            "print(NINJA_NUM_PROXIES)"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "1"
+    assert "reverse_proxy web:8000" in (BASE_DIR / "deploy/Caddyfile").read_text()
+
+
+def test_negative_proxy_count_is_rejected():
+    result = _import_settings_with_env(
+        {
+            "DEBUG": "False",
+            "SECRET_KEY": "not-the-default-secret-key",
+            "NINJA_NUM_PROXIES": "-1",
+        }
+    )
+
+    assert result.returncode != 0
+    assert "NINJA_NUM_PROXIES cannot be negative" in result.stderr
+
+
 def test_production_application_logs_use_json_without_django_duplication():
     result = _import_settings_with_env(
         {

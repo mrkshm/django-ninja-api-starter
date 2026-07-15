@@ -44,6 +44,15 @@ both addresses are notified after completion. Pending changes are bound to the
 user's `auth_version`, so changing/resetting the password or otherwise revoking
 all sessions invalidates an outstanding email-change token.
 
+Authentication, registration, reset, verification, upload, and public-share
+throttles use the shared cache and operation-specific scopes. Tests exercise
+real account throttle windows, client-IP separation, authenticated-user
+identity, cross-domain scope separation, and route-level 429 responses.
+`NINJA_NUM_PROXIES` must match the trusted deployment topology. These application
+throttles reduce ordinary abuse but use Django Ninja's non-atomic cache history
+algorithm, so they are not a hard guarantee under high concurrency; add
+upstream/provider abuse protection when product risk warrants it.
+
 ## Tenant roles
 
 - `member`: view and CRUD ordinary contacts, tags, private images, and relations.

@@ -5,7 +5,6 @@ from organizations.models import Organization, Membership
 from django.core.files.uploadedfile import SimpleUploadedFile
 import io
 from PIL import Image as PilImage
-from django.conf import settings
 
 User = get_user_model()
 
@@ -36,8 +35,7 @@ def get_access_token(email, password):
 
 
 def _enable_test_throttling(instance_names):
-    """Enable ratelimiting and override throttle instances to allow once then 429."""
-    settings.NINJA_RATELIMIT_ENABLE = True
+    """Override throttle instances to test route-level 429 handling."""
     from images import api as img_api
 
     for name in instance_names:

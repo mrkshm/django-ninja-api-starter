@@ -59,6 +59,13 @@ Caddy limits request bodies to 20 MiB; image decoding applies stricter byte,
 pixel, and dimension limits. HSTS is enabled for one year. Do not enable preload
 until every subdomain is permanently HTTPS.
 
+The default `NINJA_NUM_PROXIES=1` is part of this topology: Caddy is the only
+proxy between a public client and Django, and Caddy replaces untrusted incoming
+`X-Forwarded-*` values. If a CDN or load balancer is added in front of Caddy,
+configure its address ranges as trusted proxies in Caddy and increase
+`NINJA_NUM_PROXIES` to match the complete trusted chain. Never expose the web
+container directly while trusting caller-supplied forwarding headers.
+
 ## Shutdown and sizing
 
 `WEB_CONCURRENCY` defaults to two bounded Gunicorn workers rather than deriving

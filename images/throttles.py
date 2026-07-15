@@ -9,6 +9,10 @@ logger = logging.getLogger("audit")
 class LoggingUserRateThrottle(UserRateThrottle):
     """User rate throttle that logs when a request is throttled (429)."""
 
+    def __init__(self, scope: str, rate: str):
+        self.scope = scope
+        super().__init__(rate)
+
     def allow_request(self, request, view=None):
         allowed = super().allow_request(request)
         if not allowed:
@@ -37,19 +41,23 @@ class LoggingUserRateThrottle(UserRateThrottle):
 
 
 upload_throttle = LoggingUserRateThrottle(
-    getattr(settings, "IMAGES_RATE_LIMIT_UPLOAD", "60/h")
+    "images_upload", getattr(settings, "IMAGES_RATE_LIMIT_UPLOAD", "60/h")
 )
 bulk_upload_throttle = LoggingUserRateThrottle(
-    getattr(settings, "IMAGES_RATE_LIMIT_BULK_UPLOAD", "30/h")
+    "images_bulk_upload",
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_UPLOAD", "30/h"),
 )
 bulk_delete_throttle = LoggingUserRateThrottle(
-    getattr(settings, "IMAGES_RATE_LIMIT_BULK_DELETE", "30/h")
+    "images_bulk_delete",
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_DELETE", "30/h"),
 )
 bulk_attach_throttle = LoggingUserRateThrottle(
-    getattr(settings, "IMAGES_RATE_LIMIT_BULK_ATTACH", "60/h")
+    "images_bulk_attach",
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_ATTACH", "60/h"),
 )
 bulk_detach_throttle = LoggingUserRateThrottle(
-    getattr(settings, "IMAGES_RATE_LIMIT_BULK_DETACH", "60/h")
+    "images_bulk_detach",
+    getattr(settings, "IMAGES_RATE_LIMIT_BULK_DETACH", "60/h"),
 )
 share_link_throttle = AnonRateThrottle(
     getattr(settings, "IMAGES_RATE_LIMIT_SHARE_RESOLVE", "120/h")

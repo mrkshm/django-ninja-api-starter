@@ -264,7 +264,11 @@ UPLOAD_ALLOWED_IMAGE_MIME_PREFIXES = tuple(
     if prefix.strip()
 )
 
-NINJA_RATELIMIT_ENABLE = env.bool("NINJA_RATELIMIT_ENABLE", default=True)
+# The supported deployment has exactly one trusted proxy (Caddy) between the
+# public client and Django. Update this count together with the proxy topology.
+NINJA_NUM_PROXIES = env.int("NINJA_NUM_PROXIES", default=1)
+if NINJA_NUM_PROXIES < 0:
+    raise ImproperlyConfigured("NINJA_NUM_PROXIES cannot be negative.")
 IMAGES_RATE_LIMIT_UPLOAD = env.str("IMAGES_RATE_LIMIT_UPLOAD", default="60/h")
 IMAGES_RATE_LIMIT_BULK_UPLOAD = env.str("IMAGES_RATE_LIMIT_BULK_UPLOAD", default="30/h")
 IMAGES_RATE_LIMIT_BULK_DELETE = env.str("IMAGES_RATE_LIMIT_BULK_DELETE", default="30/h")

@@ -47,6 +47,9 @@ deployment target.
 - [x] Login uses Django authentication and rejects inactive users.
 - [x] Login, registration, resend, refresh, reset, and public share resolution
   are throttled and security events are audited without secret values.
+- [x] The single-Caddy proxy count is explicit; real throttle tests cover cache
+  windows, IP/user identity, independent scopes, and 429 responses without a
+  global bypass.
 - [x] Account-existence responses are generic where enumeration is relevant.
 - [x] Verification/reset/email-change tokens are hashed at rest, single-use,
   expiring, delivered asynchronously, and submitted by POST body.
@@ -142,8 +145,8 @@ deployment target.
   with Redis-backed cache/throttling support.
 - [x] Regression coverage includes tenant isolation, deletion invariants, token
   rotation/replay/revocation, password validation, publication failures, upload
-  rollback, media reconciliation, idempotency mismatch, and export
-  locking/recovery lifecycle.
+  rollback, media reconciliation, idempotency mismatch, throttle identity/rate
+  enforcement, and export locking/recovery lifecycle.
 - [x] CI runs Black, high-signal Flake8, mypy, pytest, migration checks, Django
   checks, OpenAPI diff, dependency audit, production `check --deploy`, image
   build/scan, and a container liveness smoke test.

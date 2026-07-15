@@ -12,7 +12,7 @@ production template. Production rejects missing mandatory values.
 | Private storage | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT_URL`, `R2_REGION_NAME`, `R2_PRIVATE_BUCKET_NAME` |
 | Public avatars | `R2_PUBLIC_BUCKET_NAME`, `IMAGE_PUBLIC_BASE_URL` |
 | Email | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `EMAIL_TIMEOUT`, `DEFAULT_FROM_EMAIL` |
-| HTTP/runtime | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_GRACEFUL_TIMEOUT`, `LOG_LEVEL` |
+| HTTP/runtime | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `NINJA_NUM_PROXIES`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_GRACEFUL_TIMEOUT`, `LOG_LEVEL` |
 | Retention | `EXPORT_RETENTION_DAYS` and image/share limit variables in `settings/base.py` |
 | Compose only | `APP_IMAGE`, `APP_ENV_FILE`, `DOMAIN` |
 
@@ -24,3 +24,8 @@ the deployment platform provides one.
 `EXPORT_STALE_AFTER_SECONDS` must exceed `CELERY_TASK_TIME_LIMIT`; its default is
 five minutes longer. Beat scans at `EXPORT_RECOVERY_INTERVAL_SECONDS` and
 requeues jobs whose queue/worker activity has stopped.
+
+`NINJA_NUM_PROXIES=1` matches the supported deployment where Caddy is the sole
+public proxy. If a CDN or another trusted proxy is added, configure Caddy's
+trusted proxy ranges and update this count to the number of trusted hops between
+the client and Django. A wrong count makes IP-based throttle buckets unreliable.
