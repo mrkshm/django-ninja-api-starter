@@ -1,3 +1,5 @@
+from smtplib import SMTPConnectError, SMTPServerDisconnected
+
 from celery import shared_task
 from django.conf import settings
 from django.core.mail import send_mail
@@ -30,7 +32,12 @@ def _send_email_task(
     )
 
 
-@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+@shared_task(
+    bind=True,
+    autoretry_for=(SMTPServerDisconnected, SMTPConnectError, OSError),
+    retry_backoff=True,
+    max_retries=3,
+)
 def send_email_task(
     self, subject, message, recipient_list, from_email=None, html_message=None
 ):

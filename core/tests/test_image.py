@@ -1,7 +1,10 @@
-from core.utils import resize_avatar_images
-from PIL import Image
 from io import BytesIO
-from core.utils.image import resize_images
+
+import pytest
+from PIL import Image
+
+from core.utils import resize_avatar_images
+from core.utils.image import InvalidImageContent, resize_images
 
 
 def test_resize_avatar_images_basic():
@@ -100,3 +103,34 @@ def test_resize_images_versions():
         < len(versions["md"])
         < len(versions["lg"])
     )
+
+
+def test_bytes_io_input_enforces_pixel_limit(settings):
+    settings.UPLOAD_IMAGE_MAX_PIXELS = 50
+    image = Image.new("RGB", (10, 10), color="red")
+    data = BytesIO()
+    image.save(data, format="PNG")
+
+    with pytest.raises(InvalidImageContent):
+        resize_avatar_images(data)
+
+
+def test_pil_image_input_enforces_pixel_limit(settings):
+    settings.UPLOAD_IMAGE_MAX_PIXELS = 50
+    image = Image.new("RGB", (10, 10), color="red")
+
+    with pytest.raises(InvalidImageContent):
+        resize_images(image)
+
+
+def test_validation_does_not_mutate_pillow_global_limit(settings):
+    settings.UPLOAD_IMAGE_MAX_PIXELS = 50
+    previous = Image.MAX_IMAGE_PIXELS
+    image = Image.new("RGB", (10, 10), color="red")
+    data = BytesIO()
+    image.save(data, format="PNG")
+
+    with pytest.raises(InvalidImageContent):
+        resize_avatar_images(data.getvalue())
+
+    assert Image.MAX_IMAGE_PIXELS == previous

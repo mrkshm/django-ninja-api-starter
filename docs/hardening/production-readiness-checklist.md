@@ -75,6 +75,9 @@ deployment target.
   not silently restrict ordinary organization content.
 - [x] Group organizations retain at least one active owner through transactional
   membership/account services and deferred PostgreSQL constraint triggers.
+- [x] Each creator has one personal organization and an immutable creator-owner
+  membership, enforced through services, a conditional constraint, and a
+  deferred PostgreSQL guard.
 - [x] Cross-tenant platform-admin access emits structured audit events without
   tenant payload data.
 - [x] Username availability requires authentication and has a dedicated throttle.
@@ -144,6 +147,8 @@ deployment target.
   resend endpoints retain indistinguishable malformed/unknown responses.
 - [x] Contact inputs mirror database column limits, validate optional email,
   and cap free-form notes before persistence.
+- [x] Contact POST returns 201, PUT fully replaces/reset omitted fields, PATCH is
+  partial, and user/organization/contact routing slugs remain stable after edits.
 - [x] Contact search length/term count and sort field/order are explicit API
   constraints; invalid query parameters are rejected rather than corrected.
 - [x] Contact sorting uses organization-prefixed indexes; response serializers
@@ -152,6 +157,10 @@ deployment target.
   penalize ordinary list requests.
 - [x] Export collection responses contain metadata only; a short-lived download
   credential is generated only when an authorized client fetches one job.
+- [x] Avatar reads are size-bounded before allocation; all accepted image input
+  types receive pixel/dimension checks without process-global Pillow mutation.
+- [x] Email tasks retry transient transport failures only and explicitly document
+  SMTP's at-least-once/possible-duplicate semantics.
 - [x] Correlation IDs are accepted only in a safe format, generated otherwise,
   returned to clients, and included in logs.
 - [x] Idempotency hashes normalized JSON/file metadata, uses transaction-scoped

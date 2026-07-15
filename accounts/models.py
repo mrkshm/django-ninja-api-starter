@@ -1,16 +1,18 @@
-from django.db import models, transaction
-from django.db.models.functions import Lower
-from django.contrib.auth.models import (
-    AbstractBaseUser,
-    PermissionsMixin,
-    BaseUserManager,
-)
-from django.utils.text import slugify
-from django.utils import timezone
-from core.utils import make_it_unique
 import string
 import uuid
+
+from django.contrib.auth.models import (
+    AbstractBaseUser,
+    BaseUserManager,
+    PermissionsMixin,
+)
+from django.db import IntegrityError, models, transaction
+from django.db.models.functions import Lower
+from django.utils import timezone
+from django.utils.text import slugify
+
 from accounts.tokens import generate_hashed_token, hash_token, is_token_hash
+from core.utils import make_it_unique
 
 
 class PendingTokenMixin(models.Model):
@@ -37,22 +39,57 @@ class UserManager(BaseUserManager):
         base_slug = slugify(username)
         return make_it_unique(base_slug, self.model, "slug")
 
+    def _retry_username(self, email, attempt):
+        base = self._clean_username(email.split("@")[0]) or "user"
+        suffix = uuid.uuid4().hex[:8]
+        return f"{base[: 50 - len(suffix) - 1]}_{suffix}"
+
+    def _retry_slug(self, username):
+        base = slugify(username) or "user"
+        suffix = uuid.uuid4().hex[:8]
+        return f"{base[: 50 - len(suffix) - 1]}-{suffix}"
+
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("The Email field must be set")
         email = self.normalize_email(email).strip().lower()
-        if not extra_fields.get("username"):
-            extra_fields["username"] = self._generate_username(email)
-        if not extra_fields.get("slug"):
-            extra_fields["slug"] = self._generate_slug(extra_fields["username"])
-        with transaction.atomic(using=self._db):
-            user = self.model(email=email, **extra_fields)
-            user.set_password(password)
-            user.save(using=self._db)
-            from organizations.services import create_personal_organization
+        supplied_username = extra_fields.get("username")
+        supplied_slug = extra_fields.get("slug")
+        for attempt in range(5):
+            fields = dict(extra_fields)
+            if not supplied_username:
+                fields["username"] = (
+                    self._generate_username(email)
+                    if attempt == 0
+                    else self._retry_username(email, attempt)
+                )
+            if not supplied_slug:
+                fields["slug"] = (
+                    self._generate_slug(fields["username"])
+                    if attempt == 0
+                    else self._retry_slug(fields["username"])
+                )
+            try:
+                with transaction.atomic(using=self._db):
+                    user = self.model(email=email, **fields)
+                    user.set_password(password)
+                    user.save(using=self._db)
+                    from organizations.services import create_personal_organization
 
-            create_personal_organization(user)
-        return user
+                    create_personal_organization(user)
+                return user
+            except IntegrityError:
+                identity_taken = self.model.objects.filter(email__iexact=email).exists()
+                if supplied_username:
+                    identity_taken = (
+                        identity_taken
+                        or self.model.objects.filter(
+                            username__iexact=supplied_username
+                        ).exists()
+                    )
+                if attempt == 4 or identity_taken or supplied_slug:
+                    raise
+        raise RuntimeError("User creation retry loop exhausted unexpectedly.")
 
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)

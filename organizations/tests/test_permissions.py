@@ -18,10 +18,7 @@ from organizations.models import Membership, Organization
 def test_owner_role_implies_admin_and_member():
     User = get_user_model()
     user = User.objects.create_user(email="owner@example.com", password="pass")
-    org = Organization.objects.create(
-        name="OwnerOrg", slug="owner-org", type="personal", creator=user
-    )
-    Membership.objects.create(user=user, organization=org, role="owner")
+    org = Organization.objects.get(type="personal", creator=user)
 
     assert get_membership_role(user, org) == "owner"
     assert is_org_owner(user, org) is True

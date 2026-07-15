@@ -4,13 +4,14 @@ from typing import Annotated, List, Literal
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404
-from ninja import File, Query, Router, UploadedFile
+from ninja import File, Query, Router, Status, UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import LimitOffsetPagination, paginate
 
 from contacts.services import (
     contact_response_queryset,
     create_contact_record,
+    replace_contact_record,
     update_contact_record,
 )
 from contacts.throttles import contact_search_throttle
@@ -20,13 +21,19 @@ from core.utils.avatar import schedule_avatar_file_deletion
 from core.utils.image import (
     InvalidImageContent,
     resize_avatar_images,
-    validate_image_content,
 )
 from core.utils.storage import delete_from_public_storage, upload_to_public_storage
+from core.utils.uploads import UploadTooLarge, read_uploaded_file_bounded
 from organizations.scope import resolve_org_scope, resolve_write_org_scope
 
 from .models import Contact
-from .schemas import ContactAvatarResponse, ContactIn, ContactOut, ContactUpdate
+from .schemas import (
+    ContactAvatarResponse,
+    ContactIn,
+    ContactOut,
+    ContactReplace,
+    ContactUpdate,
+)
 from .validation import MAX_CONTACT_SEARCH_LENGTH, MAX_CONTACT_SEARCH_TERMS
 
 contacts_router = Router()
@@ -136,24 +143,26 @@ def get_contact(request, org_slug: str, slug: str):
     return contact
 
 
-@contacts_router.post("/orgs/{org_slug}/contacts/", response=ContactOut, auth=JWTAuth())
+@contacts_router.post(
+    "/orgs/{org_slug}/contacts/", response={201: ContactOut}, auth=JWTAuth()
+)
 def create_contact(request, org_slug: str, data: ContactIn):
     scope = resolve_write_org_scope(request, org_slug)
     user = scope.user
     organization = scope.org
 
-    return create_contact_record(organization, user, data)
+    return Status(201, create_contact_record(organization, user, data))
 
 
 @contacts_router.put(
     "/orgs/{org_slug}/contacts/{slug}/", response=ContactOut, auth=JWTAuth()
 )
-def update_contact(request, org_slug: str, slug: str, data: ContactIn):
+def update_contact(request, org_slug: str, slug: str, data: ContactReplace):
     scope = resolve_write_org_scope(request, org_slug)
     contact = get_object_or_404(
         contact_response_queryset(), organization=scope.org, slug=slug
     )
-    return update_contact_record(contact, data)
+    return replace_contact_record(contact, data)
 
 
 @contacts_router.patch(
@@ -187,8 +196,10 @@ def upload_contact_avatar(
     if not str(file.content_type or "").startswith("image/"):
         raise HttpError(400, "Invalid file type. Only images are allowed.")
     try:
-        data = file.read()
-        validate_image_content(data)
+        data = read_uploaded_file_bounded(file, max_bytes=MAX_SIZE)
+    except UploadTooLarge as exc:
+        raise HttpError(400, "File too large. Maximum allowed size is 10MB.") from exc
+    try:
         small_bytes, large_bytes = resize_avatar_images(data)
         token = uuid.uuid4().hex
         filename = f"public/avatars/contacts/{token}.webp"

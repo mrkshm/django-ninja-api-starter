@@ -1,7 +1,8 @@
 import pytest
 from django.contrib.auth import get_user_model
+
 from accounts.tests.utils import create_test_user
-from organizations.models import Organization, Membership
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 
@@ -29,20 +30,20 @@ def test_patch_username_success(api_client):
     assert response.status_code == 200
     data = response.json()
     assert data["username"] == "newname"
-    assert data["slug"] == "newname"
+    assert data["slug"] == "oldname"
     assert data["org_name"] == "newname"
-    assert data["org_slug"] == "newname"
+    assert data["org_slug"] == "oldname-success"
     # Ensure DB updated
     user.refresh_from_db()
     org.refresh_from_db()
     # Re-fetch org by id to ensure we check the updated org
     updated_org = Organization.objects.get(id=org.id)
     assert updated_org.name == "newname"
-    assert updated_org.slug == "newname"
+    assert updated_org.slug == "oldname-success"
     assert user.username == "newname"
-    assert user.slug == "newname"
+    assert user.slug == "oldname"
     assert org.name == "newname"
-    assert org.slug == "newname"
+    assert org.slug == "oldname-success"
 
 
 @pytest.mark.django_db

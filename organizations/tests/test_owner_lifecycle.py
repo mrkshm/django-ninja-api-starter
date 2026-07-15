@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 
 from accounts.services import set_user_active_status
 from organizations.models import Membership, Organization
@@ -7,6 +8,7 @@ from organizations.services import (
     ActiveOwnerRequiredError,
     change_membership_role,
     create_group_organization,
+    create_personal_organization,
     remove_membership,
 )
 
@@ -102,3 +104,45 @@ def test_owner_can_be_deactivated_when_an_active_owner_remains(group_with_owner)
 
     owner.refresh_from_db()
     assert owner.is_active is False
+
+
+@pytest.mark.django_db
+def test_personal_creator_membership_cannot_be_demoted_or_removed():
+    owner = User.objects.create_user(email="personal-guard@example.com", password="pw")
+    organization = Organization.objects.get(type="personal", creator=owner)
+    membership = Membership.objects.get(organization=organization, user=owner)
+
+    with pytest.raises(ActiveOwnerRequiredError):
+        change_membership_role(membership, role="admin")
+    with pytest.raises(ActiveOwnerRequiredError):
+        remove_membership(membership)
+
+    membership.refresh_from_db()
+    assert membership.role == "owner"
+
+
+@pytest.mark.django_db
+def test_personal_org_lookup_repairs_missing_creator_membership():
+    owner = User.objects.create_user(email="personal-repair@example.com", password="pw")
+    organization = Organization.objects.get(type="personal", creator=owner)
+    Membership.objects.filter(organization=organization, user=owner).delete()
+
+    repaired = create_personal_organization(owner)
+
+    assert repaired.pk == organization.pk
+    assert Membership.objects.filter(
+        organization=organization, user=owner, role="owner"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_creator_cannot_have_two_personal_organizations():
+    owner = User.objects.create_user(email="personal-unique@example.com", password="pw")
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Organization.objects.create(
+            name="Duplicate personal",
+            slug="duplicate-personal",
+            type="personal",
+            creator=owner,
+        )

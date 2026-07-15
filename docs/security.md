@@ -95,6 +95,16 @@ API resource responses return their public URLs directly; there is no public URL
 construction endpoint. Deletion removes the source objects, but browsers and
 intermediary caches may retain a copy until their cache lifetime expires. Do not
 use public avatars when immediate revocation is a product requirement.
+Upload endpoints reject declared oversized files before reading and use a
+bounded read as a second check. Image validation applies dimension and pixel
+limits to bytes, streams, and PIL objects without mutating Pillow global state.
+
+## Email delivery
+
+Email tasks retry only transient connection/disconnection failures. SMTP delivery
+is intentionally at-least-once: an ambiguous timeout after server acceptance may
+produce a duplicate message. Exactly-once delivery requires a provider API with
+idempotency-key support; a local sent flag cannot resolve ambiguous SMTP state.
 
 ## Logging
 

@@ -1,13 +1,13 @@
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from ninja import Router, Schema
 from ninja.errors import HttpError
-from core.authentication import JWTAuth
 from pydantic import ConfigDict
-from django.db import transaction
-from django.contrib.auth import get_user_model
-from organizations.models import Organization
-from core.utils import make_it_unique
+
+from core.authentication import JWTAuth
 from core.utils.auth_utils import get_request_user
-from django.utils.text import slugify
+from organizations.models import Organization
+
 from .schemas import UserProfileOut
 from .username_validation import validate_username_value
 
@@ -33,25 +33,24 @@ def update_username(request, data: UsernameUpdateSchema):
     if User.objects.filter(username__iexact=new_username).exclude(id=user.id).exists():
         raise HttpError(400, "Username already taken")
     # Optionally: Add more validation (allowed chars, length, etc.)
-    # Update user
-    user.username = new_username  # Save as entered, but normalized for spaces
-    # Regenerate slug using make_it_unique
-    base_slug = slugify(new_username)
-    user.slug = make_it_unique(base_slug, User, "slug")
-    user.save()
+    # Routing slugs are stable identifiers; changing a display username must not
+    # invalidate user or organization URLs.
+    user.username = new_username
+    try:
+        with transaction.atomic():
+            user.save(update_fields=["username", "updated_at"])
+    except IntegrityError as exc:
+        raise HttpError(409, "Username already taken") from exc
     # Update user's personal organization (via Membership with role='owner', type='personal')
     org = (
-        Organization.objects.filter(
-            memberships__user=user, memberships__role="owner", type="personal"
-        )
+        Organization.objects.filter(creator=user, type="personal")
         .order_by("id")
         .first()
     )
     if not org:
         raise HttpError(500, "Personal organization not found for user")
     org.name = new_username
-    org.slug = user.slug
-    org.save()
+    org.save(update_fields=["name", "updated_at"])
 
     # Add org info to user object for response
     user.org_name = org.name

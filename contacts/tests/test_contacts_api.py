@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError
 from django.utils.datastructures import MultiValueDict
 from PIL import Image
 
@@ -30,7 +31,7 @@ def test_create_contact(make_auth_headers, api_client):
         "display_name": "Alice",
     }
     resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     data = resp.json()
     assert data["display_name"] == "Alice"
     assert data["organization"] == org.slug
@@ -58,9 +59,41 @@ def test_contact_slugs_are_unique_per_organization(make_auth_headers, api_client
         f"/orgs/{second.slug}/contacts/", json={"display_name": "Alex"}, headers=headers
     )
 
-    assert first_response.status_code == 200
-    assert second_response.status_code == 200
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
     assert first_response.json()["slug"] == second_response.json()["slug"] == "alex"
+
+
+@pytest.mark.django_db
+def test_contact_create_retries_slug_collision(
+    make_auth_headers, api_client, monkeypatch
+):
+    user = create_test_user(email="contact-race@example.com", password="pw")
+    organization = Organization.objects.create(
+        name="Contact race", slug="contact-race", type="group"
+    )
+    Membership.objects.create(user=user, organization=organization, role="owner")
+    original_create = Contact.objects.create
+    attempts = 0
+
+    def collide_once(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise IntegrityError("simulated contact slug collision")
+        return original_create(**kwargs)
+
+    monkeypatch.setattr(Contact.objects, "create", collide_once)
+
+    response = api_client.post(
+        f"/orgs/{organization.slug}/contacts/",
+        json={"display_name": "Racing contact"},
+        headers=make_auth_headers(api_client, user),
+    )
+
+    assert response.status_code == 201
+    assert attempts == 2
+    assert response.json()["slug"].startswith("racing-contact-")
 
 
 @pytest.mark.django_db
@@ -85,7 +118,7 @@ def test_get_contact(make_auth_headers, api_client):
 
 
 @pytest.mark.django_db
-def test_update_contact_display_name_and_slug(make_auth_headers, api_client):
+def test_update_contact_display_name_keeps_stable_slug(make_auth_headers, api_client):
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
     )
@@ -104,7 +137,7 @@ def test_update_contact_display_name_and_slug(make_auth_headers, api_client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["display_name"] == "Charlie Brown"
-    assert data["slug"] != "charlie"
+    assert data["slug"] == "charlie"
 
 
 @pytest.mark.django_db
@@ -490,17 +523,17 @@ def test_create_contact_display_name_logic(make_auth_headers, api_client):
     # Case 1: Only first_name and last_name
     payload = {"first_name": "Jane", "last_name": "Doe"}
     resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     assert resp.json()["display_name"] == "Jane Doe"
     # Case 2: Only first_name (unique)
     payload = {"first_name": "Solo2"}
     resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     assert resp.json()["display_name"] == "Solo2"
     # Case 3: Only last_name (unique)
     payload = {"last_name": "Surname3"}
     resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     assert resp.json()["display_name"] == "Surname3"
     # Case 4: No names at all
     payload = {}
@@ -532,6 +565,8 @@ def test_update_contact_fields_within_organization(make_auth_headers, api_client
         creator=user,
         email="old@email.com",
         phone="12345",
+        location="Old location",
+        notes="Old notes",
     )
     headers = make_auth_headers(api_client, user, password="pw")
     payload = {"display_name": "New Name", "email": "new@email.com", "phone": "67890"}
@@ -544,12 +579,16 @@ def test_update_contact_fields_within_organization(make_auth_headers, api_client
     assert data["organization"] == org1.slug
     assert data["email"] == "new@email.com"
     assert data["phone"] == "67890"
+    assert data["location"] == ""
+    assert data["notes"] == ""
     # Confirm DB update
     contact.refresh_from_db()
     assert contact.display_name == "New Name"
     assert contact.organization == org1
     assert contact.email == "new@email.com"
     assert contact.phone == "67890"
+    assert contact.location == ""
+    assert contact.notes == ""
 
 
 @pytest.mark.django_db

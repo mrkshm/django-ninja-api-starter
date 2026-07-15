@@ -43,6 +43,11 @@ demoted, removed, deleted, or deactivated. Group creation uses
 `create_group_organization` so the organization and initial owner commit
 atomically.
 
+User, organization, and contact slugs are stable routing identifiers generated
+once at creation. Editable usernames and display names never rewrite routes.
+Each creator has exactly one personal organization, and its creator-owner
+membership is repaired by the lifecycle service and protected in PostgreSQL.
+
 ## Extension rules
 
 New tenant resources must carry an organization foreign key, use the common

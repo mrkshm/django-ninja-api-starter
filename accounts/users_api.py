@@ -9,8 +9,9 @@ from core.authentication import JWTAuth
 from core.utils import resize_avatar_images
 from core.utils.auth_utils import get_request_user
 from core.utils.avatar import schedule_avatar_file_deletion
-from core.utils.image import InvalidImageContent, validate_image_content
+from core.utils.image import InvalidImageContent
 from core.utils.storage import delete_from_public_storage, upload_to_public_storage
+from core.utils.uploads import UploadTooLarge, read_uploaded_file_bounded
 from organizations.models import Organization
 
 from .schemas import UsernameCheckResponse, UserProfileOut, UserProfileUpdate
@@ -51,17 +52,18 @@ def upload_avatar(request, file: UploadedFile = File(...)):
     """
     Handles avatar upload: validates, deletes old, resizes, uploads, updates DB.
     """
-    if file.file is not None:
-        file.file.seek(0)
-    img_bytes = file.read()
-
-    if (file.size or 0) > 10 * 1024 * 1024:
+    max_size = 10 * 1024 * 1024
+    if (file.size or 0) > max_size:
         raise HttpError(400, "Avatar file too large (max 10MB)")
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HttpError(400, "Invalid file type. Only images allowed.")
+    try:
+        img_bytes = read_uploaded_file_bounded(file, max_bytes=max_size)
+    except UploadTooLarge as exc:
+        raise HttpError(400, "Avatar file too large (max 10MB)") from exc
 
     try:
-        validate_image_content(img_bytes)
+        small_bytes, large_bytes = resize_avatar_images(img_bytes)
     except InvalidImageContent as exc:
         raise HttpError(400, str(exc)) from exc
 
@@ -70,7 +72,6 @@ def upload_avatar(request, file: UploadedFile = File(...)):
     token = uuid.uuid4().hex
     filename = f"public/avatars/users/{token}.webp"
     large_filename = f"public/avatars/users/{token}_lg.webp"
-    small_bytes, large_bytes = resize_avatar_images(img_bytes)
     uploaded: list[str] = []
     try:
         small_avatar_url = upload_to_public_storage(filename, small_bytes)

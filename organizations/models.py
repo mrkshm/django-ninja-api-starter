@@ -34,6 +34,11 @@ class Organization(models.Model):
                 condition=models.Q(type="group") | models.Q(creator__isnull=False),
                 name="organizations_personal_org_has_creator",
             ),
+            models.UniqueConstraint(
+                fields=("creator",),
+                condition=models.Q(type="personal"),
+                name="organizations_personal_creator_unique",
+            ),
         ]
 
     def __str__(self):

@@ -41,6 +41,10 @@ class ContactUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ContactReplace(ContactIn):
+    """Complete replacement payload; omitted optional values reset to defaults."""
+
+
 class ContactOut(BaseModel):
     id: int
     display_name: str

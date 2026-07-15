@@ -1,4 +1,6 @@
-from django.db import transaction
+import uuid
+
+from django.db import IntegrityError, transaction
 
 from core.utils import make_it_unique
 from organizations.models import Membership, Organization
@@ -6,6 +8,13 @@ from organizations.models import Membership, Organization
 
 class ActiveOwnerRequiredError(ValueError):
     """Raised when a membership change would leave a group without an active owner."""
+
+
+def _is_personal_creator_membership(organization, membership) -> bool:
+    return (
+        organization.type == "personal"
+        and organization.creator_id == membership.user_id
+    )
 
 
 def _has_other_active_owner(*, organization, membership) -> bool:
@@ -35,6 +44,10 @@ def change_membership_role(membership: Membership, *, role: str) -> Membership:
         .select_related("user")
         .get(pk=membership.pk)
     )
+    if _is_personal_creator_membership(organization, locked) and role != "owner":
+        raise ActiveOwnerRequiredError(
+            "A personal organization's creator must remain its owner."
+        )
     if (
         organization.type == "group"
         and locked.role == "owner"
@@ -64,6 +77,10 @@ def remove_membership(membership: Membership) -> None:
         .select_related("user")
         .get(pk=membership.pk)
     )
+    if _is_personal_creator_membership(organization, locked):
+        raise ActiveOwnerRequiredError(
+            "A personal organization's creator membership cannot be removed."
+        )
     if (
         organization.type == "group"
         and locked.role == "owner"
@@ -122,18 +139,45 @@ def create_group_organization(*, name: str, slug: str, owner) -> Organization:
 
 @transaction.atomic
 def create_personal_organization(user) -> Organization:
-    existing = Organization.objects.filter(
-        type="personal", creator=user, memberships__user=user
-    ).first()
+    existing = Organization.objects.filter(type="personal", creator=user).first()
     if existing is not None:
+        Membership.objects.update_or_create(
+            user=user,
+            organization=existing,
+            defaults={"role": "owner"},
+        )
         return existing
 
     base_slug = user.slug or f"user-{user.pk}"
-    organization = Organization.objects.create(
-        name=user.username or f"user-{user.pk}",
-        slug=make_it_unique(base_slug, Organization, "slug"),
-        type="personal",
-        creator=user,
-    )
-    Membership.objects.create(user=user, organization=organization, role="owner")
-    return organization
+    for attempt in range(5):
+        slug = (
+            make_it_unique(base_slug, Organization, "slug")
+            if attempt == 0
+            else f"{base_slug[:41]}-{uuid.uuid4().hex[:8]}"
+        )
+        try:
+            with transaction.atomic():
+                organization = Organization.objects.create(
+                    name=user.username or f"user-{user.pk}",
+                    slug=slug,
+                    type="personal",
+                    creator=user,
+                )
+                Membership.objects.create(
+                    user=user, organization=organization, role="owner"
+                )
+                return organization
+        except IntegrityError:
+            existing = Organization.objects.filter(
+                type="personal", creator=user
+            ).first()
+            if existing is not None:
+                Membership.objects.update_or_create(
+                    user=user,
+                    organization=existing,
+                    defaults={"role": "owner"},
+                )
+                return existing
+            if attempt == 4:
+                raise
+    raise RuntimeError("Personal organization retry loop exhausted unexpectedly.")
