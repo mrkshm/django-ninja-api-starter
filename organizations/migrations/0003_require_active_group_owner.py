@@ -14,7 +14,9 @@ BEGIN
              AND account.is_active
        )
     THEN
-        RAISE EXCEPTION 'group organization % requires at least one active owner', org_id;
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            MESSAGE = 'group organization ' || org_id || ' requires at least one active owner';
     END IF;
 END;
 $$ LANGUAGE plpgsql;

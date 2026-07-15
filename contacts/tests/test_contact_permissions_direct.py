@@ -1,20 +1,21 @@
-import pytest
 from types import SimpleNamespace
-from ninja.errors import HttpError
+
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from ninja.errors import HttpError
 
 from contacts.api import (
-    get_contact,
-    update_contact,
-    partial_update_contact,
-    delete_contact,
-    upload_contact_avatar,
-    delete_contact_avatar,
     create_contact,
+    delete_contact,
+    delete_contact_avatar,
+    get_contact,
+    partial_update_contact,
+    update_contact,
+    upload_contact_avatar,
 )
-from contacts.schemas import ContactIn
 from contacts.models import Contact
+from contacts.schemas import ContactIn
 from organizations.models import Organization
 
 

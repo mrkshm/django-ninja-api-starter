@@ -1,6 +1,11 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+
+from organizations.services import ActiveOwnerRequiredError
 
 from .models import (
     AuthSession,
@@ -9,7 +14,7 @@ from .models import (
     PendingRegistration,
     User,
 )
-from .services import set_user_active_status
+from .services import delete_user_account, set_user_active_status
 
 # Register your models here.
 
@@ -82,6 +87,51 @@ class UserAdmin(BaseUserAdmin):
     )
     readonly_fields = ("created_at", "updated_at")
     actions = ("deactivate_selected_users", "activate_selected_users")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def delete_model(self, request, obj):
+        delete_user_account(obj)
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied(
+            "Bulk user deletion is disabled; delete accounts individually."
+        )
+
+    def delete_view(self, request, object_id, extra_context=None):
+        if request.method != "POST":
+            return super().delete_view(request, object_id, extra_context)
+
+        obj = self.get_object(request, object_id)
+        if obj is None or not self.has_delete_permission(request, obj):
+            raise PermissionDenied
+        _deleted, _counts, perms_needed, protected = self.get_deleted_objects(
+            [obj], request
+        )
+        if perms_needed or protected:
+            return super().delete_view(request, object_id, extra_context)
+
+        obj_display = str(obj)
+        obj_id = obj.pk
+        try:
+            with transaction.atomic():
+                self.log_deletions(
+                    request,
+                    self.get_queryset(request).filter(pk=obj_id),
+                )
+                self.delete_model(request, obj)
+        except ActiveOwnerRequiredError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+            change_url = reverse(
+                f"admin:{self.opts.app_label}_{self.opts.model_name}_change",
+                args=[obj_id],
+            )
+            return HttpResponseRedirect(change_url)
+
+        return self.response_delete(request, obj_display, obj_id)
 
     @transaction.atomic
     def save_model(self, request, obj, form, change):

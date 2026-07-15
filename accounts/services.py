@@ -5,8 +5,8 @@ from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.db.models import F
+from django.db import IntegrityError, transaction
+from django.db.models import F, Q
 from django.utils import timezone
 from ninja.errors import HttpError
 from ninja_jwt.exceptions import TokenError
@@ -170,14 +170,65 @@ def deactivate_user(user) -> None:
     set_user_active_status(user, is_active=False)
 
 
-@transaction.atomic
 def delete_user_account(user) -> None:
     from organizations.models import Organization
-    from organizations.services import assert_user_can_be_deactivated
+    from organizations.services import ActiveOwnerRequiredError
 
-    assert_user_can_be_deactivated(user)
-    Organization.objects.filter(type="personal", creator=user).delete()
-    user.delete()
+    try:
+        with transaction.atomic():
+            organization_ids = list(
+                Organization.objects.filter(
+                    Q(type="personal", creator_id=user.pk)
+                    | Q(
+                        type="group",
+                        memberships__user_id=user.pk,
+                        memberships__role="owner",
+                    )
+                )
+                .values_list("pk", flat=True)
+                .distinct()
+            )
+            organizations = list(
+                Organization.objects.select_for_update()
+                .filter(pk__in=organization_ids)
+                .order_by("pk")
+            )
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+
+            for organization in organizations:
+                if organization.type != "group":
+                    continue
+                still_owner = organization.memberships.filter(
+                    user_id=locked_user.pk,
+                    role="owner",
+                ).exists()
+                if not still_owner:
+                    continue
+                has_successor = (
+                    organization.memberships.filter(
+                        role="owner",
+                        user__is_active=True,
+                    )
+                    .exclude(user_id=locked_user.pk)
+                    .exists()
+                )
+                if not has_successor:
+                    raise ActiveOwnerRequiredError(
+                        f"Promote another active owner for {organization.name} first."
+                    )
+
+            personal_ids = [
+                organization.pk
+                for organization in organizations
+                if organization.type == "personal"
+                and organization.creator_id == locked_user.pk
+            ]
+            Organization.objects.filter(pk__in=personal_ids).delete()
+            locked_user.delete()
+    except IntegrityError as exc:
+        raise ActiveOwnerRequiredError(
+            "Account deletion would leave an organization without an active owner."
+        ) from exc
 
 
 def send_templated_email(

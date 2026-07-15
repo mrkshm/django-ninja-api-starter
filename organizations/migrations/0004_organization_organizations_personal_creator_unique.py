@@ -17,7 +17,9 @@ BEGIN
           AND membership.role = 'owner'
           AND account.is_active
     ) THEN
-        RAISE EXCEPTION 'group organization % requires at least one active owner', org_id;
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            MESSAGE = 'group organization ' || org_id || ' requires at least one active owner';
     END IF;
 
     IF EXISTS (
@@ -32,7 +34,9 @@ BEGIN
           AND membership.user_id = organization.creator_id
           AND membership.role = 'owner'
     ) THEN
-        RAISE EXCEPTION 'personal organization % requires its creator owner membership', org_id;
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            MESSAGE = 'personal organization ' || org_id || ' requires its creator owner membership';
     END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -52,7 +56,9 @@ BEGIN
              AND account.is_active
        )
     THEN
-        RAISE EXCEPTION 'group organization % requires at least one active owner', org_id;
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            MESSAGE = 'group organization ' || org_id || ' requires at least one active owner';
     END IF;
 END;
 $$ LANGUAGE plpgsql;

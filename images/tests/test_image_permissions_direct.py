@@ -1,26 +1,28 @@
-import pytest
 from types import SimpleNamespace
-from ninja.errors import HttpError
-from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 
-from images.api import (
-    list_images_for_org,
-    list_images_for_object,
-    bulk_upload_images,
-    bulk_attach_images,
-    attach_images,
-    remove_image_from_object,
-    edit_image_metadata,
-    delete_image,
-    bulk_delete_images,
-)
-from images.api import BulkImageIdsIn, ImageIdsIn
-from images.schemas import ImagePatchIn
-from images.models import Image, PolymorphicImageRelation
+import pytest
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from organizations.models import Organization
+from django.core.files.uploadedfile import SimpleUploadedFile
+from ninja.errors import HttpError
+
 from contacts.models import Contact
+from images.api import (
+    BulkImageIdsIn,
+    ImageIdsIn,
+    attach_images,
+    bulk_attach_images,
+    bulk_delete_images,
+    bulk_upload_images,
+    delete_image,
+    edit_image_metadata,
+    list_images_for_object,
+    list_images_for_org,
+    remove_image_from_object,
+)
+from images.models import Image, PolymorphicImageRelation
+from images.schemas import ImagePatchIn
+from organizations.models import Organization
 
 
 @pytest.mark.django_db
