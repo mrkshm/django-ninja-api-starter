@@ -1,8 +1,16 @@
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.utils.text import slugify
 from ninja.errors import HttpError
 
 from contacts.models import Contact
+from tags.models import TaggedItem
+
+
+def contact_response_queryset():
+    return Contact.objects.select_related("organization", "creator").prefetch_related(
+        Prefetch("tagged_items", queryset=TaggedItem.objects.select_related("tag"))
+    )
 
 
 def unique_contact_slug(
@@ -35,11 +43,16 @@ def create_contact_record(organization, user, data) -> Contact:
         contact_data["slug"] = unique_contact_slug(organization, display_name)
         try:
             with transaction.atomic():
-                return Contact.objects.create(
+                contact = Contact.objects.create(
                     **contact_data,
                     organization=organization,
                     creator=user,
                 )
+                # A contact cannot have tag relations before its creation commits.
+                # Expose that known-empty state without constructing the generic
+                # relation manager (which can query Django's content-type table).
+                setattr(contact, "_response_tags", [])
+                return contact
         except IntegrityError:
             continue
     raise HttpError(409, "A contact with this slug already exists.")

@@ -171,6 +171,7 @@ def test_authenticated_throttle_follows_user_across_ips_and_separates_users():
 
 def test_throttle_cache_keys_have_distinct_operation_scopes():
     from accounts import throttles
+    from contacts import throttles as contact_throttles
     from images import throttles as image_throttles
 
     request = RequestFactory().get(
@@ -187,6 +188,7 @@ def test_throttle_cache_keys_have_distinct_operation_scopes():
         throttles.email_change_throttle,
         throttles.logout_throttle,
         throttles.token_verify_throttle,
+        contact_throttles.contact_search_throttle,
         image_throttles.upload_throttle,
         image_throttles.bulk_upload_throttle,
         image_throttles.bulk_delete_throttle,

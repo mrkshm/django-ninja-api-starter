@@ -247,6 +247,37 @@ def test_ready_export_url_is_generated_on_authenticated_read(
 
 
 @pytest.mark.django_db
+def test_export_list_does_not_generate_download_credentials(
+    api_client, make_auth_headers
+):
+    User = get_user_model()
+    admin = User.objects.create_user(email="export-list@example.com", password="pw")
+    org = Organization.objects.create(
+        name="Export List", slug="export-list", type="group"
+    )
+    Membership.objects.create(user=admin, organization=org, role="owner")
+    for index in range(3):
+        ExportJob.objects.create(
+            organization=org,
+            requested_by=admin,
+            status=ExportJob.Status.READY,
+            object_key=f"private/exports/list-{index}.zip",
+            completed_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+
+    headers = make_auth_headers(api_client, admin, password="pw")
+    with patch(
+        "organizations.api_export.generate_private_presigned_storage_url"
+    ) as sign:
+        response = api_client.get(f"/orgs/{org.slug}/exports/", headers=headers)
+
+    assert response.status_code == 200
+    assert all(item["download_url"] is None for item in response.json())
+    sign.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_expired_export_cleanup_removes_object(settings, monkeypatch):
     org = Organization.objects.create(name="Expired Export", slug="expired-export")
     job = ExportJob.objects.create(

@@ -45,10 +45,28 @@ class Contact(models.Model):
                 fields=("organization", "created_at"),
                 name="contacts_org_created_idx",
             ),
+            models.Index(
+                fields=("organization", "first_name"),
+                name="contacts_org_first_name_idx",
+            ),
+            models.Index(
+                fields=("organization", "last_name"),
+                name="contacts_org_last_name_idx",
+            ),
+            models.Index(
+                fields=("organization", "email"),
+                name="contacts_org_email_idx",
+            ),
+            models.Index(
+                fields=("organization", "updated_at"),
+                name="contacts_org_updated_idx",
+            ),
         ]
 
     @property
     def tags(self):
+        if hasattr(self, "_response_tags"):
+            return self._response_tags
         return [item.tag for item in self.tagged_items.all()]
 
     @property

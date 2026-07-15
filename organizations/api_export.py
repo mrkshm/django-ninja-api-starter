@@ -31,10 +31,13 @@ class ExportJobOut(Schema):
     download_url: str | None = None
 
 
-def serialize_export_job(job: ExportJob) -> ExportJobOut:
+def serialize_export_job(
+    job: ExportJob, *, include_download_url: bool = False
+) -> ExportJobOut:
     download_url = None
     if (
-        job.status == ExportJob.Status.READY
+        include_download_url
+        and job.status == ExportJob.Status.READY
         and job.object_key
         and job.expires_at
         and job.expires_at > timezone.now()
@@ -87,7 +90,7 @@ def create_export(request, org_slug: str):
 def list_exports(request, org_slug: str):
     scope = resolve_admin_org_scope(request, org_slug)
     jobs = ExportJob.objects.filter(organization=scope.org).order_by("-created_at")[:50]
-    return [serialize_export_job(job) for job in jobs]
+    return [serialize_export_job(job, include_download_url=False) for job in jobs]
 
 
 @export_router.get(
@@ -98,7 +101,7 @@ def list_exports(request, org_slug: str):
 def get_export(request, org_slug: str, job_id: UUID):
     scope = resolve_admin_org_scope(request, org_slug)
     job = get_object_or_404(ExportJob, pk=job_id, organization=scope.org)
-    return serialize_export_job(job)
+    return serialize_export_job(job, include_download_url=True)
 
 
 @export_router.post(

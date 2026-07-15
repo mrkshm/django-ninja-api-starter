@@ -10,6 +10,7 @@ from PIL import Image
 
 from accounts.tests.utils import create_test_user
 from contacts.models import Contact
+from contacts.throttles import contact_search_throttle
 from organizations.models import Membership, Organization
 
 User = get_user_model()
@@ -797,3 +798,32 @@ def test_contact_search_rejects_excessive_term_count(
 
     assert response.status_code == 400
     assert "at most 10 terms" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_contact_search_has_a_dedicated_user_throttle(
+    api_client, validated_contact_context, monkeypatch
+):
+    organization, headers = validated_contact_context
+    monkeypatch.setattr(contact_search_throttle, "num_requests", 1)
+    monkeypatch.setattr(contact_search_throttle, "duration", 60)
+
+    # Ordinary listing neither consumes nor is blocked by the search budget.
+    for _ in range(2):
+        response = api_client.get(
+            f"/orgs/{organization.slug}/contacts/",
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+    first_search = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?search=alice",
+        headers=headers,
+    )
+    limited_search = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?search=bob",
+        headers=headers,
+    )
+
+    assert first_search.status_code == 200
+    assert limited_search.status_code == 429

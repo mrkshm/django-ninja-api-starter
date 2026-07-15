@@ -8,7 +8,12 @@ from ninja import File, Query, Router, UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import LimitOffsetPagination, paginate
 
-from contacts.services import create_contact_record, update_contact_record
+from contacts.services import (
+    contact_response_queryset,
+    create_contact_record,
+    update_contact_record,
+)
+from contacts.throttles import contact_search_throttle
 from core.authentication import JWTAuth
 from core.schemas import DetailResponse
 from core.utils.avatar import schedule_avatar_file_deletion
@@ -38,7 +43,10 @@ ALLOWED_SORT_FIELDS = {
 
 
 @contacts_router.get(
-    "/orgs/{org_slug}/contacts/", response=List[ContactOut], auth=JWTAuth()
+    "/orgs/{org_slug}/contacts/",
+    response=List[ContactOut],
+    auth=JWTAuth(),
+    throttle=[contact_search_throttle],
 )
 @paginate(LimitOffsetPagination)
 def list_contacts(
@@ -64,11 +72,7 @@ def list_contacts(
     - sort_order: Sort order (asc or desc)
     """
     scope = resolve_org_scope(request, org_slug)
-    qs = (
-        Contact.objects.select_related("organization", "creator")
-        .prefetch_related("tagged_items__tag")
-        .filter(organization=scope.org)
-    )
+    qs = contact_response_queryset().filter(organization=scope.org)
 
     # Apply search if provided
     if search:
@@ -125,9 +129,7 @@ def list_contacts(
 def get_contact(request, org_slug: str, slug: str):
     scope = resolve_org_scope(request, org_slug)
     contact = get_object_or_404(
-        Contact.objects.select_related("organization", "creator").prefetch_related(
-            "tagged_items__tag"
-        ),
+        contact_response_queryset(),
         organization=scope.org,
         slug=slug,
     )
@@ -148,7 +150,9 @@ def create_contact(request, org_slug: str, data: ContactIn):
 )
 def update_contact(request, org_slug: str, slug: str, data: ContactIn):
     scope = resolve_write_org_scope(request, org_slug)
-    contact = get_object_or_404(Contact, organization=scope.org, slug=slug)
+    contact = get_object_or_404(
+        contact_response_queryset(), organization=scope.org, slug=slug
+    )
     return update_contact_record(contact, data)
 
 
@@ -157,7 +161,9 @@ def update_contact(request, org_slug: str, slug: str, data: ContactIn):
 )
 def partial_update_contact(request, org_slug: str, slug: str, data: ContactUpdate):
     scope = resolve_write_org_scope(request, org_slug)
-    contact = get_object_or_404(Contact, organization=scope.org, slug=slug)
+    contact = get_object_or_404(
+        contact_response_queryset(), organization=scope.org, slug=slug
+    )
     return update_contact_record(contact, data)
 
 

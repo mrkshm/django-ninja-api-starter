@@ -146,6 +146,12 @@ deployment target.
   and cap free-form notes before persistence.
 - [x] Contact search length/term count and sort field/order are explicit API
   constraints; invalid query parameters are rejected rather than corrected.
+- [x] Contact sorting uses organization-prefixed indexes; response serializers
+  receive selected/prefetched relationships and have query-count regression tests.
+- [x] Contact search has a dedicated authenticated-user throttle that does not
+  penalize ordinary list requests.
+- [x] Export collection responses contain metadata only; a short-lived download
+  credential is generated only when an authorized client fetches one job.
 - [x] Correlation IDs are accepted only in a safe format, generated otherwise,
   returned to clients, and included in logs.
 - [x] Idempotency hashes normalized JSON/file metadata, uses transaction-scoped
