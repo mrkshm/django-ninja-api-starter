@@ -8,7 +8,7 @@ from ninja.pagination import LimitOffsetPagination, paginate
 from core.authentication import JWTAuth
 from core.utils.polymorphic import resolve_org_scoped_content_object
 from organizations.scope import resolve_org_scope
-from tags.models import Tag, TaggedItem
+from tags.models import Tag
 from tags.schemas import (
     DetailResponse,
     RemovedCountResponse,
@@ -17,9 +17,16 @@ from tags.schemas import (
     TagOut,
     TagUpdate,
 )
-from tags.services import assign_tags_to_object
+from tags.services import (
+    assign_tags_to_object,
+)
 from tags.services import create_tag as create_tag_service
-from tags.services import rename_tag
+from tags.services import delete_tag as delete_tag_service
+from tags.services import (
+    rename_tag,
+    unassign_tag_from_object_by_slug,
+    unassign_tags_from_object,
+)
 
 # Module-level router and logger
 router = Router(tags=["tags"])
@@ -231,12 +238,12 @@ def delete_tag(request, org_slug: str, tag_id: int):
     org = scope.org
     user = scope.user
     tag = get_object_or_404(Tag, id=tag_id, organization=org)
-    tag.delete()
+    deleted_tag_id = delete_tag_service(tag)
     logger.info(
         "audit:tag_delete org=%s user=%s tag_id=%s",
         org.id,
         getattr(user, "id", None),
-        tag_id,
+        deleted_tag_id,
     )
     return DetailResponse(detail="deleted")
 
@@ -264,14 +271,13 @@ def unassign_tags(
     ct = resolved.content_type
     user = resolved.scope.user
 
-    qs = TaggedItem.objects.filter(
-        tag_id__in=tag_ids,
-        tag__organization=org,
+    result = unassign_tags_from_object(
+        organization=org,
         content_type=ct,
         object_id=obj_id,
+        tag_ids=tag_ids,
     )
-    deleted, _ = qs.delete()
-    if deleted:
+    if result.removed_count:
         logger.info(
             "audit:tag_bulk_unassign org=%s user=%s app=%s model=%s obj=%s tags=%s",
             org.id,
@@ -281,7 +287,7 @@ def unassign_tags(
             obj_id,
             tag_ids,
         )
-    return RemovedCountResponse(removed_count=deleted)
+    return RemovedCountResponse(removed_count=result.removed_count)
 
 
 @router.delete(
@@ -303,15 +309,13 @@ def unassign_tag_by_slug(
     ct = resolved.content_type
     user = resolved.scope.user
 
-    try:
-        tag = Tag.objects.get(organization=org, slug=slug)
-    except Tag.DoesNotExist:
-        # If tag doesn't exist in org, treat as already unassigned
-        return DetailResponse(detail="removed")
-    deleted, _ = TaggedItem.objects.filter(
-        tag=tag, content_type=ct, object_id=obj_id
-    ).delete()
-    if deleted:
+    result = unassign_tag_from_object_by_slug(
+        organization=org,
+        content_type=ct,
+        object_id=obj_id,
+        slug=slug,
+    )
+    if result.removed_count:
         logger.info(
             "audit:tag_unassign org=%s user=%s app=%s model=%s obj=%s tag_id=%s",
             org.id,
@@ -319,7 +323,7 @@ def unassign_tag_by_slug(
             app_label,
             model,
             obj_id,
-            tag.id,
+            result.tag_id,
         )
     return DetailResponse(detail="removed")
 

@@ -14,6 +14,12 @@ class TagAssignmentResult:
     newly_assigned_tag_ids: list[int]
 
 
+@dataclass(frozen=True)
+class TagUnassignmentResult:
+    removed_count: int
+    tag_id: int | None = None
+
+
 def _canonical_name(name: str) -> tuple[str, str]:
     try:
         clean_name = normalize_tag_name(name)
@@ -56,6 +62,41 @@ def rename_tag(tag: Tag, name: str) -> Tag:
             409, "A tag with this name or slug already exists in this organization."
         ) from exc
     return tag
+
+
+@transaction.atomic
+def delete_tag(tag: Tag) -> int:
+    tag_id = tag.pk
+    tag.delete()
+    return tag_id
+
+
+@transaction.atomic
+def unassign_tags_from_object(
+    *, organization, content_type, object_id: int, tag_ids: list[int]
+) -> TagUnassignmentResult:
+    deleted, _ = TaggedItem.objects.filter(
+        tag_id__in=tag_ids,
+        tag__organization=organization,
+        content_type=content_type,
+        object_id=object_id,
+    ).delete()
+    return TagUnassignmentResult(removed_count=deleted)
+
+
+@transaction.atomic
+def unassign_tag_from_object_by_slug(
+    *, organization, content_type, object_id: int, slug: str
+) -> TagUnassignmentResult:
+    tag = Tag.objects.filter(organization=organization, slug=slug).first()
+    if tag is None:
+        return TagUnassignmentResult(removed_count=0)
+    deleted, _ = TaggedItem.objects.filter(
+        tag=tag,
+        content_type=content_type,
+        object_id=object_id,
+    ).delete()
+    return TagUnassignmentResult(removed_count=deleted, tag_id=tag.pk)
 
 
 @transaction.atomic
