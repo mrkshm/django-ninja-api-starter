@@ -29,6 +29,8 @@ HTTP / Celery
 Database state is authoritative. Redis is disposable cache/broker state. Private
 objects and public avatars use separate buckets/namespaces. External writes are
 ordered around database transactions and compensated when later steps fail.
+Idempotency records are durable PostgreSQL state: protected database mutations
+and their replay responses commit together under transaction-scoped locks.
 
 Signals are limited to local cache invalidation and narrowly defined lifecycle
 safety. Critical onboarding and deletion flows use explicit transactional

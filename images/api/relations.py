@@ -1,18 +1,19 @@
 from typing import List
 
-from core.utils.idempotency import read_cached_response, store_cached_response
-from core.utils.polymorphic import resolve_org_scoped_content_object
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from ninja import Status
+from ninja.errors import HttpError
+
+from core.authentication import JWTAuth
+from core.utils.idempotency import run_idempotently
+from core.utils.polymorphic import resolve_org_scoped_content_object
 from images.api.common import logger, router
 from images.api_schemas import BulkImageIdsIn, ImageIdsIn
 from images.models import Image, PolymorphicImageRelation
 from images.schemas import BulkAttachOut, BulkDetachOut, PolymorphicImageRelationOut
 from images.serializers import serialize_image_relation
 from images.throttles import bulk_attach_throttle, bulk_detach_throttle
-from ninja import Status
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
 
 
 @router.post(
@@ -89,11 +90,6 @@ def bulk_attach_images(
     obj_id: int,
     data: BulkImageIdsIn,
 ):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data) if status != 200 else data
-
     resolved = resolve_org_scoped_content_object(
         request, org_slug, app_label, model, obj_id
     )
@@ -103,13 +99,16 @@ def bulk_attach_images(
     ct = resolved.content_type
     user = resolved.scope.user
     requested_ids = set(data.image_ids)
-    images = Image.objects.filter(id__in=requested_ids, organization=org)
-    found_ids = set(images.values_list("id", flat=True))
-    missing = requested_ids - found_ids
-    if missing:
-        raise HttpError(403, "One or more images do not belong to this organization")
-    attached = []
-    with transaction.atomic():
+
+    def perform_attach() -> tuple[int, dict]:
+        images = list(Image.objects.filter(id__in=requested_ids, organization=org))
+        found_ids = {image.id for image in images}
+        missing = requested_ids - found_ids
+        if missing:
+            raise HttpError(
+                403, "One or more images do not belong to this organization"
+            )
+        attached = []
         obj.__class__.objects.select_for_update().only("pk").get(pk=obj.pk)
         rel_qs = PolymorphicImageRelation.objects.select_for_update().filter(
             content_type=ct, object_id=obj.pk
@@ -138,19 +137,21 @@ def bulk_attach_images(
                     has_primary = True
                 rel.save(update_fields=["order", "is_cover"])
                 attached.append(image.id)
-    if attached:
-        logger.info(
-            "audit:image_bulk_attach org=%s user=%s app=%s model=%s obj=%s attached=%s",
-            org.id,
-            getattr(user, "id", None),
-            app_label,
-            model,
-            obj_id,
-            attached,
-        )
-    resp = {"attached": attached}
-    store_cached_response(request, 200, resp)
-    return resp
+        if attached:
+            logger.info(
+                "audit:image_bulk_attach org=%s user=%s app=%s model=%s "
+                "obj=%s attached=%s",
+                org.id,
+                getattr(user, "id", None),
+                app_label,
+                model,
+                obj_id,
+                attached,
+            )
+        return 200, {"attached": attached}
+
+    status, response_data = run_idempotently(request, perform_attach)
+    return Status(status, response_data) if status != 200 else response_data
 
 
 @router.post(
@@ -167,11 +168,6 @@ def bulk_detach_images(
     obj_id: int,
     data: BulkImageIdsIn,
 ):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data) if status != 200 else data
-
     resolved = resolve_org_scoped_content_object(
         request, org_slug, app_label, model, obj_id
     )
@@ -180,9 +176,10 @@ def bulk_detach_images(
     obj = resolved.obj
     ct = resolved.content_type
     user = resolved.scope.user
-    images = Image.objects.filter(id__in=data.image_ids, organization=org)
-    detached = []
-    with transaction.atomic():
+
+    def perform_detach() -> tuple[int, dict]:
+        images = Image.objects.filter(id__in=data.image_ids, organization=org)
+        detached = []
         for image in images:
             deleted, _ = PolymorphicImageRelation.objects.filter(
                 image=image,
@@ -191,19 +188,21 @@ def bulk_detach_images(
             ).delete()
             if deleted:
                 detached.append(image.id)
-    if detached:
-        logger.info(
-            "audit:image_bulk_detach org=%s user=%s app=%s model=%s obj=%s detached=%s",
-            org.id,
-            getattr(user, "id", None),
-            app_label,
-            model,
-            obj_id,
-            detached,
-        )
-    resp = {"detached": detached}
-    store_cached_response(request, 200, resp)
-    return resp
+        if detached:
+            logger.info(
+                "audit:image_bulk_detach org=%s user=%s app=%s model=%s "
+                "obj=%s detached=%s",
+                org.id,
+                getattr(user, "id", None),
+                app_label,
+                model,
+                obj_id,
+                detached,
+            )
+        return 200, {"detached": detached}
+
+    status, response_data = run_idempotently(request, perform_detach)
+    return Status(status, response_data) if status != 200 else response_data
 
 
 @router.delete(

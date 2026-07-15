@@ -1,6 +1,9 @@
 from celery import shared_task
-from django.core.mail import send_mail
 from django.conf import settings
+from django.core.mail import send_mail
+from django.utils import timezone
+
+from core.models import IdempotencyRecord
 
 
 def _send_email_task(
@@ -43,3 +46,11 @@ def send_email_task(
         html_message (str, optional): HTML message body
     """
     _send_email_task(subject, message, recipient_list, from_email, html_message)
+
+
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def cleanup_expired_idempotency_records() -> int:
+    queryset = IdempotencyRecord.objects.filter(expires_at__lte=timezone.now())
+    count = queryset.count()
+    queryset.delete()
+    return count

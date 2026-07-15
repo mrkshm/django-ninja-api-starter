@@ -1,19 +1,18 @@
 from typing import List
 
 from django.conf import settings
-from django.db import transaction
-from core.utils.idempotency import read_cached_response, store_cached_response
+from ninja import File, Status, UploadedFile
+from ninja.errors import HttpError
+
+from core.authentication import JWTAuth
+from core.utils.idempotency import run_idempotently
+from core.utils.image import InvalidImageContent
 from images.api.common import get_org_scope_for_request, router
 from images.api_schemas import BulkUploadResponse
 from images.schemas import ImageOut
 from images.serializers import serialize_image
-from images.services import upload_image_file
-from core.utils.image import InvalidImageContent
-from images.services import ImageUploadFailed
+from images.services import ImageUploadFailed, upload_image_file
 from images.throttles import bulk_upload_throttle, upload_throttle
-from ninja import File, Status, UploadedFile
-from ninja.errors import HttpError
-from core.authentication import JWTAuth
 
 
 def validate_image_upload(file):
@@ -56,20 +55,20 @@ def upload_image(request, org_slug: str, file: UploadedFile = File(...)):
     throttle=[bulk_upload_throttle],
 )
 def bulk_upload_images(request, org_slug: str):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data) if status != 200 else data
-
     scope = get_org_scope_for_request(request, org_slug).require_write()
     org = scope.org
     user = scope.user
-    responses = []
-    files = request.FILES.getlist("files")
-    if not files:
-        return [BulkUploadResponse(status="error", error="No files uploaded")]
+    files = list(request.FILES.getlist("files"))
 
-    with transaction.atomic():
+    def perform_upload() -> tuple[int, list[dict]]:
+        responses = []
+        if not files:
+            return 200, [
+                BulkUploadResponse(
+                    status="error", error="No files uploaded"
+                ).model_dump()
+            ]
+
         for file in files:
             try:
                 error = validate_image_upload(file)
@@ -92,9 +91,9 @@ def bulk_upload_images(request, org_slug: str):
                         status="error", error="Image upload failed.", file=file.name
                     )
                 )
-    store_cached_response(
-        request,
-        200,
-        [r.model_dump() if hasattr(r, "model_dump") else r for r in responses],
-    )
-    return responses
+        return 200, [response.model_dump() for response in responses]
+
+    status, data = run_idempotently(request, perform_upload)
+    if status != 200:
+        return Status(status, data)
+    return [BulkUploadResponse.model_validate(item) for item in data]

@@ -2,16 +2,33 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
-from django.core.cache import cache
+from django.db import connection, transaction
+from django.utils import timezone
 from ninja.errors import HttpError
 
+from core.models import IdempotencyRecord
 from core.utils.auth_utils import get_request_user
 
 IDEMPOTENCY_TTL = 24 * 60 * 60
-IDEMPOTENCY_IN_PROGRESS_TTL = 5 * 60
 HEADER_NAME = "Idempotency-Key"
+_LOCAL_LOCKS: dict[str, threading.Lock] = {}
+_LOCAL_LOCKS_GUARD = threading.Lock()
+
+
+@dataclass(frozen=True)
+class RequestIdentity:
+    identity_hash: str
+    fingerprint: str
+    user: Any
+    method: str
+    path: str
 
 
 def _client_key(request) -> str | None:
@@ -24,9 +41,9 @@ def _client_key(request) -> str | None:
     return value
 
 
-def _cache_key(user_id: Any, method: str, path: str, client_key: str) -> str:
+def _identity_hash(user_id: Any, method: str, path: str, client_key: str) -> str:
     identity = f"{user_id}:{method.upper()}:{path}:{client_key}"
-    return f"idem:{hashlib.sha256(identity.encode()).hexdigest()}"
+    return hashlib.sha256(identity.encode()).hexdigest()
 
 
 def _request_fingerprint(request) -> str:
@@ -66,53 +83,100 @@ def _request_fingerprint(request) -> str:
     return digest.hexdigest()
 
 
-def _request_cache_identity(request) -> tuple[str, str] | None:
+def _request_identity(request) -> RequestIdentity | None:
     client_key = _client_key(request)
     if client_key is None:
         return None
-    user_id = getattr(get_request_user(request), "id", "anon")
-    key = _cache_key(user_id, request.method, request.path, client_key)
-    return key, _request_fingerprint(request)
+    user = get_request_user(request)
+    method = str(request.method).upper()
+    path = str(request.path)
+    return RequestIdentity(
+        identity_hash=_identity_hash(user.id, method, path, client_key),
+        fingerprint=_request_fingerprint(request),
+        user=user,
+        method=method,
+        path=path,
+    )
 
 
-def read_cached_response(request) -> tuple[int, Any] | None:
-    """Return a completed response or atomically reserve this operation."""
-    identity = _request_cache_identity(request)
-    if identity is None:
-        return None
-    key, fingerprint = identity
-    reservation = {"state": "in_progress", "fingerprint": fingerprint}
-    if cache.add(key, reservation, timeout=IDEMPOTENCY_IN_PROGRESS_TTL):
-        return None
+def _postgres_lock_key(identity_hash: str) -> int:
+    return int.from_bytes(bytes.fromhex(identity_hash[:16]), "big", signed=True)
 
-    payload = cache.get(key) or {}
-    if payload.get("fingerprint") != fingerprint:
-        raise HttpError(
-            409, "Idempotency-Key was already used for a different request."
-        )
-    if payload.get("state") == "in_progress":
+
+@contextmanager
+def _operation_lock(identity_hash: str) -> Iterator[None]:
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_try_advisory_xact_lock(%s)",
+                [_postgres_lock_key(identity_hash)],
+            )
+            acquired = bool(cursor.fetchone()[0])
+        if not acquired:
+            raise HttpError(
+                409, "An operation with this Idempotency-Key is already in progress."
+            )
+        yield
+        return
+
+    # SQLite is used only for local development and fast unit tests. This
+    # mirrors PostgreSQL's non-blocking lock within the current process.
+    with _LOCAL_LOCKS_GUARD:
+        local_lock = _LOCAL_LOCKS.setdefault(identity_hash, threading.Lock())
+        acquired = local_lock.acquire(blocking=False)
+    if not acquired:
         raise HttpError(
             409, "An operation with this Idempotency-Key is already in progress."
         )
-    return int(payload.get("status", 200)), payload.get("data")
+    try:
+        yield
+    finally:
+        with _LOCAL_LOCKS_GUARD:
+            local_lock.release()
+            _LOCAL_LOCKS.pop(identity_hash, None)
 
 
-def store_cached_response(request, status: int, data: Any) -> None:
-    identity = _request_cache_identity(request)
+def run_idempotently(
+    request,
+    operation: Callable[[], tuple[int, Any]],
+) -> tuple[int, Any]:
+    """Execute and persist a database mutation and its response atomically."""
+    identity = _request_identity(request)
     if identity is None:
-        return
-    # Cache all completed non-server-error responses. Some bulk operations
-    # intentionally return 4xx after applying a documented partial result.
-    if not 200 <= status < 500:
-        return
-    key, fingerprint = identity
-    cache.set(
-        key,
-        {
-            "state": "complete",
-            "fingerprint": fingerprint,
-            "status": status,
-            "data": data,
-        },
-        timeout=IDEMPOTENCY_TTL,
-    )
+        with transaction.atomic():
+            return operation()
+
+    with transaction.atomic():
+        with _operation_lock(identity.identity_hash):
+            record = IdempotencyRecord.objects.filter(
+                identity_hash=identity.identity_hash
+            ).first()
+            if record and record.expires_at <= timezone.now():
+                record.delete()
+                record = None
+
+            if record:
+                if record.request_fingerprint != identity.fingerprint:
+                    raise HttpError(
+                        409,
+                        "Idempotency-Key was already used for a different request.",
+                    )
+                return record.status_code, record.response_data
+
+            status, data = operation()
+            if 200 <= status < 500:
+                now = timezone.now()
+                IdempotencyRecord.objects.create(
+                    identity_hash=identity.identity_hash,
+                    request_fingerprint=identity.fingerprint,
+                    user=identity.user,
+                    method=identity.method,
+                    path=identity.path,
+                    status_code=status,
+                    response_data=data,
+                    completed_at=now,
+                    expires_at=now + timedelta(seconds=IDEMPOTENCY_TTL),
+                )
+            else:
+                transaction.set_rollback(True)
+            return status, data

@@ -1,19 +1,21 @@
-import pytest
 from types import SimpleNamespace
 from unittest.mock import patch
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.contrib.auth import get_user_model
 
+import pytest
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+from contacts.models import Contact
 from images.api import (
-    bulk_upload_images,
+    BulkImageIdsIn,
     bulk_attach_images,
-    bulk_detach_images,
     bulk_delete_images,
+    bulk_detach_images,
+    bulk_upload_images,
 )
-from images.api import BulkImageIdsIn
 from images.models import Image
 from organizations.models import Membership, Organization
-from contacts.models import Contact
 
 
 class ScopeStub(SimpleNamespace):
@@ -27,14 +29,6 @@ def unwrap_status(response):
 
 @pytest.mark.django_db
 class TestIdempotencyBulk:
-    @pytest.fixture(autouse=True)
-    def _locmem_cache(self, settings):
-        settings.CACHES = {
-            "default": {
-                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            }
-        }
-
     def setup_method(self):
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -90,23 +84,11 @@ class TestIdempotencyBulk:
             ) as mock_upload,
         ):
             first = bulk_upload_images(req1, self.org.slug)
+            cache.clear()
             second = bulk_upload_images(req2, self.org.slug)
-            # First call returns list of schema objects; second returns cached list of dicts
-            first_norm = [
-                dict(id=r.id, file=r.file, status=r.status, error=r.error)
-                for r in first
+            assert [item.model_dump() for item in first] == [
+                item.model_dump() for item in second
             ]
-            # second may be list[dict]
-            second_norm = [
-                dict(
-                    id=r.get("id"),
-                    file=r.get("file"),
-                    status=r.get("status"),
-                    error=r.get("error"),
-                )
-                for r in second
-            ]
-            assert first_norm == second_norm
             # Storage should have been called only once for each file
             assert mock_upload.call_count == len(files)
 

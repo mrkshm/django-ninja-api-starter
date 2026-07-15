@@ -120,9 +120,10 @@ deployment target.
   echoes submitted values or internal exceptions.
 - [x] Correlation IDs are accepted only in a safe format, generated otherwise,
   returned to clients, and included in logs.
-- [x] Idempotency hashes normalized JSON/file metadata, atomically reserves keys,
-  rejects changed payloads/in-progress work, and caches only completed non-5xx
-  responses.
+- [x] Idempotency hashes normalized JSON/file metadata, uses transaction-scoped
+  PostgreSQL locks, and commits each database mutation with its durable replay
+  response. Changed payloads/in-progress work are rejected and expired records
+  are cleaned on schedule.
 - [x] The generated OpenAPI document is committed and CI fails on drift.
 
 ## CI and verification

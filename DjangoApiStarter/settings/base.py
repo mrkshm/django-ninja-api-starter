@@ -132,6 +132,7 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ROUTES = {
     "core.tasks.send_email_task": {"queue": "email"},
+    "core.tasks.cleanup_expired_idempotency_records": {"queue": "maintenance"},
     "organizations.export_tasks.export_org_data_task": {"queue": "exports"},
     "organizations.export_tasks.cleanup_expired_exports": {"queue": "maintenance"},
     "accounts.tasks.cleanup_expired_tokens": {"queue": "maintenance"},
@@ -144,6 +145,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "cleanup_expired_exports": {
         "task": "organizations.export_tasks.cleanup_expired_exports",
+        "schedule": 24 * 60 * 60,
+    },
+    "cleanup_expired_idempotency_records": {
+        "task": "core.tasks.cleanup_expired_idempotency_records",
         "schedule": 24 * 60 * 60,
     },
 }
