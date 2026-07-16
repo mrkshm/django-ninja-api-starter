@@ -168,7 +168,7 @@ def export_org_data_task(self, job_id: str):
 
         with transaction.atomic():
             job = (
-                ExportJob.objects.select_for_update()
+                ExportJob.objects.select_for_update(of=("self",))
                 .select_related("organization", "requested_by")
                 .get(pk=job_id)
             )
