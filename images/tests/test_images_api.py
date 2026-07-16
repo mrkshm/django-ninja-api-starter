@@ -11,6 +11,7 @@ from accounts.tests.utils import create_test_user
 from DjangoApiStarter.api import api
 from images.models import Image
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 User = get_user_model()
 
@@ -310,7 +311,7 @@ def test_list_images_for_object():
     assert data["items"][0]["image"]["id"] == img.id
 
     # Cross-organization objects are hidden as not found.
-    org2 = Organization.objects.create(name="OtherOrg", slug="otherorg")
+    org2 = create_test_group(name="OtherOrg", slug="otherorg")
     object_id2 = org2.id
     response = client.get(
         f"/api/v1/orgs/{org.slug}/images/{app_label}/{model}/{object_id2}/",
@@ -402,7 +403,7 @@ def test_attach_images_to_object():
         r["image"] == img.id for r in data
     )
 
-    org2 = Organization.objects.create(name="OtherOrg", slug="otherorg")
+    org2 = create_test_group(name="OtherOrg", slug="otherorg")
     img2 = Image.objects.create(
         file=create_test_image_file(name="failimg.png"), organization=org2, creator=user
     )

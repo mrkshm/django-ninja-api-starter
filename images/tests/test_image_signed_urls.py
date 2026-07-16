@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from images.models import Image, ImageShareLink, hash_share_token
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 
 def get_access_token(email, password):
@@ -155,7 +156,7 @@ def test_expired_share_link_cannot_get_signed_urls(monkeypatch):
         lambda *args, **kwargs: "unused",
     )
 
-    org = Organization.objects.create(name="Expired", slug="expired")
+    org = create_test_group(name="Expired", slug="expired")
     image = Image.objects.create(file="images/expired.jpg", organization=org)
     share_link = ImageShareLink.objects.create(
         image=image,

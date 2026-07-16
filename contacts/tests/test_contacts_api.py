@@ -13,6 +13,7 @@ from accounts.tests.utils import create_test_user
 from contacts.models import Contact
 from contacts.throttles import contact_search_throttle
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 User = get_user_model()
 
@@ -42,12 +43,8 @@ def test_create_contact(make_auth_headers, api_client):
 @pytest.mark.django_db
 def test_contact_slugs_are_unique_per_organization(make_auth_headers, api_client):
     user = create_test_user(email="scoped-slug@example.com", password="pw")
-    first = Organization.objects.create(
-        name="First", slug="contact-first", type="group"
-    )
-    second = Organization.objects.create(
-        name="Second", slug="contact-second", type="group"
-    )
+    first = create_test_group(name="First", slug="contact-first")
+    second = create_test_group(name="Second", slug="contact-second")
     Membership.objects.create(user=user, organization=first, role="member")
     Membership.objects.create(user=user, organization=second, role="member")
     headers = make_auth_headers(api_client, user, password="pw")
@@ -101,9 +98,7 @@ def test_get_contact(make_auth_headers, api_client):
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
     )
-    org = Organization.objects.create(
-        name="Test Org", slug="test-org", type="group", creator=user
-    )
+    org = create_test_group(name="Test Org", slug="test-org", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(
         display_name="Bob", slug="bob", organization=org, creator=user
@@ -122,9 +117,7 @@ def test_update_contact_display_name_keeps_stable_slug(make_auth_headers, api_cl
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
     )
-    org = Organization.objects.create(
-        name="Test Org", slug="test-org", type="group", creator=user
-    )
+    org = create_test_group(name="Test Org", slug="test-org", creator=user)
     Membership.objects.create(user=user, organization=org, role="owner")
     contact = Contact.objects.create(
         display_name="Charlie", slug="charlie", organization=org, creator=user
@@ -265,9 +258,7 @@ def test_auth_required(api_client):
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
     )
-    org = Organization.objects.create(
-        name="Test Org", slug="test-org", type="group", creator=user
-    )
+    org = create_test_group(name="Test Org", slug="test-org", creator=user)
     payload = {
         "display_name": "NoAuth",
     }
@@ -293,9 +284,7 @@ def test_missing_name(make_auth_headers, api_client):
     user = create_test_user(
         email="test@example.com", password="pw", username="testuser", slug="testuser"
     )
-    org = Organization.objects.create(
-        name="Test Org", slug="test-org", type="group", creator=user
-    )
+    org = create_test_group(name="Test Org", slug="test-org", creator=user)
     headers = make_auth_headers(api_client, user, password="pw")
     payload = {}
     resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
@@ -599,9 +588,7 @@ def test_update_contact_rejects_organization_in_body(make_auth_headers, api_clie
     org1 = Organization.objects.create(
         name="Move Org1", slug="move-org1", type="group", creator=user
     )
-    org2 = Organization.objects.create(
-        name="Move Org2", slug="move-org2", type="group", creator=None
-    )
+    org2 = create_test_group(name="Move Org2", slug="move-org2", creator=None)
     Membership.objects.create(user=user, organization=org1, role="owner")
     contact = Contact.objects.create(
         display_name="Move Me", slug="move-me", organization=org1, creator=user
@@ -697,8 +684,8 @@ def test_partial_update_contact_rejects_move_to_inaccessible_organization(
     org1 = Organization.objects.create(
         name="Patch Move Org1", slug="patch-move-org1", type="group", creator=user
     )
-    org2 = Organization.objects.create(
-        name="Patch Move Org2", slug="patch-move-org2", type="group", creator=None
+    org2 = create_test_group(
+        name="Patch Move Org2", slug="patch-move-org2", creator=None
     )
     Membership.objects.create(user=user, organization=org1, role="owner")
     contact = Contact.objects.create(

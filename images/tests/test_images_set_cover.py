@@ -9,6 +9,7 @@ from PIL import Image as PilImage
 
 from images.models import Image, PolymorphicImageRelation
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 User = get_user_model()
 
@@ -204,7 +205,7 @@ def test_set_cover_requires_attachment():
 @pytest.mark.django_db
 def test_set_cover_wrong_org_image_404():
     org1 = Organization.objects.create(name="OrgF", slug="orgf")
-    org2 = Organization.objects.create(name="OrgG", slug="orgg")
+    org2 = create_test_group(name="OrgG", slug="orgg")
     user = User.objects.create_user(
         email="f@example.com", password="pw", email_verified=True
     )

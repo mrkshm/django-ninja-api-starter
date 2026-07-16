@@ -9,6 +9,7 @@ from accounts.services import issue_token_pair
 from contacts.models import Contact
 from images.models import Image
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 
 def headers_for(user: User) -> dict[str, str]:
@@ -98,9 +99,7 @@ def test_object_routes_hide_targets_from_another_organization(api_client):
     visible_org = Organization.objects.create(
         name="Visible Images", slug="visible-images", type="group"
     )
-    hidden_org = Organization.objects.create(
-        name="Hidden Images", slug="hidden-images", type="group"
-    )
+    hidden_org = create_test_group(name="Hidden Images", slug="hidden-images")
     Membership.objects.create(user=user, organization=visible_org, role="owner")
     hidden_contact = Contact.objects.create(
         display_name="Hidden Target",

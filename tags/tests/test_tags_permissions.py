@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 User = get_user_model()
 
@@ -34,7 +35,7 @@ def get_access_token(email, password):
 @pytest.mark.django_db
 def test_list_tags_requires_membership():
     # org exists but user is not a member
-    org = Organization.objects.create(name="TagsOrg", slug="tagsorg")
+    org = create_test_group(name="TagsOrg", slug="tagsorg")
     User.objects.create_user(
         email="tags1@example.com", password="pw", email_verified=True
     )
@@ -50,7 +51,7 @@ def test_list_tags_requires_membership():
 def test_assign_tags_wrong_object_org_is_hidden():
     # User is member of org1, but tries to assign tags to an object belonging to org2
     org1 = Organization.objects.create(name="OrgA", slug="orga")
-    org2 = Organization.objects.create(name="OrgB", slug="orgb")
+    org2 = create_test_group(name="OrgB", slug="orgb")
     user = User.objects.create_user(
         email="tags2@example.com", password="pw", email_verified=True
     )
@@ -75,7 +76,7 @@ def test_assign_tags_wrong_object_org_is_hidden():
 @pytest.mark.django_db
 def test_unassign_by_slug_wrong_object_is_hidden():
     org1 = Organization.objects.create(name="Org1", slug="org1tags")
-    org2 = Organization.objects.create(name="Org2", slug="org2tags")
+    org2 = create_test_group(name="Org2", slug="org2tags")
     user = User.objects.create_user(
         email="tags3@example.com", password="pw", email_verified=True
     )

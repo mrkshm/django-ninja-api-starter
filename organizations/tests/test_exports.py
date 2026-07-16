@@ -12,6 +12,7 @@ from organizations.export_tasks import (
     recover_stale_exports,
 )
 from organizations.models import ExportJob, Membership, Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
@@ -19,7 +20,7 @@ def test_only_org_admins_can_create_exports(api_client, make_auth_headers):
     User = get_user_model()
     admin = User.objects.create_user(email="export-admin@example.com", password="pw")
     member = User.objects.create_user(email="export-member@example.com", password="pw")
-    org = Organization.objects.create(name="Export", slug="export-org", type="group")
+    org = create_test_group(name="Export", slug="export-org")
     Membership.objects.create(user=admin, organization=org, role="admin")
     Membership.objects.create(user=member, organization=org, role="member")
 
@@ -39,7 +40,7 @@ def test_only_org_admins_can_create_exports(api_client, make_auth_headers):
 
 @pytest.mark.django_db
 def test_processing_export_redelivery_replaces_the_deterministic_object(monkeypatch):
-    org = Organization.objects.create(name="Resume Export", slug="resume-export")
+    org = create_test_group(name="Resume Export", slug="resume-export")
     job = ExportJob.objects.create(
         organization=org,
         status=ExportJob.Status.PROCESSING,
@@ -72,7 +73,7 @@ def test_processing_export_redelivery_replaces_the_deterministic_object(monkeypa
 
 @pytest.mark.django_db
 def test_export_upload_is_deleted_when_ready_transition_fails(monkeypatch):
-    org = Organization.objects.create(name="Failed Export", slug="failed-export")
+    org = create_test_group(name="Failed Export", slug="failed-export")
     job = ExportJob.objects.create(organization=org)
     deleted = []
     monkeypatch.setattr(
@@ -101,7 +102,7 @@ def test_export_upload_is_deleted_when_ready_transition_fails(monkeypatch):
 
 @pytest.mark.django_db
 def test_duplicate_delivery_does_not_run_without_job_lock(monkeypatch):
-    org = Organization.objects.create(name="Locked Export", slug="locked-export")
+    org = create_test_group(name="Locked Export", slug="locked-export")
     job = ExportJob.objects.create(organization=org)
 
     @contextmanager
@@ -118,7 +119,7 @@ def test_duplicate_delivery_does_not_run_without_job_lock(monkeypatch):
 
 @pytest.mark.django_db
 def test_ready_export_redelivery_is_a_noop(monkeypatch):
-    org = Organization.objects.create(name="Ready Export", slug="ready-export")
+    org = create_test_group(name="Ready Export", slug="ready-export")
     job = ExportJob.objects.create(
         organization=org,
         status=ExportJob.Status.READY,
@@ -135,7 +136,7 @@ def test_ready_export_redelivery_is_a_noop(monkeypatch):
 @pytest.mark.django_db
 def test_stale_export_recovery_requeues_only_inactive_jobs(settings, monkeypatch):
     settings.EXPORT_STALE_AFTER_SECONDS = 60
-    org = Organization.objects.create(name="Recover Exports", slug="recover-exports")
+    org = create_test_group(name="Recover Exports", slug="recover-exports")
     old = timezone.now() - timedelta(minutes=2)
     stale_pending = ExportJob.objects.create(organization=org)
     stale_processing = ExportJob.objects.create(
@@ -279,7 +280,7 @@ def test_export_list_does_not_generate_download_credentials(
 
 @pytest.mark.django_db
 def test_expired_export_cleanup_removes_object(settings, monkeypatch):
-    org = Organization.objects.create(name="Expired Export", slug="expired-export")
+    org = create_test_group(name="Expired Export", slug="expired-export")
     job = ExportJob.objects.create(
         organization=org,
         status=ExportJob.Status.READY,

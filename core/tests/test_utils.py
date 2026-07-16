@@ -13,6 +13,7 @@ from core.utils.auth_utils import require_authenticated_user
 from core.utils.filenames import generate_upload_filename
 from core.utils.identifiers import make_it_unique
 from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 class DummyUser:
@@ -24,12 +25,12 @@ class DummyUser:
 def test_make_it_unique_returns_base_if_unique():
     unique = make_it_unique("foo", Organization, "slug")
     assert unique == "foo"
-    Organization.objects.create(name="Test Org", slug=unique)
+    create_test_group(name="Test Org", slug=unique)
     # Now 'foo' is taken, next call should return different value
     unique2 = make_it_unique("foo", Organization, "slug")
     assert unique2 != "foo"
     assert unique2.startswith("foo")
-    Organization.objects.create(name="Test Org 2", slug=unique2)
+    create_test_group(name="Test Org 2", slug=unique2)
     # Try again, should return yet another unique value
     unique3 = make_it_unique("foo", Organization, "slug")
     assert unique3 not in [unique, unique2]
@@ -39,7 +40,7 @@ def test_make_it_unique_returns_base_if_unique():
 @pytest.mark.django_db
 def test_make_it_unique_handles_long_base():
     base = "x" * 45  # 45 chars, leaves room for suffix
-    Organization.objects.create(name="Long Org", slug=base)
+    create_test_group(name="Long Org", slug=base)
     unique = make_it_unique(base, Organization, "slug")
     assert unique != base
     assert unique.startswith(base)
@@ -48,9 +49,9 @@ def test_make_it_unique_handles_long_base():
 
 @pytest.mark.django_db
 def test_make_it_unique_uses_single_collision_query():
-    Organization.objects.create(name="Org foo", slug="foo")
+    create_test_group(name="Org foo", slug="foo")
     for index in range(1, 11):
-        Organization.objects.create(name=f"Org foo {index}", slug=f"foo-{index}")
+        create_test_group(name=f"Org foo {index}", slug=f"foo-{index}")
 
     with CaptureQueriesContext(connection) as queries:
         unique = make_it_unique("foo", Organization, "slug")
@@ -62,8 +63,8 @@ def test_make_it_unique_uses_single_collision_query():
 @pytest.mark.django_db
 def test_make_it_unique_respects_field_max_length_with_suffix_collisions():
     base = "x" * 50
-    Organization.objects.create(name="Long Org", slug=base)
-    Organization.objects.create(name="Long Org 1", slug=f"{base[:48]}-1")
+    create_test_group(name="Long Org", slug=base)
+    create_test_group(name="Long Org 1", slug=f"{base[:48]}-1")
 
     unique = make_it_unique(base, Organization, "slug")
 

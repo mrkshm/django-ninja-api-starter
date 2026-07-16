@@ -7,13 +7,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image as PilImage
 
 from images.models import Image, PolymorphicImageRelation
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
 class TestImageModel:
     def setup_method(self):
-        self.org = Organization.objects.create(name="Test Org", slug="test-org")
+        self.org = create_test_group(name="Test Org", slug="test-org")
 
     def create_test_image_file(
         self, color=(255, 0, 0), size=(300, 300), name="test.png"
@@ -42,7 +42,7 @@ class TestImageModel:
 @pytest.mark.django_db
 class TestPolymorphicImageRelation:
     def setup_method(self):
-        self.org = Organization.objects.create(name="Test Org", slug="test-org")
+        self.org = create_test_group(name="Test Org", slug="test-org")
         self.image = Image.objects.create(
             file=self.create_test_image_file(),
             description="desc",

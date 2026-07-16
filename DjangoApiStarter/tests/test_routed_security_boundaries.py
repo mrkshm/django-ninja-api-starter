@@ -14,6 +14,7 @@ from accounts.services import issue_token_pair
 from contacts.models import Contact
 from images.models import Image
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 from tags.models import Tag
 
 User = get_user_model()
@@ -154,9 +155,7 @@ def test_protected_route_rejects_the_full_invalid_jwt_matrix(api_client):
 
 @pytest.mark.django_db
 def test_platform_admin_cross_tenant_flow_is_routed_and_audited(api_client):
-    organization = Organization.objects.create(
-        name="Platform Scope", slug="platform-scope", type="group"
-    )
+    organization = create_test_group(name="Platform Scope", slug="platform-scope")
     superuser = User.objects.create_superuser(
         email="routed-platform-admin@example.com", password="pw"
     )

@@ -11,6 +11,7 @@ from organizations.scope import (
     resolve_org_scope,
     resolve_write_org_scope,
 )
+from organizations.tests.utils import create_test_group
 
 User = get_user_model()
 
@@ -35,7 +36,7 @@ def test_only_superusers_are_platform_admins():
 @pytest.mark.django_db
 def test_member_scope_resolves_role_in_exactly_one_query(django_assert_num_queries):
     user = User.objects.create_user(email="scope-member@example.com", password="pw")
-    org = Organization.objects.create(name="Scope", slug="scope", type="group")
+    org = create_test_group(name="Scope", slug="scope")
     Membership.objects.create(user=user, organization=org, role="admin")
 
     with django_assert_num_queries(1):
@@ -53,7 +54,7 @@ def test_unknown_and_inaccessible_slugs_are_identical_and_one_query(
     django_assert_num_queries,
 ):
     user = User.objects.create_user(email="scope-outsider@example.com", password="pw")
-    Organization.objects.create(name="Hidden", slug="hidden", type="group")
+    create_test_group(name="Hidden", slug="hidden")
 
     errors = []
     for slug in ("missing", "hidden"):
@@ -73,7 +74,7 @@ def test_platform_admin_scope_without_membership_is_audited():
     superuser = User.objects.create_superuser(
         email="scope-super@example.com", password="pw"
     )
-    org = Organization.objects.create(name="Staff", slug="staff", type="group")
+    org = create_test_group(name="Staff", slug="staff")
     request = request_for(
         superuser,
         method="DELETE",
@@ -119,7 +120,7 @@ def test_platform_admin_membership_does_not_log_cross_tenant_access():
 def test_write_scope_uses_the_canonical_resolver():
     member = User.objects.create_user(email="scope-write@example.com", password="pw")
     outsider = User.objects.create_user(email="scope-no@example.com", password="pw")
-    org = Organization.objects.create(name="Write", slug="write", type="group")
+    org = create_test_group(name="Write", slug="write")
     Membership.objects.create(user=member, organization=org, role="member")
 
     assert resolve_write_org_scope(request_for(member), org.slug).org == org

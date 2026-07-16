@@ -6,15 +6,13 @@ from accounts.models import User
 from contacts.models import Contact
 from images.models import Image, PolymorphicImageRelation
 from images.operations import attach_images_to_object
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
 def test_attach_operation_locks_existing_relations(monkeypatch):
     user = User.objects.create_user(email="image-lock@example.com", password="pw")
-    organization = Organization.objects.create(
-        name="Image Lock", slug="image-lock", type="group"
-    )
+    organization = create_test_group(name="Image Lock", slug="image-lock", owner=user)
     contact = Contact.objects.create(
         display_name="Lock Target",
         organization=organization,

@@ -4,7 +4,8 @@ from ninja.errors import HttpError
 
 from contacts.models import Contact
 from core.utils.polymorphic import resolve_org_scoped_content_object
-from organizations.models import Membership, Organization
+from organizations.models import Membership
+from organizations.tests.utils import create_test_group
 
 
 class DummyRequest:
@@ -30,7 +31,7 @@ def nonmember_user(user_model):
 
 @pytest.fixture
 def org(member_user):
-    organization = Organization.objects.create(name="Org", slug="org", type="group")
+    organization = create_test_group(name="Org", slug="org")
     Membership.objects.create(
         user=member_user, organization=organization, role="member"
     )
@@ -59,7 +60,7 @@ def test_resolve_org_scoped_content_object_allows_member_object(member_user, org
 
 @pytest.mark.django_db
 def test_resolve_org_scoped_content_object_rejects_cross_org_object(member_user, org):
-    other_org = Organization.objects.create(name="Other", slug="other", type="group")
+    other_org = create_test_group(name="Other", slug="other")
     contact = Contact.objects.create(
         display_name="Jane", organization=other_org, creator=member_user
     )

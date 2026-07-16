@@ -6,7 +6,7 @@ from django.db import transaction
 from accounts.services import delete_user_account
 from accounts.tests.utils import create_test_user
 from contacts.models import Contact
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
@@ -14,8 +14,8 @@ def test_contact_avatar_is_deleted_after_organization_cascade(
     django_capture_on_commit_callbacks,
 ):
     user = create_test_user(email="contact-avatar-cleanup@example.com")
-    organization = Organization.objects.create(
-        name="Avatar cleanup", slug="avatar-cleanup", creator=user
+    organization = create_test_group(
+        name="Avatar cleanup", slug="avatar-cleanup", owner=user, creator=user
     )
     Contact.objects.create(
         display_name="Delete me",
@@ -35,8 +35,8 @@ def test_contact_avatar_is_deleted_after_organization_cascade(
 @pytest.mark.django_db
 def test_contact_avatar_is_preserved_when_delete_rolls_back():
     user = create_test_user(email="contact-avatar-rollback@example.com")
-    organization = Organization.objects.create(
-        name="Avatar rollback", slug="avatar-rollback", creator=user
+    organization = create_test_group(
+        name="Avatar rollback", slug="avatar-rollback", owner=user, creator=user
     )
     contact = Contact.objects.create(
         display_name="Keep me",
@@ -77,8 +77,8 @@ def test_storage_failure_does_not_undo_committed_contact_deletion(
     django_capture_on_commit_callbacks,
 ):
     user = create_test_user(email="avatar-storage-failure@example.com")
-    organization = Organization.objects.create(
-        name="Storage failure", slug="storage-failure", creator=user
+    organization = create_test_group(
+        name="Storage failure", slug="storage-failure", owner=user, creator=user
     )
     contact = Contact.objects.create(
         display_name="Delete despite storage failure",

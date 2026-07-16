@@ -4,12 +4,12 @@ from unittest.mock import patch
 import pytest
 
 from images.services import ImageUploadFailed, upload_image_file
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
 def test_database_failure_compensates_all_uploaded_objects():
-    organization = Organization.objects.create(name="Acme", slug="acme")
+    organization = create_test_group(name="Acme", slug="acme")
 
     with (
         patch("images.services.normalize_image_bytes", return_value=b"normalized"),
@@ -34,7 +34,7 @@ def test_database_failure_compensates_all_uploaded_objects():
 
 @pytest.mark.django_db
 def test_successful_upload_persists_image_after_all_variants():
-    organization = Organization.objects.create(name="Upload", slug="upload")
+    organization = create_test_group(name="Upload", slug="upload")
     variants = {
         "thumb": b"thumb",
         "sm": b"small",

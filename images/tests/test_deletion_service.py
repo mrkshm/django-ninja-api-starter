@@ -4,14 +4,14 @@ import pytest
 
 from images.models import Image
 from images.services import delete_image_record
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
 def test_delete_image_record_removes_database_row_and_all_storage_variants(
     django_capture_on_commit_callbacks,
 ):
-    organization = Organization.objects.create(name="Delete", slug="delete")
+    organization = create_test_group(name="Delete", slug="delete")
     image = Image.objects.create(
         file="private/images/delete/example.jpg",
         organization=organization,

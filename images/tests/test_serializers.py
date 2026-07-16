@@ -6,7 +6,7 @@ from django.core.files.storage import default_storage
 from contacts.models import Contact
 from images.models import Image, PolymorphicImageRelation
 from images.serializers import serialize_image, serialize_image_relation
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 
 @pytest.mark.django_db
@@ -20,7 +20,7 @@ def test_serialize_image_adds_variant_keys_without_storage_checks(monkeypatch):
 
     User = get_user_model()
     user = User.objects.create_user(email="image-serializer@example.com", password="pw")
-    org = Organization.objects.create(name="Images", slug="images", type="group")
+    org = create_test_group(name="Images", slug="images", owner=user)
     image = Image.objects.create(
         file="images/example.jpg",
         organization=org,
@@ -53,9 +53,7 @@ def test_serialize_public_image_adds_public_urls(settings):
 
     User = get_user_model()
     user = User.objects.create_user(email="public-image@example.com", password="pw")
-    org = Organization.objects.create(
-        name="Public Images", slug="public-images", type="group"
-    )
+    org = create_test_group(name="Public Images", slug="public-images", owner=user)
     image = Image.objects.create(
         file="public/images/example image.jpg",
         organization=org,
@@ -85,7 +83,7 @@ def test_serialize_image_relation_adds_nested_image_and_relation_fields():
     user = User.objects.create_user(
         email="relation-serializer@example.com", password="pw"
     )
-    org = Organization.objects.create(name="Images", slug="images", type="group")
+    org = create_test_group(name="Images", slug="images", owner=user)
     contact = Contact.objects.create(
         display_name="Jane", organization=org, creator=user
     )

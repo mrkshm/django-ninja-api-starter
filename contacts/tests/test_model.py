@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from contacts.models import Contact
-from organizations.models import Organization
+from organizations.tests.utils import create_test_group
 
 # Create your tests here.
 
@@ -12,8 +12,10 @@ class TestContactModel:
     def setup_method(self):
         User = get_user_model()
         self.user = User.objects.create_user(email="test@example.com", password="pw")
-        self.org = Organization.objects.create(
-            name="Test Org", slug="test-org", type="group", creator=self.user
+        self.org = create_test_group(
+            name="Test Org",
+            slug="test-org",
+            creator=self.user,
         )
 
     def test_create_contact_minimal(self):

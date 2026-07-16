@@ -5,6 +5,7 @@ from django.urls import reverse
 
 from contacts.models import Contact
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 from tags.models import Tag, TaggedItem
 
 User = get_user_model()
@@ -21,7 +22,7 @@ def login_client(client: NinjaTestClient, user):
 
 @pytest.mark.django_db
 def test_assign_tag_to_contact(api_client):
-    org = Organization.objects.create(name="TestOrg", slug="testorg")
+    org = create_test_group(name="TestOrg", slug="testorg")
     user = User.objects.create_user(email="test@example.com", password="pw")
     contact = Contact.objects.create(
         display_name="Test C", organization=org, creator=user
@@ -77,7 +78,7 @@ def test_remove_tag_from_contact(api_client):
 
 @pytest.mark.django_db
 def test_assign_tag_to_multiple_models(api_client):
-    org = Organization.objects.create(name="TestOrg", slug="testorg")
+    org = create_test_group(name="TestOrg", slug="testorg")
     user = User.objects.create_user(email="test@example.com", password="pw")
     contact = Contact.objects.create(
         display_name="Test C", organization=org, creator=user
@@ -91,8 +92,8 @@ def test_assign_tag_to_multiple_models(api_client):
 
 @pytest.mark.django_db
 def test_tags_not_globally_unique(api_client):
-    org1 = Organization.objects.create(name="Org1", slug="org1")
-    org2 = Organization.objects.create(name="Org2", slug="org2")
+    org1 = create_test_group(name="Org1", slug="org1")
+    org2 = create_test_group(name="Org2", slug="org2")
     tag1 = Tag.objects.create(organization=org1, name="vip", slug="vip")
     tag2 = Tag.objects.create(organization=org2, name="vip", slug="vip")
     assert tag1.name == tag2.name
@@ -102,7 +103,7 @@ def test_tags_not_globally_unique(api_client):
 
 @pytest.mark.django_db
 def test_tags_unique_within_organization(api_client):
-    org = Organization.objects.create(name="Org", slug="org")
+    org = create_test_group(name="Org", slug="org")
     Tag.objects.create(organization=org, name="vip", slug="vip")
     with pytest.raises(IntegrityError):
         Tag.objects.create(organization=org, name="vip", slug="vip")

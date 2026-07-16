@@ -9,6 +9,7 @@ from PIL import Image as PilImage
 from DjangoApiStarter.api import api  # noqa: F401 - ensure API is loaded once
 from images.models import Image
 from organizations.models import Membership, Organization
+from organizations.tests.utils import create_test_group
 
 
 def create_test_image_file(color=(100, 200, 50), size=(300, 300), name="testimg.png"):
@@ -99,7 +100,7 @@ def test_bulk_attach_and_detach_images_to_object():
 @pytest.mark.django_db
 def test_bulk_attach_rejects_images_from_other_org():
     org1 = Organization.objects.create(name="Org1", slug="org1")
-    org2 = Organization.objects.create(name="Org2", slug="org2")
+    org2 = create_test_group(name="Org2", slug="org2")
     user = User.objects.create_user(
         email="bulkattach2@example.com", password="pw", email_verified=True
     )
