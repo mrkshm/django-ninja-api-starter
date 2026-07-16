@@ -5,6 +5,7 @@ from ninja.renderers import BaseRenderer
 from ninja_extra import NinjaExtraAPI
 
 from accounts.api import auth_router, token_router
+from accounts.browser_api import browser_auth_router
 from accounts.users_api import users_router
 from contacts.api import contacts_router
 from core.api_errors import (
@@ -36,6 +37,7 @@ api = NinjaExtraAPI(
 
 api.add_router("/token", token_router, tags=["token"])
 api.add_router("/auth/", auth_router, tags=["auth"])
+api.add_router("/auth/browser", browser_auth_router, tags=["browser auth"])
 api.add_router("/users/", users_router, tags=["users"])
 api.add_router("/", contacts_router, tags=["contacts"])
 api.add_router("/", tags_router, tags=["tags"])

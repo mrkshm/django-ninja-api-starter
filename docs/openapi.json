@@ -19,6 +19,60 @@
         "title": "AvatarUploadResponse",
         "type": "object"
       },
+      "BrowserAccessTokenOutputSchema": {
+        "properties": {
+          "access": {
+            "title": "Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access"
+        ],
+        "title": "BrowserAccessTokenOutputSchema",
+        "type": "object"
+      },
+      "BrowserRegistrationOutputSchema": {
+        "properties": {
+          "access": {
+            "title": "Access",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access",
+          "email",
+          "detail"
+        ],
+        "title": "BrowserRegistrationOutputSchema",
+        "type": "object"
+      },
+      "BrowserTokenOutputSchema": {
+        "properties": {
+          "access": {
+            "title": "Access",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access",
+          "email"
+        ],
+        "title": "BrowserTokenOutputSchema",
+        "type": "object"
+      },
       "BulkAttachOut": {
         "properties": {
           "attached": {
@@ -625,6 +679,19 @@
           }
         },
         "title": "CreateImageShareIn",
+        "type": "object"
+      },
+      "CsrfTokenOutputSchema": {
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfTokenOutputSchema",
         "type": "object"
       },
       "CustomTokenOutputSchema": {
@@ -1945,6 +2012,156 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth/browser/csrf": {
+      "get": {
+        "operationId": "accounts_browser_api_browser_csrf",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfTokenOutputSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Browser Csrf",
+        "tags": [
+          "browser auth"
+        ]
+      }
+    },
+    "/api/v1/auth/browser/login": {
+      "post": {
+        "operationId": "accounts_browser_api_browser_login",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenPairInputSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserTokenOutputSchema"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnverifiedUserSchema"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Browser Login",
+        "tags": [
+          "browser auth"
+        ]
+      }
+    },
+    "/api/v1/auth/browser/logout": {
+      "post": {
+        "operationId": "accounts_browser_api_browser_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Browser Logout",
+        "tags": [
+          "browser auth"
+        ]
+      }
+    },
+    "/api/v1/auth/browser/refresh": {
+      "post": {
+        "operationId": "accounts_browser_api_browser_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAccessTokenOutputSchema"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Browser Refresh",
+        "tags": [
+          "browser auth"
+        ]
+      }
+    },
+    "/api/v1/auth/browser/verify-registration": {
+      "post": {
+        "operationId": "accounts_browser_api_browser_verify_registration",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationVerificationSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserRegistrationOutputSchema"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Browser Verify Registration",
+        "tags": [
+          "browser auth"
+        ]
+      }
+    },
     "/api/v1/auth/change-password/": {
       "post": {
         "operationId": "accounts_api_change_password",

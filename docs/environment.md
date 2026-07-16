@@ -5,7 +5,7 @@ production template. Production rejects missing mandatory values.
 
 | Area | Variables |
 | --- | --- |
-| Django | `PROJECT_NAME`, `SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` |
+| Django | `PROJECT_NAME`, `SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `BROWSER_REFRESH_COOKIE_SECURE` (local development only) |
 | JWT | `JWT_SIGNING_KEY`, `JWT_AUDIENCE`, `JWT_ISSUER` |
 | PostgreSQL | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_CONN_MAX_AGE` |
 | Redis/Celery | `REDIS_URL`, `REDIS_PASSWORD` (Compose), `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`, `EXPORT_STALE_AFTER_SECONDS`, `EXPORT_RECOVERY_INTERVAL_SECONDS` |
@@ -21,6 +21,13 @@ Generate secrets with a cryptographically secure generator. Do not commit the
 real environment file or pass secrets as Docker build arguments. Restrict the
 file to the deployment account (`chmod 600`) and prefer a secrets manager when
 the deployment platform provides one.
+
+Browser auth assumes an exact, same-site frontend origin. Production and staging
+should each set `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and
+`CSRF_TRUSTED_ORIGINS` to their own frontend, such as `https://app.example.com`
+or `https://app-staging.example.com`. Production forces the refresh cookie to
+`Secure`; `BROWSER_REFRESH_COOKIE_SECURE=False` exists only so local HTTP
+development works.
 
 `EXPORT_STALE_AFTER_SECONDS` must exceed `CELERY_TASK_TIME_LIMIT`; its default is
 five minutes longer. Beat scans at `EXPORT_RECOVERY_INTERVAL_SECONDS` and

@@ -8,7 +8,8 @@ privacy, availability, abuse, and compliance requirements before launch.
 The template includes:
 
 - Django Ninja on PostgreSQL, with Redis for caching and Celery
-- first-party email/password authentication and revocable rotating JWT sessions
+- first-party email/password authentication, with native JWT and browser-cookie
+  refresh flows backed by revocable rotating sessions
 - organization roles, tenant-scoped contacts, tags, and private images
 - public user/contact avatars and private S3-compatible media
 - durable idempotency for bulk image mutations and asynchronous organization
@@ -73,9 +74,9 @@ DJANGO_SETTINGS_MODULE=DjangoApiStarter.settings.test uv run python scripts/expo
 
 ## Defaults to understand
 
-- The JSON refresh-token flow is intended primarily for native clients. Before
-  shipping a browser client, add the cookie and CSRF design described in
-  [security.md](docs/security.md).
+- Native clients receive the refresh token as JSON. Browser clients use the
+  separate HttpOnly-cookie and CSRF flow described in
+  [security.md](docs/security.md); do not mix the two client contracts.
 - Organization `member` is an editor role, not a read-only role. Admins and
   owners additionally control organization-level operations such as exports.
 - Django superusers are cross-tenant platform administrators. Their tenant

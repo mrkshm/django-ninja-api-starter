@@ -57,7 +57,7 @@ deployment target.
   organization are created after token verification and password validation.
 - [x] Email changes require the current password, notify the old and new
   addresses, bind to `auth_version`, and revoke all sessions on completion.
-- [x] Native Keychain guidance and the required separate browser cookie/CSRF
+- [x] Native Keychain guidance and a separate browser cookie/CSRF flow
   design are documented.
 
 ## Tenant and model integrity

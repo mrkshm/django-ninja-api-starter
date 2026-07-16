@@ -24,11 +24,29 @@ iOS clients keep the refresh token in Keychain with an accessibility class
 appropriate to the app and keep access tokens in memory. Never place tokens in
 UserDefaults, logs, analytics, crash metadata, URLs, or backups.
 
-The JSON refresh-token API is acceptable for trusted native clients. A browser
-must not persist it in localStorage. Before shipping a browser client, add a
-dedicated same-site backend flow using a `Secure`, `HttpOnly`, suitable
-`SameSite` refresh cookie plus CSRF protection; keep the access token in memory.
-Production CORS does not allow credentials by default.
+The JSON refresh-token API is for trusted native clients. Browser clients use
+the separate `/auth/browser/*` flow: the access token is returned in JSON and
+kept only in memory, while the refresh token is stored in a host-only,
+`HttpOnly`, `SameSite=Lax` cookie restricted to `/api/v1/auth/browser/`. The
+cookie is also `Secure` outside local development. It is never returned in a
+browser response body and must never be copied into localStorage or
+sessionStorage.
+
+Before browser login, registration verification, refresh, or logout, call
+`GET /auth/browser/csrf` with credentials included. Send its `csrf_token` value
+in `X-CSRFToken` and continue including credentials on the state-changing
+request. The CSRF cookie is HttpOnly; clients use the response value rather than
+reading the cookie. Refresh rotates both credentials, replay revokes the device
+session, and logout is idempotent and clears the cookie even if the server-side
+session has already expired.
+
+The supported browser deployment is same-site sibling subdomains: for example,
+`app.example.com` with `api.example.com`, and `app-staging.example.com` with
+`api-staging.example.com`. List the exact frontend origin in both
+`CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`; credentialed CORS is enabled,
+but wildcard origins are not. A truly cross-site frontend is deliberately not a
+first-class configuration because it would require a different
+`SameSite=None` threat model.
 
 Verification, email-change, and password-reset messages place tokens in URL
 fragments so normal server access logs do not receive them. The client submits
