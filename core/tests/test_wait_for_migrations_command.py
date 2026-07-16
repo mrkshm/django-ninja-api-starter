@@ -74,11 +74,13 @@ def test_wait_for_migrations_raises_after_timeout(monkeypatch):
     monkeypatch.setattr(wait_for_migrations, "connections", {"default": connection})
     monkeypatch.setattr(wait_for_migrations, "MigrationExecutor", create_executor)
     monkeypatch.setattr(
-        wait_for_migrations.time,
-        "monotonic",
-        iter([0.0, 2.0]).__next__,
+        wait_for_migrations,
+        "time",
+        SimpleNamespace(
+            monotonic=iter([0.0, 2.0]).__next__,
+            sleep=lambda seconds: None,
+        ),
     )
-    monkeypatch.setattr(wait_for_migrations.time, "sleep", lambda seconds: None)
 
     with pytest.raises(CommandError, match="Timed out waiting for migrations"):
         call_command("wait_for_migrations", sleep=0, timeout=1, stdout=out)

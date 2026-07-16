@@ -1,4 +1,5 @@
 from io import StringIO
+from types import SimpleNamespace
 
 import pytest
 from django.core.management import call_command
@@ -41,8 +42,14 @@ def test_wait_for_db_raises_after_timeout(monkeypatch):
     out = StringIO()
 
     monkeypatch.setattr(wait_for_db, "connections", {"default": connection})
-    monkeypatch.setattr(wait_for_db.time, "monotonic", iter([0, 2]).__next__)
-    monkeypatch.setattr(wait_for_db.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(
+        wait_for_db,
+        "time",
+        SimpleNamespace(
+            monotonic=iter([0, 2]).__next__,
+            sleep=lambda seconds: None,
+        ),
+    )
 
     with pytest.raises(CommandError, match="Database unavailable"):
         call_command("wait_for_db", sleep=0, timeout=1, stdout=out)
