@@ -1,8 +1,8 @@
 # API routes and conventions
 
 The generated [OpenAPI contract](openapi.json) is authoritative. CI regenerates
-it and fails on drift. Interactive documentation is mounted at `/api/docs`; API
-operations are versioned below `/api/v1`.
+it and fails on drift. Interactive documentation is mounted at `/api/v1/docs`;
+API operations are versioned below `/api/v1`.
 
 ## Conventions
 
