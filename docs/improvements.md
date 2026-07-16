@@ -639,6 +639,9 @@ Implementation:
 - [x] Replace the synthetic-request contact, tag, image-permission, and bulk
   idempotency suites with routed tests, retaining each distinct security and
   replay scenario.
+- [x] Replace the remaining synthetic image attach, upload, validation, and
+  deletion tests with routed multipart coverage or focused operation/service
+  tests in the images app.
 - [x] Add TestClient tests for every permission-sensitive route family:
   contacts, tags, images, exports, and organization scope.
 - [x] Prove missing, malformed, expired, and revoked JWT behavior through the

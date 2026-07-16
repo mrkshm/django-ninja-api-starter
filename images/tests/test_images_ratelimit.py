@@ -36,14 +36,14 @@ def get_access_token(email, password):
     return resp.json().get("access")
 
 
-def _enable_test_throttling(instance_names):
+def _enable_test_throttling(instance_names, monkeypatch):
     """Override throttle instances to test route-level 429 handling."""
     from images import throttles
 
     for name in instance_names:
         thr = getattr(throttles, name)
         # track per-instance call count for this test process
-        setattr(thr, "_test_calls", 0)
+        monkeypatch.setattr(thr, "_test_calls", 0, raising=False)
 
         def _allow_once(
             self, request, *args, **kwargs
@@ -54,20 +54,20 @@ def _enable_test_throttling(instance_names):
             return calls == 0
 
         # bind to instance
-        thr.allow_request = _allow_once.__get__(thr, object)
+        monkeypatch.setattr(thr, "allow_request", _allow_once.__get__(thr, object))
 
         # ensure wait() exists and does not rely on internal state
         def _wait(self):
             return 60  # seconds until next permitted request
 
-        thr.wait = _wait.__get__(thr, object)
+        monkeypatch.setattr(thr, "wait", _wait.__get__(thr, object))
         # add a history attribute to satisfy any checks
         if not hasattr(thr, "history"):
-            thr.history = []
+            monkeypatch.setattr(thr, "history", [], raising=False)
 
 
 @pytest.mark.django_db
-def test_single_upload_rate_limited():
+def test_single_upload_rate_limited(monkeypatch):
     org = Organization.objects.create(name="RLOrg", slug="rlorg")
     user = User.objects.create_user(
         email="rl@example.com", password="pw", email_verified=True
@@ -75,7 +75,7 @@ def test_single_upload_rate_limited():
     Membership.objects.create(user=user, organization=org, role="owner")
 
     # Enable throttling for single upload: allow once then 429
-    _enable_test_throttling(["upload_throttle"])
+    _enable_test_throttling(["upload_throttle"], monkeypatch)
 
     client = Client()
     access = get_access_token("rl@example.com", "pw")
@@ -92,7 +92,7 @@ def test_single_upload_rate_limited():
 
 
 @pytest.mark.django_db
-def test_bulk_upload_rate_limited():
+def test_bulk_upload_rate_limited(monkeypatch):
     org = Organization.objects.create(name="RLBulkOrg", slug="rlbulkog")
     user = User.objects.create_user(
         email="rlbulk@example.com", password="pw", email_verified=True
@@ -100,7 +100,7 @@ def test_bulk_upload_rate_limited():
     Membership.objects.create(user=user, organization=org, role="owner")
 
     # Enable throttling for bulk upload: allow once then 429
-    _enable_test_throttling(["bulk_upload_throttle"])
+    _enable_test_throttling(["bulk_upload_throttle"], monkeypatch)
 
     client = Client()
     access = get_access_token("rlbulk@example.com", "pw")
