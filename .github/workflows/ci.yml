@@ -57,7 +57,7 @@ jobs:
         run: |
           docker run --detach --rm --name starter-minio -p 9000:9000 -e MINIO_ROOT_USER=starter-access -e MINIO_ROOT_PASSWORD=starter-secret minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
           docker run --detach --rm --name starter-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit:latest@sha256:5a49a77c5bdbe7c5474450b4f46348d09949df3695257729c93a30369382d4f6
-          uv run python scripts/provider_smoke.py
+          uv run python -m scripts.provider_smoke
       - name: Apply migrations twice
         run: uv run python manage.py migrate --noinput && uv run python manage.py migrate --noinput
       - run: uv run python manage.py makemigrations --check --dry-run
