@@ -1,278 +1,117 @@
-# django-ninja-api-starter
+# Django Ninja API Starter
 
-A starter template for building REST APIs with [Django Ninja](https://django-ninja.dev) and Django.
+Internal starting point for new organization-scoped APIs. It provides a
+hardened baseline and documented operating assumptions; it does not make a new
+product production-ready by itself. Review the product's authorization,
+privacy, availability, abuse, and compliance requirements before launch.
 
-Featuring Django, Django Ninja, Pydantic, Celery, Orjson, Pillow... all that good stuff.
+The template includes:
 
-## Features
+- Django Ninja on PostgreSQL, with Redis for caching and Celery
+- first-party email/password authentication, with native JWT and browser-cookie
+  refresh flows backed by revocable rotating sessions
+- organization roles, tenant-scoped contacts, tags, and private images
+- public user/contact avatars and private S3-compatible media
+- durable idempotency for bulk image mutations and asynchronous organization
+  exports
+- a single-host production Compose example with Caddy
 
-- Django! Ninja! The deadly duo you don't mess with.
-- JWT authentication (with Ninja Extra)
-- Ready-to-use user model and authentication
-- Organization-based access control
-- Polymorphic tags and images
-- File upload to S3-compatible storage
-- GDPR-compliant data export
-- Interactive API documentation
-- Admin interface
-- Pytest and built-in API tests
-- Docker setup with PostgreSQL, Redis, and Celery
-- PostGIS support
-- Gunicorn configuration
-- Kamal deployment
+This is a fresh-start template. We do not preserve compatibility with earlier
+versions of the starter when beginning a new application.
 
+## Local setup
 
-## Renaming the Project
+Requirements: Python 3.14, [uv](https://docs.astral.sh/uv/), Docker, and Docker
+Compose.
 
-If you want to use this starter as the base for your own project, you should rename it before starting development:
-
-1. **Choose your new project name** (e.g., `myproject`).
-2. **Search and replace** all instances of the old name (such as `DjangoApiStarter`, `django-api-starter`, or `django_ninja_api_starter`) with your new name, matching the style (PascalCase, kebab-case, snake_case) as appropriate.
-   - Use your IDE's "Find and Replace in Project" feature, or run from the command line:
-     ```sh
-     # Replace DjangoApiStarter with MyProject everywhere (case-sensitive)
-     find . -type f -exec sed -i '' 's/DjangoApiStarter/MyProject/g' {} +
-     # Replace django-api-starter with myproject everywhere
-     find . -type f -exec sed -i '' 's/django-api-starter/myproject/g' {} +
-     ```
-   - On Linux (GNU sed), use:
-     ```sh
-     git ls-files | xargs sed -i 's/DjangoApiStarter/MyProject/g'
-     git ls-files | xargs sed -i 's/django-api-starter/myproject/g'
-     ```
-3. **Rename the main project directory** (`DjangoApiStarter/`) to your new name.
-4. **Update references** in files like `manage.py`, `wsgi.py`, `asgi.py`, Dockerfiles, and `config/deploy.yml` if needed.
-5. **Check imports and settings** for any remaining references to the old name.
-
-## Getting Started
-
-This project uses Docker for development and production. Follow these steps to get started:
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/mrkshm/django-ninja-api-starter.git
-cd django-ninja-api-starter
+```sh
+cp env.example .env
+docker compose up -d db redis
+uv sync --frozen
+uv run python manage.py migrate
+uv run python manage.py seed_demo --password local-demo-password
+uv run python manage.py runserver
 ```
 
-2. Create a `.env` file with your configuration:
+Useful endpoints:
 
-```bash
-# Database
-POSTGRES_DB=django_db
-POSTGRES_USER=django_user
-POSTGRES_PASSWORD=django_pass
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
+- API: `http://localhost:8000/api/v1/`
+- OpenAPI UI: `http://localhost:8000/api/v1/docs`
+- health: `http://localhost:8000/health/live/` and `/health/ready/`
 
-# Redis
-REDIS_URL=redis://redis:6379/1
+Run Celery when working on email, exports, or scheduled cleanup:
 
-# Django
-DJANGO_SETTINGS_MODULE=DjangoApiStarter.settings
-SECRET_KEY=your-secret-key-here
-DEBUG=True
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-FRONTEND_URL=http://localhost:3000
-
-# Server Configuration
-DJANGO_ENV=development  # Set to 'production' to use Gunicorn
+```sh
+uv run celery -A DjangoApiStarter worker -l INFO --queues=celery,email,exports,maintenance
+uv run celery -A DjangoApiStarter beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
 ```
 
-### Quickstart
+Development email is written to the console. Uploads still use the configured
+S3-compatible storage, so replace the placeholder R2/S3 values before testing
+media workflows. Tests use isolated local storage.
 
-```bash
-# 1) Copy env and start services
-cp .env.example .env
-docker compose up -d --build
+## Checks
 
-# 2) Apply migrations and create a superuser
-docker compose exec web python manage.py migrate
-docker compose exec web python manage.py createsuperuser
+Run the same core checks before committing:
 
-# 3) Open Swagger (when running locally)
-open http://localhost:8000/api/docs
+```sh
+uv run pytest -q
+uv run black --check .
+uv run isort --profile black --check-only .
+uv run flake8 --select=E9,F63,F7,F82 .
+uv run mypy .
+uv run python manage.py makemigrations --check --dry-run
+uv run python manage.py check --database default
+uv run pip-audit
 ```
 
-## Details
+The committed [OpenAPI contract](docs/openapi.json) is checked in CI. Regenerate
+it intentionally after an API change:
 
-### Auth Setup using User / Organization pattern
-
-#### Email Verification Authentication
-
-This project implements a secure email verification system for user authentication:
-
-- New users must verify their email address before they can log in or access protected resources.
-- Verification emails are sent automatically during registration.
-- Verification tokens expire after 12 hours.
-- Users can request a new verification email if needed.
-- Login attempts for unverified accounts return a clear message prompting verification.
-
-#### Organization-based Access Control
-
-This project uses an organization-based access control pattern:
-
-- Every user is automatically assigned a personal organization when their account is created (after email verification).
-- Users can also belong to additional organizations (e.g., as an employee, collaborator, or member).
-- All domain entities (such as contacts, files, etc.) are associated with an organization.
-- Users can access data and perform actions within their organizations.
-- This pattern is suitable for many applications, ranging from apps where users may have roles in multiple groups, companies, or teams, up to true multi-tenancy where each organization acts as a fully isolated tenant.
-
-Example use cases:
-
-- A reader with a personal organization and as an employee of a publisher.
-- Consultants working with multiple clients.
-
-### Avatar Handling
-
-- Avatars are uploaded to Cloudflare R2 (or any S3-compatible storage).
-- Each avatar is converted and resized to two webp images:
-  - **Small:** 160x160 pixels, 65% quality (filename stored in the database)
-  - **Large:** 600x600 pixels, 85% quality (accessed by appending `_lg` to the small avatar filename)
-- Example: If the small avatar is `avatar-johnsmith-20250421T141230-ABC123.webp`, the large version is `avatar-johnsmith-20250421T141230-ABC123_lg.webp`.
-
-## TODO / Roadmap
-
-- [x] Auth with User / Organization pattern
-- [x] File upload to Cloudflare R2 (or other S3-compatible storage)
-- [x] Contacts model
-- [x] Avatar for Users and Contacts
-- [x] Polymorphic tags
-- [x] Polymorphic images
-- [x] Docker setup with Redis
-- [x] Celery for background tasks
-- [x] Gunicorn production setup
-- [x] GDPR-compliant data export
-- [x] Admin UI
-- [x] Easy deployment with Kamal
-- [x] Get testing percentage to a reasonable number
-- [x] Better docs
-
-## Running Tests
-
-To ensure tests always use local file storage (never S3 or remote), tests override the storage backend in the test code itself using the `settings` fixture:
-
-```python
-settings.STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-    },
-}
+```sh
+DJANGO_SETTINGS_MODULE=DjangoApiStarter.settings.test uv run python scripts/export_openapi.py > docs/openapi.json
 ```
 
-This guarantees all file operations use the local filesystem during tests.
+## Defaults to understand
 
-For more details, see [`docs/testing.md`](docs/testing.md).
+- Native clients receive the refresh token as JSON. Browser clients use the
+  separate HttpOnly-cookie and CSRF flow described in
+  [security.md](docs/security.md); do not mix the two client contracts.
+- Organization `member` is an editor role, not a read-only role. Admins and
+  owners additionally control organization-level operations such as exports.
+- Django superusers are cross-tenant platform administrators. Their tenant
+  access is audited; ordinary staff receives no tenant bypass.
+- Images and exports are private. User and contact avatars are deliberately
+  public and may remain in intermediary caches after deletion.
+- PostgreSQL is part of the application contract. PostGIS is optional and is
+  not installed by default.
+- Redis is disposable cache/broker state. PostgreSQL remains authoritative for
+  sessions, idempotency, jobs, and domain data.
 
-Run tests:
-
-```bash
-docker compose exec web pytest -q
-```
-
-## API Docs
-
-Details about the API routes are available in the docs:
-
-- Images & Tags API: see `docs/api-routes.md`
-- Interactive OpenAPI (Swagger): available at `/api/docs` when running the server
-  - Local dev: http://localhost:8000/api/docs
-
-## Polymorphic Images and Tags
-
-- Polymorphic Tags: assign, list, unassign, CRUD, org scoping
-- Polymorphic Images: upload, attach/detach, reorder, set/unset cover, variants
-- Auth, rate limits, and audit logging
-
-## Organization Data Export (GDPR-Compliant)
-
-Admins can export all organization data (users, contacts, tags, images, etc.) in a single ZIP archive for compliance or backup. The export is performed asynchronously via Celery, includes all images, and is delivered as a signed S3 download link via email.
-
-- **Trigger export:** `POST /api/v1/orgs/{org_slug}/export/` (admin only)
-- **Includes:** All org users, contacts (with tags), tags, and images (as files in a subfolder)
-- **Delivery:** Download link sent by email, valid for 7 days
-- **Security:** Only org admins can trigger and access exports
-
-## Password Reset (Stateful, Celery-powered)
-
-The API supports secure, stateful password resets with asynchronous email delivery via Celery.
-
-- **Request password reset:**
-  - `POST /api/v1/auth/password-reset/request`
-  - Body: `{ "email": "user@example.com" }`
-  - Always returns a generic success message (no info leak)
-  - If the user exists, a time-limited reset token is generated and emailed
-- **Confirm password reset:**
-  - `POST /api/v1/auth/password-reset/confirm`
-  - Body: `{ "token": "...", "new_password": "..." }`
-  - Resets the password if the token is valid and not expired
-
-**Security:**
-
-- Tokens are single-use and expire after a short period (default: 2 hours)
-- No information is leaked about whether an email exists
-- All email delivery is handled asynchronously by Celery
-
-See [docs/api-setup.md](docs/api-setup.md#password-reset-api-endpoints) for details.
-
-## Cached Organization Access Policy
-
-Organization authorization is centralized in `organizations/access.py`:
-
-- **Central access helpers:** Use `assert_org_view`, `assert_org_write`, and `assert_org_admin` in endpoints instead of ad-hoc membership queries.
-- **Compatibility helpers:** Existing `is_member`, `is_admin`, and `is_owner` imports remain available through `organizations/permissions.py`.
-- **Cached membership role:** The user's membership role for an organization is cached for 1 hour as a single role value instead of separate boolean keys.
-- **Automatic cache invalidation:** When a user's organization membership changes, Django signals clear the cached role so permission checks reflect the latest saved membership state.
-
-**Example:**
-
-```python
-# organizations/access.py
-assert_org_write(request.auth, contact.organization)
-```
-
-See [docs/celery-and-redis.md](docs/celery-and-redis.md) for a detailed breakdown and code/test examples.
-
-## Organization Permissions: "Loose by Default"
-
-By default, this API uses a **loose org permission model**:
-
-- **All members of an organization can perform all actions** (create, update, delete, view) on all resources in that organization.
-- No distinction is made between admin, owner, or member for access control—membership is sufficient.
-
-### How to Tighten Permissions
-
-- To restrict an action to admins/owners, use `assert_org_admin(user, org)`.
-- You can add more granular permission logic as needed, leveraging the centralized access helpers.
-
----
-
-For more details, see `organizations/permissions.py` and the usage in API modules like `contacts/api.py`.
+These defaults are starting decisions, not universal product requirements.
+Change them consistently in policy, schema, tests, documentation, and client
+behavior when a product needs different semantics.
 
 ## Deployment
 
-Deployment is pre-configured for [Kamal](https://kamal-deploy.com/). To use Kamal for deployment, you must have Ruby installed on your system and Kamal installed as a Ruby gem. See the [Kamal installation guide](https://kamal-deploy.com/docs/installation/) for details.
+[compose.production.yaml](compose.production.yaml) is the maintained deployment
+example: one Linux host running Caddy, web, worker, beat, PostgreSQL, and Redis.
+It is suitable only when single-host failure is acceptable and backups,
+monitoring, patching, restores, and incident response have a named owner. It is
+not a high-availability topology.
 
-All deployment configuration is in `config/deploy.yml` and secrets are managed in `.kamal/secrets`. For more information, see the [deployment documentation](docs/deployment.md).
+Follow [deployment.md](docs/deployment.md) and
+[operations.md](docs/operations.md); do not deploy from the local development
+Compose file or treat passing tests as a substitute for release review.
 
-## Project Structure
+## Documentation
 
-```
-DjangoApiStarter/
-├── accounts/           # User management & auth
-├── organizations/      # Organization management
-├── contacts/           # Contact management
-├── tags/               # Tag management
-├── core/               # Core utilities
-├── images/             # Image management
-├── DjangoApiStarter/   # Project settings
-├── manage.py
-└── requirements.txt
-```
-
-## Contributing
-
-Pull requests are welcome when this is a bit more advanced.
+- [Architecture and extension rules](docs/architecture.md)
+- [API routes and conventions](docs/api-routes.md)
+- [Authentication and security](docs/security.md)
+- [Environment variables](docs/environment.md)
+- [Production deployment](docs/deployment.md)
+- [Operations, backups, and incidents](docs/operations.md)
+- [Optional PostGIS](docs/postgis.md)
+- [Upgrade procedure](docs/upgrades.md)
+- [Hardening checklist](docs/hardening/production-readiness-checklist.md)

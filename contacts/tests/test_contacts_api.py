@@ -1,67 +1,226 @@
+import io
+from unittest.mock import patch
+from urllib.parse import urlencode
+
 import pytest
 from django.contrib.auth import get_user_model
-from accounts.tests.utils import create_test_user
-from organizations.models import Organization, Membership
-from contacts.models import Contact
-import io
-from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError
 from django.utils.datastructures import MultiValueDict
+from PIL import Image
+
+from accounts.tests.utils import create_test_user
+from contacts.models import Contact
+from contacts.throttles import contact_search_throttle
+from organizations.models import Membership, Organization
 
 User = get_user_model()
 
+
 @pytest.mark.django_db
 def test_create_contact(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
     headers = make_auth_headers(api_client, user, password="pw")
-    payload = {"display_name": "Alice", "organization": org.slug}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    payload = {
+        "display_name": "Alice",
+    }
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 201
     data = resp.json()
     assert data["display_name"] == "Alice"
     assert data["organization"] == org.slug
     assert "slug" in data
     assert data["creator"] == user.slug
 
+
+@pytest.mark.django_db
+def test_contact_slugs_are_unique_per_organization(make_auth_headers, api_client):
+    user = create_test_user(email="scoped-slug@example.com", password="pw")
+    first = Organization.objects.create(
+        name="First", slug="contact-first", type="group"
+    )
+    second = Organization.objects.create(
+        name="Second", slug="contact-second", type="group"
+    )
+    Membership.objects.create(user=user, organization=first, role="member")
+    Membership.objects.create(user=user, organization=second, role="member")
+    headers = make_auth_headers(api_client, user, password="pw")
+
+    first_response = api_client.post(
+        f"/orgs/{first.slug}/contacts/", json={"display_name": "Alex"}, headers=headers
+    )
+    second_response = api_client.post(
+        f"/orgs/{second.slug}/contacts/", json={"display_name": "Alex"}, headers=headers
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert first_response.json()["slug"] == second_response.json()["slug"] == "alex"
+
+
+@pytest.mark.django_db
+def test_contact_create_retries_slug_collision(
+    make_auth_headers, api_client, monkeypatch
+):
+    user = create_test_user(email="contact-race@example.com", password="pw")
+    organization = Organization.objects.create(
+        name="Contact race", slug="contact-race", type="group"
+    )
+    Membership.objects.create(user=user, organization=organization, role="owner")
+    original_create = Contact.objects.create
+    attempts = 0
+
+    def collide_once(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise IntegrityError("simulated contact slug collision")
+        return original_create(**kwargs)
+
+    monkeypatch.setattr(Contact.objects, "create", collide_once)
+
+    response = api_client.post(
+        f"/orgs/{organization.slug}/contacts/",
+        json={"display_name": "Racing contact"},
+        headers=make_auth_headers(api_client, user),
+    )
+
+    assert response.status_code == 201
+    assert attempts == 2
+    assert response.json()["slug"].startswith("racing-contact-")
+
+
 @pytest.mark.django_db
 def test_get_contact(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="Bob", slug="bob", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="Bob", slug="bob", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    resp = api_client.get(f"/contacts/{contact.slug}/", headers=headers)
+    resp = api_client.get(f"/orgs/{org.slug}/contacts/{contact.slug}/", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["display_name"] == "Bob"
     assert data["organization"] == org.slug
     assert data["creator"] == user.slug
 
+
 @pytest.mark.django_db
-def test_update_contact_display_name_and_slug(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+def test_update_contact_display_name_keeps_stable_slug(make_auth_headers, api_client):
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="Charlie", slug="charlie", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="Charlie", slug="charlie", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
     payload = {"display_name": "Charlie Brown"}
-    resp = api_client.patch(f"/contacts/{contact.slug}/", json=payload, headers=headers)
+    resp = api_client.patch(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/", json=payload, headers=headers
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["display_name"] == "Charlie Brown"
-    assert data["slug"] != "charlie"
+    assert data["slug"] == "charlie"
+
+
+@pytest.mark.django_db
+def test_partial_update_contact_location_and_notes(make_auth_headers, api_client):
+    user = create_test_user(email="patch-contact-fields@example.com", password="pw")
+    org = Organization.objects.create(
+        name="Patch Contact Fields",
+        slug="patch-contact-fields",
+        type="group",
+        creator=user,
+    )
+    Membership.objects.create(user=user, organization=org, role="owner")
+    contact = Contact.objects.create(
+        display_name="Patch Fields",
+        slug="patch-fields",
+        organization=org,
+        creator=user,
+    )
+    headers = make_auth_headers(api_client, user, password="pw")
+
+    response = api_client.patch(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/",
+        json={"location": "Paris", "notes": "Met at DjangoCon"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["location"] == "Paris"
+    assert response.json()["notes"] == "Met at DjangoCon"
+    contact.refresh_from_db()
+    assert contact.location == "Paris"
+    assert contact.notes == "Met at DjangoCon"
+
+
+@pytest.mark.django_db
+def test_partial_update_contact_clears_location_and_notes(
+    make_auth_headers, api_client
+):
+    user = create_test_user(email="clear-contact-fields@example.com", password="pw")
+    org = Organization.objects.create(
+        name="Clear Contact Fields",
+        slug="clear-contact-fields",
+        type="group",
+        creator=user,
+    )
+    Membership.objects.create(user=user, organization=org, role="owner")
+    contact = Contact.objects.create(
+        display_name="Clear Fields",
+        slug="clear-fields",
+        location="Paris",
+        notes="Remove me",
+        organization=org,
+        creator=user,
+    )
+    headers = make_auth_headers(api_client, user, password="pw")
+
+    response = api_client.patch(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/",
+        json={"location": None, "notes": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["location"] == ""
+    assert response.json()["notes"] == ""
+    contact.refresh_from_db()
+    assert contact.location == ""
+    assert contact.notes == ""
+
 
 @pytest.mark.django_db
 def test_list_contacts(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
     Contact.objects.create(display_name="X", slug="x", organization=org, creator=user)
     Contact.objects.create(display_name="Y", slug="y", organization=org, creator=user)
     headers = make_auth_headers(api_client, user, password="pw")
-    resp = api_client.get("/contacts/", headers=headers)
+    resp = api_client.get(f"/orgs/{org.slug}/contacts/", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, dict)
@@ -71,68 +230,118 @@ def test_list_contacts(make_auth_headers, api_client):
     display_names = {item["display_name"] for item in data["items"]}
     assert display_names == {"X", "Y"}
 
+
 @pytest.mark.django_db
-def test_delete_contact(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+def test_delete_contact(
+    make_auth_headers, api_client, django_capture_on_commit_callbacks
+):
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="Z", slug="z", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="Z",
+        slug="z",
+        organization=org,
+        creator=user,
+        avatar_path="public/avatars/contacts/z.webp",
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    resp = api_client.delete(f"/contacts/{contact.slug}/", headers=headers)
+    with patch("core.utils.avatar.delete_avatar_files") as delete_avatar_files:
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = api_client.delete(
+                f"/orgs/{org.slug}/contacts/{contact.slug}/", headers=headers
+            )
     assert resp.status_code == 200
     assert not Contact.objects.filter(slug="z").exists()
+    delete_avatar_files.assert_called_once_with("public/avatars/contacts/z.webp")
+
 
 @pytest.mark.django_db
 def test_auth_required(api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
-    payload = {"display_name": "NoAuth", "organization": org.slug}
-    resp = api_client.post("/contacts/", json=payload)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
+    payload = {
+        "display_name": "NoAuth",
+    }
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload)
     assert resp.status_code == 401
+
 
 @pytest.mark.django_db
 def test_invalid_org_slug(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    payload = {"display_name": "BadOrg", "organization": "does-not-exist"}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
+    payload = {"display_name": "BadOrg"}
+    resp = api_client.post(
+        "/orgs/does-not-exist/contacts/", json=payload, headers=headers
+    )
     assert resp.status_code == 404
+
 
 @pytest.mark.django_db
 def test_missing_name(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    payload = {"organization": org.slug}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
+    payload = {}
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
     assert resp.status_code == 400
     errors = resp.json()
     assert isinstance(errors, dict)
     assert "detail" in errors
     assert "at least one of display_name" in errors["detail"].lower()
 
+
 @pytest.mark.django_db
 def test_get_nonexistent_contact(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    resp = api_client.get("/contacts/not-a-real-slug/", headers=headers)
+    resp = api_client.get(
+        f"/orgs/{user.memberships.first().organization.slug}/contacts/not-a-real-slug/",
+        headers=headers,
+    )
     assert resp.status_code == 404
+
 
 @pytest.mark.django_db
 def test_upload_contact_avatar(tmp_path, make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="AvatarTest", slug="avatartest", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="AvatarTest", slug="avatartest", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
     img = Image.new("RGB", (300, 300), color="red")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
-    uploaded = SimpleUploadedFile("avatar.png", buf.getvalue(), content_type="image/png")
+    uploaded = SimpleUploadedFile(
+        "avatar.png", buf.getvalue(), content_type="image/png"
+    )
     files = MultiValueDict({"file": [uploaded]})
     response = api_client.post(
-        f"/contacts/{contact.slug}/avatar/",
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/",
         data={},
         FILES=files,
         headers=headers,
@@ -144,18 +353,27 @@ def test_upload_contact_avatar(tmp_path, make_auth_headers, api_client):
     contact.refresh_from_db()
     assert contact.avatar_path == data["avatar_path"]
 
+
 @pytest.mark.django_db
 def test_upload_contact_avatar_invalid_type(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="AvatarTest2", slug="avatartest2", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="AvatarTest2", slug="avatartest2", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
     buf = io.BytesIO(b"not an image")
-    uploaded = SimpleUploadedFile("notanimage.txt", buf.getvalue(), content_type="text/plain")
+    uploaded = SimpleUploadedFile(
+        "notanimage.txt", buf.getvalue(), content_type="text/plain"
+    )
     files = MultiValueDict({"file": [uploaded]})
     response = api_client.post(
-        f"/contacts/{contact.slug}/avatar/",
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/",
         data={},
         FILES=files,
         headers=headers,
@@ -163,22 +381,34 @@ def test_upload_contact_avatar_invalid_type(make_auth_headers, api_client):
     assert response.status_code == 400
     assert "detail" in response.json()
 
+
 @pytest.mark.django_db
 def test_delete_contact_avatar(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="AvatarTestDel", slug="avatartestdel", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="AvatarTestDel",
+        slug="avatartestdel",
+        organization=org,
+        creator=user,
+    )
     headers = make_auth_headers(api_client, user, password="pw")
     # Upload avatar
     img = Image.new("RGB", (300, 300), color="red")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
-    uploaded = SimpleUploadedFile("avatar.png", buf.getvalue(), content_type="image/png")
+    uploaded = SimpleUploadedFile(
+        "avatar.png", buf.getvalue(), content_type="image/png"
+    )
     files = MultiValueDict({"file": [uploaded]})
     upload_resp = api_client.post(
-        f"/contacts/{contact.slug}/avatar/",
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/",
         data={},
         FILES=files,
         headers=headers,
@@ -187,217 +417,452 @@ def test_delete_contact_avatar(make_auth_headers, api_client):
     contact.refresh_from_db()
     assert contact.avatar_path is not None
     # Delete avatar
-    del_resp = api_client.delete(f"/contacts/{contact.slug}/avatar/", headers=headers)
+    del_resp = api_client.delete(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/", headers=headers
+    )
     assert del_resp.status_code == 200
     assert del_resp.json()["detail"] == "Avatar deleted."
     contact.refresh_from_db()
     assert contact.avatar_path is None
 
+
 @pytest.mark.django_db
 def test_delete_contact_avatar_no_avatar(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="NoAvatar", slug="noavatar", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="NoAvatar", slug="noavatar", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    del_resp = api_client.delete(f"/contacts/{contact.slug}/avatar/", headers=headers)
+    del_resp = api_client.delete(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/", headers=headers
+    )
     assert del_resp.status_code == 404
     assert del_resp.json()["detail"] == "No avatar to delete."
 
 
 @pytest.mark.django_db
-def test_get_contact_avatar_url_uses_storage_presign_helper(make_auth_headers, monkeypatch, api_client):
-    user = create_test_user(email="avatar-url@example.com", password="pw", username="avatarurl", slug="avatarurl")
-    headers = make_auth_headers(api_client, user, password="pw")
-    calls = []
+def test_contact_reads_include_public_avatar_urls(
+    settings, make_auth_headers, api_client
+):
+    settings.IMAGE_PUBLIC_BASE_URL = "https://storage.example"
+    user = create_test_user(email="avatar-reader@example.com", password="pw")
+    org = Organization.objects.create(name="Avatar org", slug="avatar-org")
+    Membership.objects.create(user=user, organization=org, role="owner")
+    key = "public/avatars/contacts/0123456789abcdef0123456789abcdef.webp"
+    contact = Contact.objects.create(
+        display_name="Avatar",
+        slug="avatar",
+        organization=org,
+        creator=user,
+        avatar_path=key,
+    )
 
-    def fake_generate_presigned_storage_url(key, **kwargs):
-        calls.append((key, kwargs))
-        return f"https://storage.example/{key}"
-
-    monkeypatch.setattr("contacts.api.generate_presigned_storage_url", fake_generate_presigned_storage_url)
-
-    resp = api_client.get("/contacts/avatars/ct_avatar-20240529.webp", headers=headers)
+    resp = api_client.get(
+        f"/orgs/{org.slug}/contacts/{contact.slug}/",
+        headers=make_auth_headers(api_client, user),
+    )
 
     assert resp.status_code == 200
-    assert resp.json() == {"url": "https://storage.example/ct_avatar-20240529.webp"}
-    assert calls == [
-        (
-            "ct_avatar-20240529.webp",
-            {
-                "expires_in": 3600,
-                "content_type": "image/webp",
-                "cache_control": "public, max-age=3600",
-            },
-        )
-    ]
+    assert resp.json()["avatar_url"] == f"https://storage.example/{key}"
+    assert resp.json()["large_avatar_url"].endswith(
+        "/0123456789abcdef0123456789abcdef_lg.webp"
+    )
+
+
+def test_contact_avatar_url_helper_route_is_removed(api_client):
+    key = "public/avatars/contacts/0123456789abcdef0123456789abcdef.webp"
+    with pytest.raises(Exception, match="Cannot resolve"):
+        api_client.get(f"/avatars/{key}")
 
 
 @pytest.mark.django_db
 def test_upload_contact_avatar_too_large(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Test Org", slug="test-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Test Org", slug="test-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="BigAvatar", slug="bigavatar", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="BigAvatar", slug="bigavatar", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
     # Create a file just over 10MB
     data = b"0" * (10 * 1024 * 1024 + 1)
     uploaded = SimpleUploadedFile("big.png", data, content_type="image/png")
     files = MultiValueDict({"file": [uploaded]})
     upload_resp = api_client.post(
-        f"/contacts/{contact.slug}/avatar/",
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/",
         data={},
         FILES=files,
         headers=headers,
     )
     assert upload_resp.status_code == 400
-    assert upload_resp.json()["detail"] == "File too large. Maximum allowed size is 10MB."
+    assert (
+        upload_resp.json()["detail"] == "File too large. Maximum allowed size is 10MB."
+    )
+
 
 @pytest.mark.django_db
 def test_create_contact_display_name_logic(make_auth_headers, api_client):
-    user = create_test_user(email="logic@example.com", password="pw", username="logicuser", slug="logicuser")
-    org = Organization.objects.create(name="Logic Org", slug="logic-org", type="group", creator=user)
+    user = create_test_user(
+        email="logic@example.com", password="pw", username="logicuser", slug="logicuser"
+    )
+    org = Organization.objects.create(
+        name="Logic Org", slug="logic-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
     headers = make_auth_headers(api_client, user, password="pw")
     # Case 1: Only first_name and last_name
-    payload = {"organization": org.slug, "first_name": "Jane", "last_name": "Doe"}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    payload = {"first_name": "Jane", "last_name": "Doe"}
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 201
     assert resp.json()["display_name"] == "Jane Doe"
     # Case 2: Only first_name (unique)
-    payload = {"organization": org.slug, "first_name": "Solo2"}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    payload = {"first_name": "Solo2"}
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 201
     assert resp.json()["display_name"] == "Solo2"
     # Case 3: Only last_name (unique)
-    payload = {"organization": org.slug, "last_name": "Surname3"}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
-    assert resp.status_code == 200
+    payload = {"last_name": "Surname3"}
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
+    assert resp.status_code == 201
     assert resp.json()["display_name"] == "Surname3"
     # Case 4: No names at all
-    payload = {"organization": org.slug}
-    resp = api_client.post("/contacts/", json=payload, headers=headers)
+    payload = {}
+    resp = api_client.post(f"/orgs/{org.slug}/contacts/", json=payload, headers=headers)
     assert resp.status_code == 400
     errors = resp.json()
     assert isinstance(errors, dict)
     assert "detail" in errors
     assert "at least one of display_name" in errors["detail"].lower()
 
+
 @pytest.mark.django_db
-def test_update_contact_organization_and_fields(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org1 = Organization.objects.create(name="Org1", slug="org1", type="group", creator=user)
-    org2 = Organization.objects.create(name="Org2", slug="org2", type="group", creator=user)
+def test_update_contact_fields_within_organization(make_auth_headers, api_client):
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org1 = Organization.objects.create(
+        name="Org1", slug="org1", type="group", creator=user
+    )
+    org2 = Organization.objects.create(
+        name="Org2", slug="org2", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org1, role="owner")
     Membership.objects.create(user=user, organization=org2, role="owner")
-    contact = Contact.objects.create(display_name="Original Name", slug="original-name", organization=org1, creator=user, email="old@email.com", phone="12345")
+    contact = Contact.objects.create(
+        display_name="Original Name",
+        slug="original-name",
+        organization=org1,
+        creator=user,
+        email="old@email.com",
+        phone="12345",
+        location="Old location",
+        notes="Old notes",
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    payload = {
-        "display_name": "New Name",
-        "organization": org2.slug,
-        "email": "new@email.com",
-        "phone": "67890"
-    }
-    resp = api_client.put(f"/contacts/{contact.slug}/", json=payload, headers=headers)
+    payload = {"display_name": "New Name", "email": "new@email.com", "phone": "67890"}
+    resp = api_client.put(
+        f"/orgs/{org1.slug}/contacts/{contact.slug}/", json=payload, headers=headers
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["display_name"] == "New Name"
-    assert data["organization"] == org2.slug
+    assert data["organization"] == org1.slug
     assert data["email"] == "new@email.com"
     assert data["phone"] == "67890"
+    assert data["location"] == ""
+    assert data["notes"] == ""
     # Confirm DB update
     contact.refresh_from_db()
     assert contact.display_name == "New Name"
-    assert contact.organization == org2
+    assert contact.organization == org1
     assert contact.email == "new@email.com"
     assert contact.phone == "67890"
-    # Error case: invalid organization slug
-    payload["organization"] = "does-not-exist"
-    resp = api_client.put(f"/contacts/{contact.slug}/", json=payload, headers=headers)
-    assert resp.status_code == 404
+    assert contact.location == ""
+    assert contact.notes == ""
 
 
 @pytest.mark.django_db
-def test_update_contact_rejects_move_to_inaccessible_organization(make_auth_headers, api_client):
-    user = create_test_user(email="move@example.com", password="pw", username="moveuser", slug="moveuser")
-    org1 = Organization.objects.create(name="Move Org1", slug="move-org1", type="group", creator=user)
-    org2 = Organization.objects.create(name="Move Org2", slug="move-org2", type="group", creator=None)
+def test_update_contact_rejects_organization_in_body(make_auth_headers, api_client):
+    user = create_test_user(
+        email="move@example.com", password="pw", username="moveuser", slug="moveuser"
+    )
+    org1 = Organization.objects.create(
+        name="Move Org1", slug="move-org1", type="group", creator=user
+    )
+    org2 = Organization.objects.create(
+        name="Move Org2", slug="move-org2", type="group", creator=None
+    )
     Membership.objects.create(user=user, organization=org1, role="owner")
-    contact = Contact.objects.create(display_name="Move Me", slug="move-me", organization=org1, creator=user)
+    contact = Contact.objects.create(
+        display_name="Move Me", slug="move-me", organization=org1, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
 
     resp = api_client.put(
-        f"/contacts/{contact.slug}/",
+        f"/orgs/{org1.slug}/contacts/{contact.slug}/",
         json={"display_name": "Move Me", "organization": org2.slug},
         headers=headers,
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == 400
     contact.refresh_from_db()
     assert contact.organization == org1
 
+
 @pytest.mark.django_db
 def test_upload_contact_avatar_error(monkeypatch, make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org = Organization.objects.create(name="Avatar Org", slug="avatar-org", type="group", creator=user)
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org = Organization.objects.create(
+        name="Avatar Org", slug="avatar-org", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org, role="owner")
-    contact = Contact.objects.create(display_name="AvatarFail", slug="avatarfail", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="AvatarFail", slug="avatarfail", organization=org, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
+
     # Monkeypatch resize_avatar_images to raise Exception
     def fail_resize(*a, **kw):
         raise Exception("resize failed")
-    monkeypatch.setattr("core.utils.image.resize_avatar_images", fail_resize)
+
+    monkeypatch.setattr("contacts.api.resize_avatar_images", fail_resize)
     from django.core.files.uploadedfile import SimpleUploadedFile
     from django.utils.datastructures import MultiValueDict
-    uploaded = SimpleUploadedFile("fail.png", b"fake", content_type="image/png")
+
+    img = Image.new("RGB", (10, 10), color="red")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    uploaded = SimpleUploadedFile(
+        "fail.png", buffer.getvalue(), content_type="image/png"
+    )
     files = MultiValueDict({"file": [uploaded]})
     resp = api_client.post(
-        f"/contacts/{contact.slug}/avatar/",
+        f"/orgs/{org.slug}/contacts/{contact.slug}/avatar/",
         data={},
         FILES=files,
         headers=headers,
     )
-    assert resp.status_code == 400
-    assert "failed to process avatar" in resp.json()["detail"].lower()
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Avatar upload is temporarily unavailable."
+
 
 @pytest.mark.django_db
-def test_partial_update_contact_organization(make_auth_headers, api_client):
-    user = create_test_user(email="test@example.com", password="pw", username="testuser", slug="testuser")
-    org1 = Organization.objects.create(name="Org1Patch", slug="org1patch", type="group", creator=user)
-    org2 = Organization.objects.create(name="Org2Patch", slug="org2patch", type="group", creator=user)
+def test_partial_update_rejects_organization_in_body(make_auth_headers, api_client):
+    user = create_test_user(
+        email="test@example.com", password="pw", username="testuser", slug="testuser"
+    )
+    org1 = Organization.objects.create(
+        name="Org1Patch", slug="org1patch", type="group", creator=user
+    )
+    org2 = Organization.objects.create(
+        name="Org2Patch", slug="org2patch", type="group", creator=user
+    )
     Membership.objects.create(user=user, organization=org1, role="owner")
     Membership.objects.create(user=user, organization=org2, role="owner")
-    contact = Contact.objects.create(display_name="Patch Name", slug="patch-name", organization=org1, creator=user)
+    contact = Contact.objects.create(
+        display_name="Patch Name", slug="patch-name", organization=org1, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
-    # Patch organization only
     payload = {"organization": org2.slug}
-    resp = api_client.patch(f"/contacts/{contact.slug}/", json=payload, headers=headers)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["organization"] == org2.slug
+    resp = api_client.patch(
+        f"/orgs/{org1.slug}/contacts/{contact.slug}/", json=payload, headers=headers
+    )
+    assert resp.status_code == 400
     contact.refresh_from_db()
-    assert contact.organization == org2
-    # Error case: invalid organization slug
-    payload = {"organization": "does-not-exist"}
-    resp = api_client.patch(f"/contacts/{contact.slug}/", json=payload, headers=headers)
-    assert resp.status_code == 404
+    assert contact.organization == org1
 
 
 @pytest.mark.django_db
-def test_partial_update_contact_rejects_move_to_inaccessible_organization(make_auth_headers, api_client):
-    user = create_test_user(email="patchmove@example.com", password="pw", username="patchmove", slug="patchmove")
-    org1 = Organization.objects.create(name="Patch Move Org1", slug="patch-move-org1", type="group", creator=user)
-    org2 = Organization.objects.create(name="Patch Move Org2", slug="patch-move-org2", type="group", creator=None)
+def test_partial_update_contact_rejects_move_to_inaccessible_organization(
+    make_auth_headers, api_client
+):
+    user = create_test_user(
+        email="patchmove@example.com",
+        password="pw",
+        username="patchmove",
+        slug="patchmove",
+    )
+    org1 = Organization.objects.create(
+        name="Patch Move Org1", slug="patch-move-org1", type="group", creator=user
+    )
+    org2 = Organization.objects.create(
+        name="Patch Move Org2", slug="patch-move-org2", type="group", creator=None
+    )
     Membership.objects.create(user=user, organization=org1, role="owner")
-    contact = Contact.objects.create(display_name="Patch Move", slug="patch-move", organization=org1, creator=user)
+    contact = Contact.objects.create(
+        display_name="Patch Move", slug="patch-move", organization=org1, creator=user
+    )
     headers = make_auth_headers(api_client, user, password="pw")
 
     resp = api_client.patch(
-        f"/contacts/{contact.slug}/",
+        f"/orgs/{org1.slug}/contacts/{contact.slug}/",
         json={"organization": org2.slug},
         headers=headers,
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == 400
     contact.refresh_from_db()
     assert contact.organization == org1
+
+
+@pytest.fixture
+def validated_contact_context(make_auth_headers, api_client):
+    user = create_test_user(email="contact-validation@example.com", password="pw")
+    organization = Organization.objects.create(
+        name="Contact validation",
+        slug="contact-validation",
+        type="group",
+        creator=user,
+    )
+    Membership.objects.create(user=user, organization=organization, role="owner")
+    return organization, make_auth_headers(api_client, user)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("display_name", "x" * 256),
+        ("first_name", "x" * 256),
+        ("last_name", "x" * 256),
+        ("email", f"{'x' * 243}@example.com"),
+        ("location", "x" * 256),
+        ("phone", "x" * 21),
+        ("notes", "x" * 10_001),
+    ],
+)
+def test_create_contact_rejects_values_exceeding_storage_limits(
+    api_client, validated_contact_context, field, value
+):
+    organization, headers = validated_contact_context
+    payload = {"display_name": "Valid name", field: value}
+
+    response = api_client.post(
+        f"/orgs/{organization.slug}/contacts/",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert not Contact.objects.filter(
+        organization=organization, display_name="Valid name"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_contact_rejects_malformed_email(api_client, validated_contact_context):
+    organization, headers = validated_contact_context
+
+    response = api_client.post(
+        f"/orgs/{organization.slug}/contacts/",
+        json={"display_name": "Invalid email", "email": "not-an-email"},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert not Contact.objects.filter(
+        organization=organization, display_name="Invalid email"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_contact_patch_uses_the_same_field_limits(
+    api_client, validated_contact_context
+):
+    organization, headers = validated_contact_context
+    contact = Contact.objects.create(
+        organization=organization,
+        display_name="Patch limits",
+        slug="patch-limits",
+    )
+
+    response = api_client.patch(
+        f"/orgs/{organization.slug}/contacts/{contact.slug}/",
+        json={"phone": "x" * 21},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    contact.refresh_from_db()
+    assert contact.phone == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"sort_by": "unknown"},
+        {"sort_order": "sideways"},
+        {"search": "x" * 201},
+    ],
+)
+def test_contact_list_rejects_invalid_or_oversized_query_parameters(
+    api_client, validated_contact_context, params
+):
+    organization, headers = validated_contact_context
+
+    response = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?{urlencode(params)}",
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_contact_search_rejects_excessive_term_count(
+    api_client, validated_contact_context
+):
+    organization, headers = validated_contact_context
+
+    response = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?"
+        + urlencode(
+            {"search": "one two three four five six seven eight nine ten eleven"}
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "at most 10 terms" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_contact_search_has_a_dedicated_user_throttle(
+    api_client, validated_contact_context, monkeypatch
+):
+    organization, headers = validated_contact_context
+    monkeypatch.setattr(contact_search_throttle, "num_requests", 1)
+    monkeypatch.setattr(contact_search_throttle, "duration", 60)
+
+    # Ordinary listing neither consumes nor is blocked by the search budget.
+    for _ in range(2):
+        response = api_client.get(
+            f"/orgs/{organization.slug}/contacts/",
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+    first_search = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?search=alice",
+        headers=headers,
+    )
+    limited_search = api_client.get(
+        f"/orgs/{organization.slug}/contacts/?search=bob",
+        headers=headers,
+    )
+
+    assert first_search.status_code == 200
+    assert limited_search.status_code == 429

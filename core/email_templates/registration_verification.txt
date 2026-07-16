@@ -6,7 +6,7 @@ Thank you for registering with {{ project_name }}. To complete your registration
 
 {{ verification_link }}
 
-This link will expire in 24 hours.
+This link will expire in {{ expiry_hours }} hours. You will choose your password after opening it.
 
 If you did not register for an account, please ignore this email.
 

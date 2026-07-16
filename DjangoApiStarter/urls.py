@@ -17,16 +17,16 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
-from images.views import media_serve
-from django.http import HttpResponse
-from .api import api
 
-def health_check(request):
-    return HttpResponse("OK")
+from core.health import live, ready
+from images.views import media_serve
+
+from .api import api
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", api.urls),
-    path("kamal/up/", health_check),
+    path("health/live/", live),
+    path("health/ready/", ready),
     path("media/<path:key>", media_serve, name="media-serve"),
 ]

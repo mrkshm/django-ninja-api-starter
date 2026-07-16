@@ -12,7 +12,9 @@ from organizations.models import Organization
 @pytest.mark.django_db
 def test_serialize_image_adds_variant_keys_without_storage_checks(monkeypatch):
     def fail_exists(_name):
-        raise AssertionError("serialize_image must not perform storage existence checks")
+        raise AssertionError(
+            "serialize_image must not perform storage existence checks"
+        )
 
     monkeypatch.setattr(default_storage, "exists", fail_exists)
 
@@ -51,7 +53,9 @@ def test_serialize_public_image_adds_public_urls(settings):
 
     User = get_user_model()
     user = User.objects.create_user(email="public-image@example.com", password="pw")
-    org = Organization.objects.create(name="Public Images", slug="public-images", type="group")
+    org = Organization.objects.create(
+        name="Public Images", slug="public-images", type="group"
+    )
     image = Image.objects.create(
         file="public/images/example image.jpg",
         organization=org,
@@ -63,19 +67,31 @@ def test_serialize_public_image_adds_public_urls(settings):
 
     assert out.visibility == "public"
     assert out.url is None
-    assert out.public_url == "https://media.example.com/assets/public/images/example%20image.jpg"
+    assert (
+        out.public_url
+        == "https://media.example.com/assets/public/images/example%20image.jpg"
+    )
     assert out.public_variant_urls.original == out.public_url
-    assert out.public_variant_urls.thumb == "https://media.example.com/assets/public/images/example%20image_thumb.webp"
+    assert (
+        out.public_variant_urls.thumb
+        == "https://media.example.com/assets/public/images/example%20image_thumb.webp"
+    )
     assert out.variant_keys.thumb == "public/images/example image_thumb.webp"
 
 
 @pytest.mark.django_db
 def test_serialize_image_relation_adds_nested_image_and_relation_fields():
     User = get_user_model()
-    user = User.objects.create_user(email="relation-serializer@example.com", password="pw")
+    user = User.objects.create_user(
+        email="relation-serializer@example.com", password="pw"
+    )
     org = Organization.objects.create(name="Images", slug="images", type="group")
-    contact = Contact.objects.create(display_name="Jane", organization=org, creator=user)
-    image = Image.objects.create(file="images/example.jpg", organization=org, creator=user)
+    contact = Contact.objects.create(
+        display_name="Jane", organization=org, creator=user
+    )
+    image = Image.objects.create(
+        file="images/example.jpg", organization=org, creator=user
+    )
     content_type = ContentType.objects.get_for_model(contact)
     relation = PolymorphicImageRelation.objects.create(
         image=image,

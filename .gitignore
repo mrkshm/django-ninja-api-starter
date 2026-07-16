@@ -2,6 +2,7 @@
 local_settings.py
 db.sqlite3
 .env
+.env.*
 _DS.Store
 .DS_Store
 # Ignore venv
@@ -10,10 +11,8 @@ venv/
 # Ignore logs
 logs/
 
-# Ignore migrations
-migrations/
-
 # Ignore pycache
 __pycache__/
 
 .coverage
+.test_media/

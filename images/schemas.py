@@ -1,11 +1,15 @@
-from pydantic import BaseModel, Field, field_serializer, ConfigDict
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from core.schemas import DetailResponse
 
+
 class ImageCreate(BaseModel):
-    file: Optional[str] = None  # Accepts file path or URL; actual upload handled separately
+    file: Optional[str] = (
+        None  # Accepts file path or URL; actual upload handled separately
+    )
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
@@ -13,16 +17,18 @@ class ImageCreate(BaseModel):
 
 
 class ImagePatchIn(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    alt_text: Optional[str] = None
+    title: str = Field(default="", max_length=120)
+    description: str = ""
+    alt_text: str = Field(default="", max_length=120)
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
 
 class ImageUpdate(BaseModel):
     description: Optional[str] = None
     alt_text: Optional[str] = None
     title: Optional[str] = None
     model_config = ConfigDict(extra="forbid")
+
 
 class ImageVariants(BaseModel):
     original: Optional[str] = None
@@ -74,8 +80,8 @@ class ImageOut(BaseModel):
             return v.isoformat()
         return str(v) if v else None
 
-    class Config:
-        model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PolymorphicImageRelationOut(BaseModel):
     id: int
@@ -105,6 +111,11 @@ class SetCoverIn(BaseModel):
 
 class CreateImageShareIn(BaseModel):
     expires_in_seconds: Optional[int] = Field(None, ge=60, le=60 * 60 * 24 * 30)
+    model_config = ConfigDict(extra="forbid")
+
+
+class ResolveImageShareIn(BaseModel):
+    token: str = Field(min_length=20, max_length=128)
     model_config = ConfigDict(extra="forbid")
 
 

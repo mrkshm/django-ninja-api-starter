@@ -1,53 +1,52 @@
 import json
-import os
 
-from core.utils.idempotency import read_cached_response, store_cached_response
-from django.core.files.storage import default_storage
-from django.db import transaction
 from django.shortcuts import get_object_or_404
-from images.api.common import get_org_scope_for_request, logger, router
-from images.models import Image, PolymorphicImageRelation
-from images.throttles import bulk_delete_throttle
 from ninja import Status
 from ninja.errors import HttpError
-from ninja_jwt.authentication import JWTAuth
+
+from core.authentication import JWTAuth
+from core.utils.idempotency import run_idempotently
+from images.api.common import logger, router
+from images.models import Image
+from images.services import delete_image_record
+from images.throttles import bulk_delete_throttle
+from organizations.scope import resolve_org_scope
 
 
-@router.delete("/orgs/{org_slug}/images/{image_id}/", auth=JWTAuth(), response={204: None})
+@router.delete(
+    "/orgs/{org_slug}/images/{image_id}/", auth=JWTAuth(), response={204: None}
+)
 def delete_image(request, org_slug: str, image_id: int):
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
     image = get_object_or_404(Image, id=image_id, organization=org)
-    PolymorphicImageRelation.objects.filter(image=image).delete()
-    file_name = image.file.name or str(image.file) if hasattr(image.file, "name") else str(image.file)
-    base, _ext = os.path.splitext(file_name)
-    for suffix in ["thumb", "sm", "md", "lg"]:
-        versioned_filename = f"{base}_{suffix}.webp"
-        default_storage.delete(versioned_filename)
-    default_storage.delete(file_name)
-    image.delete()
+    delete_image_record(image)
     logger.info(
         "audit:image_delete org=%s user=%s image=%s",
-        org.id, getattr(user, "id", None), image_id,
+        org.id,
+        getattr(user, "id", None),
+        image_id,
     )
     return Status(204, None)
 
 
-@router.post("/orgs/{org_slug}/bulk-delete/", response={204: None, 400: dict}, auth=JWTAuth(), throttle=[bulk_delete_throttle])
+@router.post(
+    "/orgs/{org_slug}/bulk-delete/",
+    response={204: None, 400: dict},
+    auth=JWTAuth(),
+    throttle=[bulk_delete_throttle],
+)
 def bulk_delete_images(request, org_slug: str):
-    cached = read_cached_response(request)
-    if cached:
-        status, data = cached
-        return Status(status, data)
-
-    scope = get_org_scope_for_request(request, org_slug).require_write()
+    scope = resolve_org_scope(request, org_slug).require_write()
     org = scope.org
     user = scope.user
-    try:
+
+    def perform_delete() -> tuple[int, dict | None]:
         data = request.POST.dict() if request.POST else {}
         if not data and request.body:
-            data = json.loads(request.body.decode("utf-8"))
+            body = request.body
+            data = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
 
         ids = data.get("ids", [])
         if not ids:
@@ -55,42 +54,49 @@ def bulk_delete_images(request, org_slug: str):
 
         deleted_ids = []
         failed = []
-        with transaction.atomic():
-            for img_id in ids:
-                try:
-                    image = Image.objects.get(id=img_id, organization=org)
-                except Image.DoesNotExist:
-                    failed.append({"id": img_id, "reason": "not found"})
-                    continue
+        for img_id in ids:
+            try:
+                image = Image.objects.get(id=img_id, organization=org)
+            except Image.DoesNotExist:
+                failed.append({"id": img_id, "reason": "not found"})
+                continue
 
-                try:
-                    image.delete()
-                except Exception as exc:
-                    failed.append({"id": img_id, "reason": str(exc)})
-                    continue
+            try:
+                delete_image_record(image)
+            except Exception:
+                failed.append({"id": img_id, "reason": "delete failed"})
+                continue
 
-                deleted_ids.append(img_id)
-                logger.info(
-                    "audit:image_delete org=%s user=%s image=%s",
-                    org.id, getattr(user, "id", None), img_id,
-                )
+            deleted_ids.append(img_id)
+            logger.info(
+                "audit:image_delete org=%s user=%s image=%s",
+                org.id,
+                getattr(user, "id", None),
+                img_id,
+            )
 
         if failed:
             status = 400
             data = {
-                "detail": "Some images could not be deleted" if deleted_ids else "No images were deleted",
+                "detail": (
+                    "Some images could not be deleted"
+                    if deleted_ids
+                    else "No images were deleted"
+                ),
                 "deleted": deleted_ids,
                 "failed": failed,
             }
-            store_cached_response(request, status, data)
-            return Status(status, data)
+            return status, data
 
-        store_cached_response(request, 204, None)
-        return Status(204, None)
+        return 204, None
 
+    try:
+        status, data = run_idempotently(request, perform_delete)
+        return Status(status, data)
     except json.JSONDecodeError:
         raise HttpError(400, "Invalid JSON data")
     except HttpError:
         raise
-    except Exception as e:
-        raise HttpError(400, str(e))
+    except Exception as exc:
+        logger.exception("images:bulk_delete_failed org=%s", org.id)
+        raise HttpError(500, "Image deletion failed.") from exc

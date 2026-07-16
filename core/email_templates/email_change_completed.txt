@@ -1,0 +1,14 @@
+Subject: Email address changed for {{ project_name }}
+
+The email address for your {{ project_name }} account was changed from:
+
+    {{ old_email }}
+
+to:
+
+    {{ new_email }}
+
+All existing sessions were revoked. If you did not make this change, contact support immediately.
+
+Thanks,
+The {{ project_name }} Team

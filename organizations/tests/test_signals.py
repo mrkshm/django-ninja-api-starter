@@ -1,8 +1,10 @@
 import pytest
 from django.contrib.auth import get_user_model
-from organizations.models import Organization, Membership
+
+from organizations.models import Membership, Organization
 
 User = get_user_model()
+
 
 @pytest.mark.django_db
 def test_personal_org_created_on_user_creation():
@@ -11,8 +13,14 @@ def test_personal_org_created_on_user_creation():
     assert orgs.count() == 1
     org = orgs.first()
     assert org.name == user.username or org.name == f"user-{user.pk}"
-    assert org.slug == user.slug or org.slug.startswith(user.slug) or org.slug == f"user-{user.pk}" or org.slug.startswith(f"user-{user.pk}")
+    assert (
+        org.slug == user.slug
+        or org.slug.startswith(user.slug)
+        or org.slug == f"user-{user.pk}"
+        or org.slug.startswith(f"user-{user.pk}")
+    )
     assert org.creator == user
+
 
 @pytest.mark.django_db
 def test_membership_created_for_personal_org():
@@ -21,12 +29,14 @@ def test_membership_created_for_personal_org():
     membership = Membership.objects.get(user=user, organization=org)
     assert membership.role == "owner"
 
+
 @pytest.mark.django_db
 def test_personal_org_deleted_on_user_deletion():
     user = User.objects.create_user(email="test3@example.com", password="pw")
     org_id = Organization.objects.get(type="personal", memberships__user=user).id
     user.delete()
     assert not Organization.objects.filter(id=org_id).exists()
+
 
 @pytest.mark.django_db
 def test_no_duplicate_personal_orgs():
@@ -35,3 +45,17 @@ def test_no_duplicate_personal_orgs():
     user.save()
     orgs = Organization.objects.filter(type="personal", memberships__user=user)
     assert orgs.count() == 1
+
+
+@pytest.mark.django_db
+def test_deleting_member_does_not_delete_another_users_personal_org():
+    owner = User.objects.create_user(email="personal-owner@example.com", password="pw")
+    member = User.objects.create_user(
+        email="personal-member@example.com", password="pw"
+    )
+    organization = Organization.objects.get(type="personal", creator=owner)
+    Membership.objects.create(user=member, organization=organization, role="member")
+
+    member.delete()
+
+    assert Organization.objects.filter(pk=organization.pk, creator=owner).exists()

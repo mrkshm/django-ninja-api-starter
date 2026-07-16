@@ -1,8 +1,8 @@
-from django.conf import settings
-from django.http import StreamingHttpResponse, Http404
-from django.core.files.storage import default_storage
 import mimetypes
 
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.http import Http404, StreamingHttpResponse
 
 CHUNK_SIZE = 64 * 1024
 

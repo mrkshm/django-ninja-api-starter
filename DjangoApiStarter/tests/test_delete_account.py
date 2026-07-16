@@ -1,13 +1,14 @@
 import pytest
-from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
+
+from accounts.tests.utils import create_test_user
+
 from ..api import api
-from ninja.main import NinjaAPI
+
 
 @pytest.mark.django_db
 class TestDeleteAccount:
     def setup_method(self):
-        NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
     def test_delete_account_requires_auth(self):
@@ -20,7 +21,9 @@ class TestDeleteAccount:
         email = "deleteuser@example.com"
         password = "testpass123"
         create_test_user(email=email, password=password)
-        token_response = self.client.post("/token/pair", json={"email": email, "password": password})
+        token_response = self.client.post(
+            "/token/pair", json={"email": email, "password": password}
+        )
         access_token = token_response.json()["access"]
         # Delete account with JWT and current password
         response = self.client.delete(
@@ -42,7 +45,9 @@ class TestDeleteAccount:
         email = "deletewrong@example.com"
         password = "testpass123"
         user = create_test_user(email=email, password=password)
-        token_response = self.client.post("/token/pair", json={"email": email, "password": password})
+        token_response = self.client.post(
+            "/token/pair", json={"email": email, "password": password}
+        )
         access_token = token_response.json()["access"]
 
         response = self.client.delete(

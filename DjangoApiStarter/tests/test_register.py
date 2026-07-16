@@ -1,51 +1,46 @@
 import pytest
-from accounts.tests.utils import create_test_user
 from ninja.testing import TestClient
-from ..api import api
-from ninja.main import NinjaAPI
+
+from accounts.models import PendingRegistration, User
+from accounts.tests.utils import create_test_user
+from DjangoApiStarter.api import api
+
 
 @pytest.mark.django_db
 class TestRegister:
     def setup_method(self):
-        NinjaAPI._registry.clear()
         self.client = TestClient(api)
 
-    def test_register_missing_fields(self):
-        # Missing password
-        response = self.client.post("/auth/register/", json={"email": "user@example.com"})
-        assert response.status_code in [400, 422]
-        data = response.json()
-        assert "detail" in data or "message" in data
+    def test_register_requires_email_and_forbids_password(self):
+        missing = self.client.post("/auth/register/", json={})
+        extra = self.client.post(
+            "/auth/register/",
+            json={"email": "user@example.com", "password": "not-accepted-here"},
+        )
 
-        # Missing email
-        response = self.client.post("/auth/register/", json={"password": "testpass123"})
-        assert response.status_code in [400, 422]
-        data = response.json()
-        assert "detail" in data or "message" in data
+        assert missing.status_code in {400, 422}
+        assert extra.status_code in {400, 422}
 
-        # Missing both
-        response = self.client.post("/auth/register/", json={})
-        assert response.status_code in [400, 422]
-        data = response.json()
-        assert "detail" in data or "message" in data
+    def test_register_existing_email_is_generic(self):
+        create_test_user(email="existing@example.com", password="testpass123")
 
-    def test_register_existing_email(self):
-        from accounts.models import User
-        email = "existing@example.com"
-        password = "testpass123"
-        create_test_user(email=email, password=password)
-        response = self.client.post("/auth/register/", json={"email": email, "password": password})
-        assert response.status_code in [400, 422]
-        data = response.json()
-        assert "detail" in data or "message" in data
+        response = self.client.post(
+            "/auth/register/", json={"email": "Existing@Example.com"}
+        )
 
-    def test_register_success(self):
-        # Register a new user with valid data
-        email = "newuser@example.com"
-        password = "testpass123"
-        response = self.client.post("/auth/register/", json={"email": email, "password": password})
         assert response.status_code == 200
-        data = response.json()
-        # Registration should return a verification message, not tokens
-        assert "detail" in data
-        assert "verify" in data["detail"].lower()
+        assert "verification email" in response.json()["detail"]
+        assert User.objects.filter(email__iexact="existing@example.com").count() == 1
+        assert not PendingRegistration.objects.filter(
+            email__iexact="existing@example.com"
+        ).exists()
+
+    def test_register_success_creates_pending_identity_only(self):
+        email = "newuser@example.com"
+
+        response = self.client.post("/auth/register/", json={"email": email})
+
+        assert response.status_code == 200
+        assert "verification email" in response.json()["detail"]
+        assert PendingRegistration.objects.filter(email=email).exists()
+        assert not User.objects.filter(email=email).exists()

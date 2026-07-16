@@ -28,15 +28,17 @@ class Command(BaseCommand):
         timeout_seconds = options["timeout"]
         deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
 
-        self.stdout.write('Waiting for database...')
+        self.stdout.write("Waiting for database...")
         while True:
             try:
-                connections['default'].ensure_connection()
+                connections["default"].ensure_connection()
                 break
             except OperationalError as exc:
                 if deadline is not None and time.monotonic() >= deadline:
                     raise CommandError("Database unavailable.") from exc
-                self.stdout.write(f'Database unavailable, waiting {sleep_seconds:g} second(s)...')
+                self.stdout.write(
+                    f"Database unavailable, waiting {sleep_seconds:g} second(s)..."
+                )
                 time.sleep(sleep_seconds)
 
-        self.stdout.write(self.style.SUCCESS('Database available!')) 
+        self.stdout.write(self.style.SUCCESS("Database available!"))

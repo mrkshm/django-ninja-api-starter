@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-from django.shortcuts import get_object_or_404
+from django.http import HttpRequest
 from ninja.errors import HttpError
 
+from accounts.models import User
 from core.utils.auth_utils import get_request_user
-from organizations.access import is_platform_admin
 from organizations.models import Membership, Organization
 
-if TYPE_CHECKING:
-    from accounts.models import User
+audit_logger = logging.getLogger("audit")
+
+
+def is_platform_admin(user: User) -> bool:
+    """Staff status alone never grants cross-tenant application access."""
+    return bool(getattr(user, "is_superuser", False))
 
 
 @dataclass(frozen=True)
@@ -45,22 +49,48 @@ class OrgScope:
         return self
 
 
-def resolve_org_scope(request, org_slug: str) -> OrgScope:
+def resolve_org_scope(request: HttpRequest, org_slug: str) -> OrgScope:
     user = get_request_user(request)
-    org = get_object_or_404(Organization, slug=org_slug)
     membership = (
         Membership.objects.select_related("organization")
-        .filter(user=user, organization=org)
+        .filter(
+            user=user,
+            organization__slug=org_slug,
+        )
         .first()
     )
-    if membership is None and not is_platform_admin(user):
-        raise HttpError(403, "You do not have access to this organization.")
-    return OrgScope(user=user, org=org, membership=membership)
+    if membership is not None:
+        return OrgScope(user=user, org=membership.organization, membership=membership)
+
+    if not is_platform_admin(user):
+        raise HttpError(404, "Organization not found")
+
+    try:
+        org = Organization.objects.get(slug=org_slug)
+    except Organization.DoesNotExist as exc:
+        raise HttpError(404, "Organization not found") from exc
+    else:
+        audit_logger.info(
+            "audit:platform_admin_tenant_access",
+            extra={
+                "event": "platform_admin_tenant_access",
+                "org": org.pk,
+                "user": user.pk,
+                "method": getattr(request, "method", "UNKNOWN"),
+                "path": getattr(request, "path", ""),
+                "access": (
+                    "read"
+                    if getattr(request, "method", "GET") in {"GET", "HEAD", "OPTIONS"}
+                    else "write"
+                ),
+            },
+        )
+    return OrgScope(user=user, org=org)
 
 
-def resolve_write_org_scope(request, org_slug: str) -> OrgScope:
+def resolve_write_org_scope(request: HttpRequest, org_slug: str) -> OrgScope:
     return resolve_org_scope(request, org_slug).require_write()
 
 
-def resolve_admin_org_scope(request, org_slug: str) -> OrgScope:
+def resolve_admin_org_scope(request: HttpRequest, org_slug: str) -> OrgScope:
     return resolve_org_scope(request, org_slug).require_admin()

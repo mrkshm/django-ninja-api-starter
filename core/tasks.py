@@ -1,8 +1,16 @@
-from celery import shared_task
-from django.core.mail import send_mail
-from django.conf import settings
+from smtplib import SMTPConnectError, SMTPServerDisconnected
 
-def _send_email_task(subject, message, recipient_list, from_email=None, html_message=None):
+from celery import shared_task
+from django.conf import settings
+from django.core.mail import send_mail
+from django.utils import timezone
+
+from core.models import IdempotencyRecord
+
+
+def _send_email_task(
+    subject, message, recipient_list, from_email=None, html_message=None
+):
     """
     Helper function to send an email using Django's email backend.
     Args:
@@ -13,7 +21,7 @@ def _send_email_task(subject, message, recipient_list, from_email=None, html_mes
         html_message (str, optional): HTML message body
     """
     if from_email is None:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'webmaster@localhost')
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "webmaster@localhost")
     send_mail(
         subject,
         message,
@@ -23,8 +31,16 @@ def _send_email_task(subject, message, recipient_list, from_email=None, html_mes
         html_message=html_message,
     )
 
-@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def send_email_task(self, subject, message, recipient_list, from_email=None, html_message=None):
+
+@shared_task(
+    bind=True,
+    autoretry_for=(SMTPServerDisconnected, SMTPConnectError, OSError),
+    retry_backoff=True,
+    max_retries=3,
+)
+def send_email_task(
+    self, subject, message, recipient_list, from_email=None, html_message=None
+):
     """
     Celery task to send an email asynchronously using Django's email backend.
     Usage:
@@ -37,3 +53,11 @@ def send_email_task(self, subject, message, recipient_list, from_email=None, htm
         html_message (str, optional): HTML message body
     """
     _send_email_task(subject, message, recipient_list, from_email, html_message)
+
+
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def cleanup_expired_idempotency_records() -> int:
+    queryset = IdempotencyRecord.objects.filter(expires_at__lte=timezone.now())
+    count = queryset.count()
+    queryset.delete()
+    return count

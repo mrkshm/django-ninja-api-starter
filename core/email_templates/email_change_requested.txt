@@ -1,0 +1,16 @@
+Subject: Email change requested for {{ project_name }}
+
+Hi {{ user_display_name }},
+
+A request was made to change the email address for your {{ project_name }} account from:
+
+    {{ old_email }}
+
+to:
+
+    {{ new_email }}
+
+If you made this request, no action is needed at this address. If you did not, change your password immediately. Changing or resetting your password invalidates the pending email change.
+
+Thanks,
+The {{ project_name }} Team

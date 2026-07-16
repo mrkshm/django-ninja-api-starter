@@ -1,0 +1,137 @@
+# Authentication and security
+
+## Sessions
+
+Login creates a database-backed device session plus a five-minute access token
+and a 30-day refresh token. Refresh rotates and blacklists the old token. Replay
+revokes the associated device session. Logout takes the current refresh token
+and revokes it; logout-all, password reset, deactivation, and account deletion
+invalidate relevant sessions through `auth_version` and session state.
+Password change, password-reset confirmation, and completed email change return
+`reauthentication_required: true`. An iOS client must then delete its refresh
+token from Keychain, discard the in-memory access token, and present login.
+
+JWTs use HS256 with an issuer, audience, and a signing key independent from
+Django's `SECRET_KEY`. To rotate normally, deploy support for both old and new
+keys before issuing with the new key; this starter's single-key configuration
+instead requires all users to sign in again. For emergency revocation, replace
+the signing key, increment every active user's `auth_version`, revoke active
+sessions, and restart web/workers.
+
+## Client storage
+
+iOS clients keep the refresh token in Keychain with an accessibility class
+appropriate to the app and keep access tokens in memory. Never place tokens in
+UserDefaults, logs, analytics, crash metadata, URLs, or backups.
+
+The JSON refresh-token API is for trusted native clients. Browser clients use
+the separate `/auth/browser/*` flow: the access token is returned in JSON and
+kept only in memory, while the refresh token is stored in a host-only,
+`HttpOnly`, `SameSite=Lax` cookie restricted to `/api/v1/auth/browser/`. The
+cookie is also `Secure` outside local development. It is never returned in a
+browser response body and must never be copied into localStorage or
+sessionStorage.
+
+Before browser login, registration verification, refresh, or logout, call
+`GET /auth/browser/csrf` with credentials included. Send its `csrf_token` value
+in `X-CSRFToken` and continue including credentials on the state-changing
+request. The CSRF cookie is HttpOnly; clients use the response value rather than
+reading the cookie. Refresh rotates both credentials, replay revokes the device
+session, and logout is idempotent and clears the cookie even if the server-side
+session has already expired.
+
+The supported browser deployment is same-site sibling subdomains: for example,
+`app.example.com` with `api.example.com`, and `app-staging.example.com` with
+`api-staging.example.com`. List the exact frontend origin in both
+`CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`; credentialed CORS is enabled,
+but wildcard origins are not. A truly cross-site frontend is deliberately not a
+first-class configuration because it would require a different
+`SameSite=None` threat model.
+
+Verification, email-change, and password-reset messages place tokens in URL
+fragments so normal server access logs do not receive them. The client submits
+the token to a POST body.
+
+Registration proves email ownership before creating a user: `/auth/register/`
+accepts only the email and creates a short-lived pending identity. The client
+submits the verification token together with the chosen password to
+`/auth/verify-registration`; only then are the user and personal organization
+created. Repeated requests rotate the pending token, and expired pending rows
+can be deleted without leaving orphan accounts.
+
+Requesting an email change requires the current password. The existing address
+receives a security notice, the new address receives the verification link, and
+both addresses are notified after completion. Pending changes are bound to the
+user's `auth_version`, so changing/resetting the password or otherwise revoking
+all sessions invalidates an outstanding email-change token.
+
+Authentication, registration, reset, verification, contact search, upload, and
+public-share throttles use the shared cache and operation-specific scopes. Tests
+exercise real account throttle windows, client-IP separation, authenticated-user
+identity, cross-domain scope separation, and route-level 429 responses.
+`NINJA_NUM_PROXIES` must match the trusted deployment topology. These application
+throttles reduce ordinary abuse but use Django Ninja's non-atomic cache history
+algorithm, so they are not a hard guarantee under high concurrency; add
+upstream/provider abuse protection when product risk warrants it.
+
+## Tenant roles
+
+- `member`: view and CRUD ordinary contacts, tags, private images, and relations.
+- `admin`: member abilities plus export and organization-management operations.
+- `owner`: admin abilities and ownership-level destructive operations.
+- platform admin: Django superuser only; `is_staff` alone does not bypass tenant
+  policy.
+
+`member` is deliberately an editor role, not a read-only role: ordinary
+organization content is collaborative rather than creator-owned. Add a separate
+`viewer` role if a product needs read-only membership instead of weakening the
+meaning of `member` inconsistently across resources.
+
+Group organizations may have multiple owners but must retain at least one active
+owner. Role changes, membership removal, account deactivation, and account
+deletion must use the transactional domain services in `organizations.services`;
+PostgreSQL deferred constraint triggers provide a final database guard against
+raw ORM or administrative mutations that would orphan a group.
+
+Superusers may enter any tenant as platform administrators. Cross-tenant scope
+resolution emits a structured `platform_admin_tenant_access` audit event with
+the administrator, organization, request method/path, read/write classification,
+and request ID. It never includes request bodies or tenant data.
+
+Cross-tenant object access is hidden as `404`. Every polymorphic target is
+allowlisted; arbitrary Django models cannot be resolved from client input.
+
+## Media
+
+General images and exports are private. URLs are signed only after authorization
+and use short lifetimes/private cache directives. Share tokens are random,
+stored only as hashes, returned once, expire, can be revoked, and are submitted
+to a throttled POST endpoint rather than embedded in request paths.
+
+User and contact avatars are public to everyone by design. They are normalized
+WebP files with stripped metadata and unguessable keys under
+`public/avatars/users/` or `public/avatars/contacts/` in a dedicated public
+bucket. Public bucket permissions must never include private image/export keys.
+API resource responses return their public URLs directly; there is no public URL
+construction endpoint. Deletion removes the source objects, but browsers and
+intermediary caches may retain a copy until their cache lifetime expires. Do not
+use public avatars when immediate revocation is a product requirement.
+Upload endpoints reject declared oversized files before reading and use a
+bounded read as a second check. Image validation applies dimension and pixel
+limits to bytes, streams, and PIL objects without mutating Pillow global state.
+
+## Email delivery
+
+Email tasks retry only transient connection/disconnection failures. SMTP delivery
+is intentionally at-least-once: an ambiguous timeout after server acceptance may
+produce a duplicate message. Exactly-once delivery requires a provider API with
+idempotency-key support; a local sent flag cannot resolve ambiguous SMTP state.
+
+## Logging
+
+Logs contain request IDs and security event names, not authorization headers,
+cookies, passwords, raw tokens, email bodies, storage credentials, or signed
+URLs. Validation input values are omitted. Restrict log access and retain logs
+for the shortest period that meets operational/legal needs (30 days is a useful
+starting point). Connect an error provider at `core.error_reporting` and apply
+the same redaction rules.

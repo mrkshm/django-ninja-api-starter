@@ -1,81 +1,129 @@
 import pytest
 from django.contrib.auth import get_user_model
+
+from accounts.models import PendingEmailChange
 from accounts.tests.utils import create_test_user
 
 User = get_user_model()
 
+
 @pytest.mark.django_db
 def test_get_me_success(api_client):
     # Create user
-    user = create_test_user(email="me@example.com", password="testpass", first_name="Test", last_name="User")
+    user = create_test_user(
+        email="me@example.com", password="testpass", first_name="Test", last_name="User"
+    )
     # Obtain JWT token (using login endpoint)
-    response = api_client.post("/token/pair", json={"email": "me@example.com", "password": "testpass"})
+    response = api_client.post(
+        "/token/pair", json={"email": "me@example.com", "password": "testpass"}
+    )
     assert response.status_code == 200
     access = response.json()["access"]
 
     # Call GET /me with Authorization header
-    response = api_client.get("/users/me", headers={"Authorization": f"Bearer {access}"})
+    response = api_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {access}"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == "me@example.com"
     assert data["first_name"] == "Test"
     assert data["last_name"] == "User"
 
+
 @pytest.mark.django_db
 def test_get_me_unauthenticated(api_client):
     response = api_client.get("/users/me")
     assert response.status_code == 401
 
+
 @pytest.mark.django_db
 def test_patch_me_partial_update(settings, api_client):
-    user = create_test_user(email="patchme@example.com", password="pw", first_name="Old", last_name="Name")
-    response = api_client.post("/token/pair", json={"email": "patchme@example.com", "password": "pw"})
+    user = create_test_user(
+        email="patchme@example.com", password="pw", first_name="Old", last_name="Name"
+    )
+    response = api_client.post(
+        "/token/pair", json={"email": "patchme@example.com", "password": "pw"}
+    )
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
     # Partial update (only first_name)
-    response = api_client.patch("/users/me", json={"first_name": "New"}, headers=headers)
+    response = api_client.patch(
+        "/users/me", json={"first_name": "New"}, headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["first_name"] == "New"
     assert data["last_name"] == "Name"
 
+
 @pytest.mark.django_db
 def test_patch_me_invalid_data(settings, api_client):
-    user = create_test_user(email="invalidpatch@example.com", password="pw", first_name="Valid", last_name="User")
-    response = api_client.post("/token/pair", json={"email": "invalidpatch@example.com", "password": "pw"})
+    user = create_test_user(
+        email="invalidpatch@example.com",
+        password="pw",
+        first_name="Valid",
+        last_name="User",
+    )
+    response = api_client.post(
+        "/token/pair", json={"email": "invalidpatch@example.com", "password": "pw"}
+    )
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
     # Too long first_name (assuming max_length=50)
     long_name = "x" * 100
-    response = api_client.patch("/users/me", json={"first_name": long_name}, headers=headers)
+    response = api_client.patch(
+        "/users/me", json={"first_name": long_name}, headers=headers
+    )
     assert response.status_code == 400 or response.status_code == 422
     # Unsupported field
-    response = api_client.patch("/users/me", json={"not_a_field": "test"}, headers=headers)
+    response = api_client.patch(
+        "/users/me", json={"not_a_field": "test"}, headers=headers
+    )
     assert response.status_code == 400 or response.status_code == 422
+
 
 @pytest.mark.django_db
 def test_patch_me_unauthenticated(api_client):
     response = api_client.patch("/users/me", json={"first_name": "NoAuth"})
     assert response.status_code == 401
 
+
 @pytest.mark.django_db
 def test_email_change_delivery_failure(monkeypatch, settings, api_client):
     from core import tasks as core_tasks
+
     user = create_test_user(email="failmail@example.com", password="pw")
-    response = api_client.post("/token/pair", json={"email": "failmail@example.com", "password": "pw"})
+    response = api_client.post(
+        "/token/pair", json={"email": "failmail@example.com", "password": "pw"}
+    )
     access = response.json()["access"]
     headers = {"Authorization": f"Bearer {access}"}
+
     def fail_send_email_task(*args, **kwargs):
         raise Exception("Simulated email failure")
+
     monkeypatch.setattr(core_tasks.send_email_task, "delay", fail_send_email_task)
-    response = api_client.patch("/auth/email", json={"email": "failmail2@example.com"}, headers=headers)
+    response = api_client.patch(
+        "/auth/email",
+        json={"email": "failmail2@example.com", "current_password": "pw"},
+        headers=headers,
+    )
     assert response.status_code == 500 or response.status_code == 400
-    assert "fail" in response.json()["detail"].lower() or "error" in response.json()["detail"].lower() or "exception" in response.json()["detail"].lower()
+    assert (
+        "fail" in response.json()["detail"].lower()
+        or "error" in response.json()["detail"].lower()
+        or "exception" in response.json()["detail"].lower()
+    )
+    assert not PendingEmailChange.objects.filter(user=user).exists()
+
 
 @pytest.mark.django_db
-def test_check_username_length_and_uniqueness(api_client):
+def test_check_username_length_and_uniqueness(api_client, make_auth_headers):
+    checker = create_test_user(email="checker@example.com", password="pw")
+    headers = make_auth_headers(api_client, checker)
     # Missing username param
-    response = api_client.get("/users/check_username")
+    response = api_client.get("/users/check_username", headers=headers)
     assert response.status_code == 200
     data = response.json()
     print("[TEST LOG] Missing username response:", response.status_code, data)
@@ -84,7 +132,9 @@ def test_check_username_length_and_uniqueness(api_client):
 
     # Too long
     long_username = "x" * 51
-    response = api_client.get("/users/check_username", params={"username": long_username})
+    response = api_client.get(
+        "/users/check_username", params={"username": long_username}, headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     print("[TEST LOG] Too long username response:", response.status_code, data)
@@ -94,7 +144,9 @@ def test_check_username_length_and_uniqueness(api_client):
     # Uniqueness (case-insensitive)
     create_test_user(email="taken@example.com", username="TestUser", password="pw")
     username = "testuser"
-    response = api_client.get(f"/users/check_username?username={username}")
+    response = api_client.get(
+        f"/users/check_username?username={username}", headers=headers
+    )
     print("[TEST LOG] Uniqueness response:", response.status_code, response.json())
     assert response.status_code == 200
     data = response.json()
@@ -103,13 +155,19 @@ def test_check_username_length_and_uniqueness(api_client):
 
     # Available
     username = "uniquename"
-    response = api_client.get(f"/users/check_username?username={username}")
-    print("[TEST LOG] Available username response:", response.status_code, response.json())
+    response = api_client.get(
+        f"/users/check_username?username={username}", headers=headers
+    )
+    print(
+        "[TEST LOG] Available username response:", response.status_code, response.json()
+    )
     assert response.status_code == 200
     assert response.json()["available"] is True
 
     # Invalid characters
-    response = api_client.get("/users/check_username?username=bad%20name!")
+    response = api_client.get(
+        "/users/check_username?username=bad%20name!", headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["available"] is False

@@ -1,7 +1,10 @@
-from ninja import Schema, Field
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from ninja import Field, Schema
 from pydantic import ConfigDict
+
+from accounts.validation import AccountEmail, GenericEmailInput
 
 
 class UnverifiedUserSchema(Schema):
@@ -15,15 +18,54 @@ class CustomTokenOutputSchema(Schema):
     email: str
 
 
-class TokenPairInputSchema(Schema):
+class BrowserTokenOutputSchema(Schema):
+    access: str
     email: str
+
+
+class BrowserAccessTokenOutputSchema(Schema):
+    access: str
+
+
+class BrowserRegistrationOutputSchema(BrowserTokenOutputSchema):
+    detail: str
+
+
+class CsrfTokenOutputSchema(Schema):
+    csrf_token: str
+
+
+class TokenRefreshInputSchema(Schema):
+    refresh: str
+    model_config = ConfigDict(extra="forbid")
+
+
+class TokenRefreshOutputSchema(Schema):
+    access: str
+    refresh: str
+
+
+class LogoutInputSchema(Schema):
+    refresh: str
+    model_config = ConfigDict(extra="forbid")
+
+
+class TokenPairInputSchema(Schema):
+    email: AccountEmail
     password: str
+    device_name: Optional[str] = Field(None, max_length=120)
     model_config = ConfigDict(extra="forbid")
 
 
 class RegisterSchema(Schema):
-    email: str
+    email: AccountEmail
+    model_config = ConfigDict(extra="forbid")
+
+
+class RegistrationVerificationSchema(Schema):
+    token: str = Field(min_length=8, max_length=128)
     password: str
+    device_name: Optional[str] = Field(None, max_length=120)
     model_config = ConfigDict(extra="forbid")
 
 
@@ -33,23 +75,34 @@ class ChangePasswordSchema(Schema):
     model_config = ConfigDict(extra="forbid")
 
 
+class ReauthenticationResponse(Schema):
+    detail: str
+    reauthentication_required: bool = True
+
+
 class DeleteAccountSchema(Schema):
     password: str
     model_config = ConfigDict(extra="forbid")
 
 
 class EmailUpdateSchema(Schema):
-    email: str
+    email: AccountEmail
+    current_password: str
     model_config = ConfigDict(extra="forbid")
 
 
 class EmailSchema(Schema):
-    email: str
+    email: GenericEmailInput
+    model_config = ConfigDict(extra="forbid")
+
+
+class TokenInputSchema(Schema):
+    token: str = Field(min_length=8, max_length=128)
     model_config = ConfigDict(extra="forbid")
 
 
 class PasswordResetRequestSchema(Schema):
-    email: str
+    email: GenericEmailInput
     model_config = ConfigDict(extra="forbid")
 
 
@@ -78,6 +131,7 @@ class UserProfileOut(Schema):
     email_verified: bool
     created_at: Optional[datetime]
 
+
 class UserProfileUpdate(Schema):
     first_name: Optional[str] = Field(None, max_length=50)
     last_name: Optional[str] = Field(None, max_length=50)
@@ -86,6 +140,7 @@ class UserProfileUpdate(Schema):
     preferred_theme: Optional[str] = None
     preferred_language: Optional[str] = None
     model_config = ConfigDict(extra="forbid")
+
 
 class UsernameCheckResponse(Schema):
     available: bool
