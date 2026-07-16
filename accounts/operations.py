@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -13,7 +15,7 @@ from accounts.models import (
     PendingRegistration,
     User,
 )
-from accounts.services import revoke_all_sessions, validate_new_password
+from accounts.services import revoke_all_sessions
 from accounts.tokens import generate_raw_token, hash_token
 
 audit_logger = logging.getLogger("audit")
@@ -25,6 +27,13 @@ class AccountOperationError(ValueError):
 
 class AccountOperationConflict(AccountOperationError):
     pass
+
+
+def _validate_new_password(password: str, *, user: User) -> None:
+    try:
+        validate_password(password, user=user)
+    except ValidationError as exc:
+        raise AccountOperationError(" ".join(exc.messages)) from exc
 
 
 @dataclass(frozen=True)
@@ -117,7 +126,7 @@ def confirm_registration(*, raw_token: str, password: str) -> User:
                     error = "Invalid or expired token."
                 else:
                     candidate = User(email=pending.email)
-                    validate_new_password(password, user=candidate)
+                    _validate_new_password(password, user=candidate)
                     user = User.objects.create_user(
                         email=pending.email,
                         password=password,
@@ -140,7 +149,7 @@ def change_password(*, user_id: int, old_password: str, new_password: str) -> No
     user = User.objects.select_for_update().get(pk=user_id)
     if not user.check_password(old_password):
         raise AccountOperationError("Old password is incorrect")
-    validate_new_password(new_password, user=user)
+    _validate_new_password(new_password, user=user)
     user.set_password(new_password)
     user.save(update_fields=["password", "updated_at"])
     revoke_all_sessions(user)
@@ -258,7 +267,7 @@ def confirm_password_reset(*, raw_token: str, new_password: str) -> None:
                 pending.delete()
                 error = "Token has expired."
             else:
-                validate_new_password(new_password, user=user)
+                _validate_new_password(new_password, user=user)
                 user.set_password(new_password)
                 user.save(update_fields=["password", "updated_at"])
                 revoke_all_sessions(user)

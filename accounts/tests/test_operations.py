@@ -56,6 +56,23 @@ def test_incorrect_password_changes_no_credential_or_session_state():
 
 
 @pytest.mark.django_db
+def test_weak_password_is_reported_as_an_operation_error():
+    user = User.objects.create_user(
+        email="weak-operation@example.com", password="oldpass123"
+    )
+
+    with pytest.raises(AccountOperationError):
+        change_password(
+            user_id=user.pk,
+            old_password="oldpass123",
+            new_password="password",
+        )
+
+    user.refresh_from_db()
+    assert user.check_password("oldpass123")
+
+
+@pytest.mark.django_db
 def test_pending_reset_requires_explicit_token_hash():
     user = User.objects.create_user(email="token-required@example.com", password="pw")
     with transaction.atomic():

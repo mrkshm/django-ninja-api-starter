@@ -20,5 +20,5 @@ def edit_image_metadata(request, org_slug: str, image_id: int, data: ImagePatchI
     for field in ("title", "description", "alt_text"):
         if field in payload:
             setattr(image, field, payload[field])
-    image.save()
+    image.save(update_fields=[*payload, "updated_at"])
     return serialize_image(image)

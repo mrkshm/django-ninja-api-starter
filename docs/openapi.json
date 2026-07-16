@@ -936,37 +936,21 @@
         "additionalProperties": false,
         "properties": {
           "alt_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Alt Text"
+            "default": "",
+            "maxLength": 120,
+            "title": "Alt Text",
+            "type": "string"
           },
           "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
+            "default": "",
+            "title": "Description",
+            "type": "string"
           },
           "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
+            "default": "",
+            "maxLength": 120,
+            "title": "Title",
+            "type": "string"
           }
         },
         "title": "ImagePatchIn",

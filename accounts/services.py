@@ -3,8 +3,6 @@ from typing import cast
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.utils import timezone
@@ -24,13 +22,6 @@ logger = logging.getLogger(__name__)
 
 def normalize_email(email: str) -> str:
     return normalize_and_validate_email(email)
-
-
-def validate_new_password(password: str, user=None) -> None:
-    try:
-        validate_password(password, user=user)
-    except ValidationError as exc:
-        raise HttpError(400, " ".join(exc.messages)) from exc
 
 
 def authenticate_for_token(email: str, password: str):

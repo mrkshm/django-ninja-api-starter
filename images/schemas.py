@@ -17,9 +17,9 @@ class ImageCreate(BaseModel):
 
 
 class ImagePatchIn(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    alt_text: Optional[str] = None
+    title: str = Field(default="", max_length=120)
+    description: str = ""
+    alt_text: str = Field(default="", max_length=120)
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
